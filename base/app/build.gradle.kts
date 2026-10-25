@@ -25,8 +25,8 @@ android {
     val version = (findProperty("appVersionName") as String?) ?: "2.0.1"
     val beta = findProperty("appVersionName") == null || version.contains("-")
     defaultConfig {
-        applicationId = if (beta) "app.myspoti" else "app.myspoti.stable"
-        manifestPlaceholders["appLabel"] = if (beta) "Myspoti Beta" else "Myspoti"
+        applicationId = "app.myspoti.hangul"
+        manifestPlaceholders["appLabel"] = "Myspoti 한글"
         // The adb command line (com.music.spotui.cli): betas and debug builds only.
         manifestPlaceholders["cliEnabled"] = beta.toString()
         minSdk = 29
@@ -95,6 +95,9 @@ android {
             if (!beta) proguardFiles("proguard-strip-logs.pro")
         }
     }
+    packaging {
+        resources.merges += listOf("META-INF/CONTRIBUTORS.md", "META-INF/LICENSE*", "META-INF/NOTICE*")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -103,6 +106,8 @@ android {
 
 dependencies {
     implementation(project(":host-android"))
+    implementation("org.jsoup:jsoup:1.21.2")
+    implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     // Third-party extensions: the sandbox (Rhino), manifests, packages and catalogues.
     implementation(project(":extensions"))
     // Jam: scan the invite QR code (Google code scanner, no camera permission).

@@ -52,6 +52,10 @@
     <init>();
 }
 
+# Kuromoji locates its dictionary resources and token factory through class names.
+-keep class com.atilika.kuromoji.** { *; }
+-keep class com.music.spotui.data.api.HangulReadingEngine { *; }
+
 # Native UI (Spotui port) + Spotify data layer
 -keep class com.metrolist.spotify.models.** { *; }
 -keep class com.music.spotui.data.entity.** { *; }

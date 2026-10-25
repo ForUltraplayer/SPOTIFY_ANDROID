@@ -1,171 +1,43 @@
-# Myspoti
+# Myspoti 한글
 
-[![Latest release](https://img.shields.io/github/v/release/kota-zo/myspoti?label=release)](https://github.com/kota-zo/myspoti/releases/latest)
-[![License: GPL-3.0](https://img.shields.io/github/license/kota-zo/myspoti)](LICENSE)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/jXKnGVFnGS)
+Spotify 재생 앱 Myspoti에 기존 한글 발음 가사 조회를 통합한 안드로이드 수정판이다. 재생과 발음을 한 앱에서 사용하며 PC나 별도 가사 서버에 연결하지 않는다. Android 10 이상을 대상으로 한다.
 
-**Spotify without ads, on a free account.** Your own Spotify account, playlists and Wrapped, in a native Android app that blocks the ads, with offline downloads through extensions you install.
+[APK 다운로드](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases)에서 설치 파일을 받는다. 현재 버전은 `2.0.1-hangul.3`, 앱 식별자는 `app.myspoti.hangul`, 버전 코드는 `1085`다. 사전 기반 변환과 기존 자료를 사용하며 유료 API 키가 필요하지 않다.
 
-<p align="center">
-  <img src="docs/screenshots/banner.jpg" alt="Myspoti: home, player, artist and album screens" width="100%">
-</p>
+## 기능
 
-<p align="center">
-  <a href="https://github.com/kota-zo/myspoti/releases/latest"><b>⬇ Download the latest APK</b></a>
-</p>
+- 한음, 나무위키와 지정한 티스토리 자료의 일본어 원문과 기존 한글 발음을 대조한다.
+- 커버 제목의 부가 표기, 반복 횟수 표기와 한글 제목으로 등록된 문서 검색을 보완한다.
+- 원문 대조를 통과한 출처만 기억하고 다음에도 다시 검증한다.
+- 사용자가 켰을 때만 누락 줄을 기기 내부 사전으로 보완한다. 기본값은 꺼짐이다.
+- 가사 화면의 제목을 길게 누르거나 메뉴에서 곡 제목 복사를 선택하면 전체 제목을 복사한다.
 
-<p align="center">
-  <a href="https://ko-fi.com/kotazo"><img src="https://storage.ko-fi.com/cdn/kofi6.png?v=6" alt="Support Myspoti on Ko-fi" height="56"></a>
-  <a href="https://github.com/sponsors/kota-zo"><img src="https://img.shields.io/badge/Sponsor_on_GitHub-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor kota-zo on GitHub" height="56"></a>
-</p>
+기존 발음은 일본어 원문 줄의 85% 이상과 최소 5 줄이 연결될 때 사용한다. 일본어가 3~4 줄인 짧은 곡은 모든 줄이 연결되어야 한다. 자동 발음은 실제 노래의 한자 읽기와 다를 수 있다. 자동 줄 수는 가사 화면에 표시하며 앱 팝업 알림은 추가하지 않는다.
 
-## Why Myspoti
+## 저장 자료
 
-### 🚫 Spotify with no ads, on a free account
-No audio ads, no video ads, no banners, and no 30-second break between songs. Myspoti switches off the ad breaks of Spotify's own player, so a free account plays like Premium: pick any song, skip as much as you want. No Premium, no modified Spotify app, nothing to root.
+원문 가사는 Myspoti의 기존 저장 방식을 사용한다. 추가한 발음은 앱 내부 `hangul_readings_cache` 폴더의 JSON 파일에 보관하고 출처 별칭과 설정은 앱의 비공개 설정 저장소를 사용한다. 성공한 기존 발음은 최대 500 곡, 30 일 동안 캐시한다. 자동으로 만든 발음을 기존 작성 자료 캐시에 덮어쓰지 않는다. 자료와 로그인 정보는 이 저장소에 포함하지 않는다.
 
-### ⬇️ Offline downloads, through extensions
-Myspoti has no download source of its own. Install a **download-source extension** (Settings, Extensions) and you can download a song, an album, a playlist or all your Liked Songs, and listen with no connection: on the plane, in the metro, with no data. The extension decides where the files come from and in which formats (FLAC, M4A or MP3); Myspoti keeps them encrypted on your phone, refuses a file that is not the song's length, and keeps downloaded playlists in step: songs you add on Spotify download by themselves.
+## 검증 범위
 
-### ✨ And everything you expect from Spotify, and more
-Your home, search, library, playlists, podcasts, Spotify Connect and Android Auto, plus **word-by-word lyrics**, **official music videos** and **song meanings from Genius**.
+Java 엔진 검사 22 개, Kotlin과 Compose 컴파일, R8 최적화를 포함한 APK 빌드를 통과했다. 실제 공개 문서와 연결한 PC JVM 검사에서는 모니터링 85/85 줄과 Execution Clap의 한글 문서인 처형박수 57/60 줄을 연결했다. 이 결과는 휴대폰 속도 측정이 아니다.
 
-## What is it?
+배포 APK의 서명자는 이전 개인 설치용 버전 코드 1084 APK와 일치하고 새 코드는 1085다. APK 안의 사전 고지 유지도 확인했다. 휴대폰 업데이트 설치, 기존 로그인 유지와 실제 재생 및 화면 검증은 아직 대기 중이므로 베타로 배포한다. 기기에서 Google 로그인이 되지 않을 때는 이전 검증에서 성공한 이메일 로그인을 사용할 수 있다.
 
-Myspoti is a Spotify app for Android that you install yourself. You sign in with your usual Spotify account, on Spotify's own login page: Myspoti never sees your password. A free account is enough.
+## 빌드
 
-Under the hood, the official Spotify Web Player plays the music, hidden inside the app, with your phone's DRM. Myspoti draws its own screens on top and drives it. Your plays are reported to Spotify exactly as in a browser: they count for the artists, in your history and in your Wrapped.
+기준 소스는 [Myspoti](https://github.com/kota-zo/myspoti)의 `d99d09db66a79b22643b7b87b30b00e4b8b232ce`다. 원본 이력과 전체 수정 소스를 이 저장소에 보존한다. JDK 17과 Android SDK 37을 준비하고 다음 명령을 실행한다.
 
-## Get started
-
-1. Download the APK from the [latest release](https://github.com/kota-zo/myspoti/releases/latest) and open it (Android 10 or later). Android asks once to allow installs from your browser or file manager.
-2. Tap **Log in with Spotify** and sign in.
-3. Pick the sound quality, allow what you want (notifications, Bluetooth, local files…), and you are in.
-
-New versions are offered inside the app: one tap downloads and installs them.
-
-## What you get
-
-**Listening**
-- No ads (see above).
-- Home, search, Browse, New releases, Your Library with folders, artist, album, playlist and profile pages, with Spotify's own content.
-- Pick any song: shuffle, Smart Shuffle, the queue (drag to reorder), repeat, crossfade, sleep timer.
-- Podcasts and audiobooks, with their own player (speed, ±15 s, mark as played).
-- Spotify Connect, Jam, Bluetooth with your headphones' name, lock screen, notification, widget and Android Auto.
-
-**Lyrics and videos**
-- Synced lyrics, word by word when a source has the timing (or line by line, your choice in Settings), with translation.
-- **Song meanings from Genius**: a light bulb for the story of the song, and a long press on an underlined line for its explanation, translated into your language.
-- **Official music videos**, in sync with the song, in full screen if you like. Play them silently over the song, or hear the clip's own sound while the song keeps counting on Spotify.
-
-**Your playlists**
-- Create, edit (name, description, cover), sort, make public, private or collaborative.
-- **Add songs** from a Spotify search inside the playlist, with suggestions.
-- **Collaborative playlists**: invite friends with a link, see who is in, and who added each song.
-- Share any song, album, artist or playlist as a **Spotify Code** (scannable in the Spotify app) or a link.
-
-**Offline**
-- With a download-source extension installed: download songs, albums, playlists and Liked Songs, in the formats the extension offers (or re-encoded to small AAC on the phone).
-- Downloads are encrypted and stay in Myspoti. Lists you downloaded stay in step with Spotify.
-- Your local audio files too.
-
-**Extensions**
-- Scripts written by other people, in a sandbox: lyrics from other sources, where a song's audio or download comes from, Home sections, menu entries, tools that use your Spotify account.
-- Installing shows what an extension will do (each action with its author's reason, the critical ones marked) and asks for one tick: you install it on your own responsibility. An extension gets every action it lists, or is not installed; an update that asks for more waits for your OK and shows only what changes.
-- With an audio-source extension on, every song you play (from a list, search, an artist, Recents, a link or shuffle) is asked there first, and plays on Spotify when it has nothing.
-- For authors: [the extensions API](docs/extensions/API.md), and a desktop runner to test without a phone.
-
-**And also**
-- Your recap: your top songs, artists and albums, kept on your phone.
-- 10 languages: English, French, German, Spanish, Italian, Portuguese, Greek, Russian, Polish and Chinese (Simplified).
-- Data saver, battery saver, AMOLED black, accent colour.
-
-## New since 1.1
-
-Version 2.0 is a new app, rebuilt from the ground up.
-
-- 🚀 **A new engine**: faster screens, quicker skips, and playback that recovers by itself when Spotify's player stumbles.
-- 🚫 **Ads stopped at the source** instead of skipped.
-- 🎧 **Downloads through extensions** instead of built-in YouTube audio, encrypted on your phone.
-- 🎤 **Word-by-word lyrics**, from more sources, with **Genius song meanings**.
-- 🎬 **Music videos with their own sound**, in full screen, in better quality.
-- 👥 **Collaborative playlists**, an **Add songs** screen, and full playlist editing.
-- 🔀 **Smart Shuffle**, a draggable queue, crossfade.
-- 🎙️ **Podcasts and audiobooks** are back, with their own player and downloads.
-- 📷 **Spotify Codes** to share, and profiles, Recents, Browse and New releases.
-- 🌍 **Four new languages**, in-app updates and a diagnostic report you can send in one tap.
-
-Every change is in the [changelog](CHANGELOG.md).
-
-## Screenshots
-
-| Home | Player | Artist | Album |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/home.jpg" width="200" alt="Home"> | <img src="docs/screenshots/player.jpg" width="200" alt="Player"> | <img src="docs/screenshots/artist.jpg" width="200" alt="Artist"> | <img src="docs/screenshots/album.jpg" width="200" alt="Album"> |
-
-## Questions
-
-**Is it safe for my account?** Myspoti talks to Spotify the way its web player does, and you sign in on Spotify's own page. Blocking ads is still against Spotify's Terms of Use (see the disclaimer below).
-
-**"Spotify refused to play this"?** Some new or free accounts get refused by Spotify. Settings → **Export a diagnostic report** and send it on [Discord](https://discord.gg/jXKnGVFnGS) or in an [issue](https://github.com/kota-zo/myspoti/issues): it holds the app's recent log (what Spotify answered) and your phone's model, never your password or your login tokens.
-
-**Do downloads count in my Wrapped?** No. Songs played from a download are not reported to Spotify; they count in Myspoti's own recap only. Streamed songs and music videos count as usual.
-
-**What leaves my phone?** Your plays go to Spotify. Lyrics are looked up on lyrics sites, song meanings on Genius, translations on Google Translate, music videos on YouTube, and downloads on the hosts your download-source extension names (shown before you install it). Nothing is sent to the developer.
-
-## Not included
-
-- No DRM circumvention, and no Spotify audio download: offline songs come from the download-source extension you install, and a song it has no file for is marked unavailable. Myspoti ships no download source of its own.
-- No ad is ever marked as heard.
-
-## Disclaimer
-
-Blocking ads goes against Spotify's Terms of Use, and Spotify may suspend accounts that do it. Use this app at your own risk. If you can, support artists with Premium or by buying their music.
-
-Not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB.
-
-## Support
-
-Myspoti is free, has no ads and is made in my spare time. If you enjoy it, you can support it on [Ko-fi](https://ko-fi.com/kotazo) or [GitHub Sponsors](https://github.com/sponsors/kota-zo), also from **About** in the app. Nothing is locked behind a donation.
-
-News, help and ideas: the [Discord server](https://discord.gg/jXKnGVFnGS). Bugs and requests: [GitHub issues](https://github.com/kota-zo/myspoti/issues).
-
-## For developers
-
-The Android project is in `base/`, split in two:
-
-- **`:api`** is the contract the UI talks to: plain Kotlin models and interfaces (player, search, catalog, library, playlists, home, podcasts, users, lyrics, devices, Jam).
-- **`:api-spotify`** implements it on Spotify's Web Player. Playback stays in the official player, in a hidden WebView (`:host-android`), driven by a small bridge script. Catalog, search and library calls go straight to Spotify's servers. When Spotify ships a new Web Player, the app reads its new operation list by itself.
-- **`:host-cdp`** runs the same API on desktop Chrome, so the whole API is tested against the real Web Player without a phone.
-
-More: [`base/api-spotify/README.md`](base/api-spotify/README.md) and [`docs/api`](docs/api).
-
-Requirements: JDK 17+ and the Android SDK (compileSdk 37).
-
-```bash
-cd base
-./gradlew assembleDebug
-./gradlew testDebugUnitTest
+```powershell
+.\build-hangul.ps1 -JavaHome 'JDK 설치 경로' -AndroidSdk 'Android SDK 경로'
 ```
 
-Live API tests (desktop Chrome with a signed-in Web Player):
+서명 환경 변수 `MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWORD`, `MYSPOTI_KEY_ALIAS`, `MYSPOTI_KEY_PASSWORD`를 준비하면 원본 빌드 설정에서 해당 키를 사용한다. 키가 없으면 개발용 키를 사용하므로 다른 서명으로 설치한 앱을 그대로 업데이트할 수 없다. 개인 키와 자격 정보는 저장소에 넣지 않는다.
 
-```bash
-google-chrome --user-data-dir="$HOME/.myspoti-chrome" --remote-debugging-port=9222
-./gradlew :host-cdp:test -Pcdp=http://localhost:9222
-```
+원본의 자동 릴리스와 외부 알림 워크플로는 `.github/workflows-upstream`으로 이동해 참고 자료로 보관한다. 이 수정판에 맞춰 검토하기 전에는 자동 실행하지 않는다.
 
-Every push builds and tests on GitHub Actions. A `v*` tag publishes a signed APK in Releases.
+## 출처와 라이선스
 
-## Credits
+원본 Myspoti의 GPL-3.0 라이선스와 저작권 고지를 유지한다. 원본 설명은 [원본 README](README_UPSTREAM.md), 추가 의존성은 [외부 구성 요소](THIRD_PARTY_NOTICES.md), 개발 계획은 [한글 발음 계획](docs/HANGUL_PLAN.md)에 기록한다. 명시적 배포 라이선스를 확인하지 못한 ivLyrics Android 소스는 포함하지 않는다.
 
-- UI derived from [Spotui](https://github.com/Spotui/Spotui) / [Metrolist](https://github.com/MetrolistGroup/Metrolist) (GPL-3.0); Spotui also gave the DASH-to-FLAC remux.
-- [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) (GPL-3.0): music videos.
-- Lyrics: [LRCLIB](https://lrclib.net), LyricsPlus, lrc.red, Kugou and NetEase; song meanings: [Genius](https://genius.com).
-- [Material Icons](https://github.com/google/material-design-icons) (Apache 2.0) and the [Manrope](https://github.com/googlefonts/manrope) font (SIL OFL 1.1, see `base/licenses/`).
-
-Full notices: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-## License
-
-GPL-3.0.
+PC판은 별도 저장소 [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)에서 관리한다.

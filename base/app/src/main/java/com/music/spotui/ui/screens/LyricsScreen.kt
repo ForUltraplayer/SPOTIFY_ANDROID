@@ -258,6 +258,7 @@ private fun LyricLineText(
     modifier: Modifier = Modifier,
     annotated: Boolean = false,
     onHold: (() -> Unit)? = null,
+    reading: String? = null,
 ) {
     val target = when (state) {
         1 -> palette.text
@@ -340,6 +341,15 @@ private fun LyricLineText(
                 modifier = underline,
             )
         }
+        if (!reading.isNullOrBlank() && reading != line.text) {
+            Text(
+                text = reading,
+                color = color.copy(alpha = color.alpha * 0.85f),
+                fontSize = fontSize * 0.65f,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         AnimatedVisibility(
             visible = !translation.isNullOrBlank(),
             enter = expandVertically(tween(260)) + fadeIn(tween(260)),
@@ -387,6 +397,31 @@ fun LyricsScreen(
     val context = LocalContext.current
     val vm: LyricsViewModel = viewModel()
     val state = rememberLyricsState(vm, title, artist)
+    var readingSourceDialog by remember { mutableStateOf(false) }
+    var readingSourceInput by remember { mutableStateOf("") }
+    var readingSourceError by remember { mutableStateOf<String?>(null) }
+    if (readingSourceDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { readingSourceDialog = false },
+            title = { Text("한글 발음 자료") },
+            text = { Column {
+                Text("기존 한글 발음을 가져옵니다. 빈 주소는 자동 검색입니다.")
+                androidx.compose.material3.OutlinedTextField(
+                    value = readingSourceInput,
+                    onValueChange = { readingSourceInput = it; readingSourceError = null },
+                    label = { Text("한음, 나무위키 또는 티스토리 HTTPS 주소") },
+                    isError = readingSourceError != null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                readingSourceError?.let { Text(it) }
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                val error = vm.setReadingSource(readingSourceInput)
+                if (error == null) readingSourceDialog = false else readingSourceError = error
+            }) { Text("저장하고 다시 조회") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { readingSourceDialog = false }) { Text("취소") } },
+        )
+    }
     val lyrics = (state as? LyricsViewModel.State.Loaded)?.lyrics
     val palette = paletteFor(lyrics, accentColor)
     val bg by animateColorAsState(palette.background, tween(300), label = "lyricsBg")
@@ -433,7 +468,11 @@ fun LyricsScreen(
                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.lyrics_fullscreen_close_button_readout_value), tint = palette.highlight, modifier = Modifier.size(32.dp))
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                Text(title, color = palette.highlight, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, color = palette.highlight, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.combinedClickable(onClick = {}, onLongClickLabel = "곡 제목 복사", onLongClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", title))
+                    }))
                 Text(artist, color = palette.highlight.copy(alpha = 0.75f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             meaning?.takeIf { !it.about.isNullOrBlank() }?.let { m ->
@@ -460,6 +499,15 @@ fun LyricsScreen(
                     expanded = menu,
                     onDismiss = { menu = false },
                     canTranslate = state is LyricsViewModel.State.Loaded,
+                    hangulEnabled = com.music.spotui.data.api.HangulReadings.enabled(),
+                    onHangulToggle = { vm.toggleHangul() },
+                    onHangulSource = { readingSourceInput = vm.readingSource(); readingSourceError = null; readingSourceDialog = true },
+                    automaticEnabled = com.music.spotui.data.api.HangulReadings.automaticEnabled(),
+                    onAutomaticToggle = { vm.toggleAutomaticReadings() },
+                    onCopyTitle = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", title))
+                    },
                     translating = (state as? LyricsViewModel.State.Loaded)?.showTranslation == true,
                     onTranslate = { vm.toggleTranslation(targetLanguage) },
                     onReload = { SongPlayer.currentLyricsTrack()?.let { vm.load(it, force = true) } },
@@ -529,6 +577,7 @@ fun LyricsScreen(
                                 fontSize = 24.sp,
                                 position = position,
                                 translation = if (state.showTranslation) state.translations?.getOrNull(i) else null,
+                                reading = if (l == state.lyrics) state.readings?.getOrNull(i) else null,
                                 onTap = if (l.synced) ({ jumpTo(line.timeMs) }) else null,
                                 annotated = i in notes,
                                 onHold = notes[i]?.let { n -> {
@@ -539,6 +588,21 @@ fun LyricsScreen(
                                 modifier = Modifier.revealIn(reveal, 0.35f + 0.045f * (i - staggerBase).coerceIn(0, 8), 22f),
                             )
                         }
+                        if (state.readingLoading) item(key="hangul-loading") {
+                            Text("기존 한글 발음 자료를 찾는 중",color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
+                        }
+                        state.readingError?.let { error -> item(key="hangul-error") {
+                            Text(error,color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
+                        } }
+                        if (state.readingGenerated > 0) item(key="hangul-automatic") {
+                            Text("기기 내부 자동 발음: ${state.readingGenerated}줄. 실제 노래의 읽기와 다를 수 있습니다.",
+                                color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
+                        }
+                        state.readingSource?.let { url -> item(key="hangul-source") {
+                            Text("한글 발음 출처: " + android.net.Uri.parse(url).host,
+                                color=palette.highlight.copy(alpha=.8f),fontSize=12.sp,
+                                modifier=Modifier.clickable { context.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url))) })
+                        } }
                         l.provider?.let { p ->
                             item {
                                 Text(
@@ -574,6 +638,12 @@ private fun LyricsMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     canTranslate: Boolean,
+    hangulEnabled: Boolean,
+    onHangulToggle: () -> Unit,
+    onHangulSource: () -> Unit,
+    automaticEnabled: Boolean,
+    onAutomaticToggle: () -> Unit,
+    onCopyTitle: () -> Unit,
     translating: Boolean,
     onTranslate: () -> Unit,
     onReload: () -> Unit,
@@ -582,6 +652,21 @@ private fun LyricsMenu(
     var extra by remember { mutableStateOf(isLyricsExtraSources(context)) }
     var words by remember { mutableStateOf(com.music.spotui.data.preferences.isLyricsWordSync(context)) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(text = { Text("곡 제목 복사") }, onClick = { onDismiss(); onCopyTitle() })
+        DropdownMenuItem(
+            text = { Text("기존 한글 발음 자동 조회") },
+            trailingIcon = { if (hangulEnabled) Icon(Icons.Default.Check, contentDescription = null) },
+            onClick = { onDismiss(); onHangulToggle() },
+        )
+        if (canTranslate) DropdownMenuItem(
+            text = { Text("한글 발음 자료 주소") },
+            onClick = { onDismiss(); onHangulSource() },
+        )
+        DropdownMenuItem(
+            text = { Text("누락 줄에 기기 내부 자동 발음 사용") },
+            trailingIcon = { if (automaticEnabled) Icon(Icons.Default.Check, contentDescription = null) },
+            onClick = { onDismiss(); onAutomaticToggle() },
+        )
         // Word by word (karaoke) or line by line: the app then picks the source by itself.
         DropdownMenuItem(
             text = {
@@ -791,6 +876,7 @@ fun InlineLyrics(
                     fontSize = 22.sp,
                     position = position,
                     translation = null,
+                    reading = s.readings?.getOrNull(i),
                     onTap = null,
                 )
             }

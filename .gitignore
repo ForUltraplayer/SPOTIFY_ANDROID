@@ -20,3 +20,13 @@ docs/RESTE-A-FAIRE.md
 tools/handoff_state.sh
 REDDIT-*.md
 tools/qa-results/
+
+# Fork build outputs and private state
+/dist/
+/work/
+*.jks
+*.p12
+*.keystore
+credentials.json
+.env
+.env.*
