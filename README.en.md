@@ -70,6 +70,8 @@ Release builds need signing config (`MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWO
 | `base/app/.../data/api/HangulReadings.kt` | App integration, caching |
 | `build-hangul.ps1` | Release APK build |
 
+See [upstream maintenance](docs/MAINTENANCE.md) (Korean) for release detection, isolated merge candidates and verified promotion. Package/signing contract changes and unresolved conflicts block promotion.
+
 </details>
 
 ## License

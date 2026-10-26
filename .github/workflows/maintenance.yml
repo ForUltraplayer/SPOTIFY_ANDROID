@@ -1,0 +1,59 @@
+# @file maintenance.yml
+# @author: ForUltraplayer
+# @brief Detect Myspoti releases and test the fork identity and lyrics contracts without release signing keys.
+name: Android upstream maintenance
+on:
+  schedule:
+    - cron: '47 2 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Optional exact Myspoti tag to inspect as a merge candidate
+        type: string
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - run: python -m unittest discover -s scripts -p test_maintenance.py
+      - name: Detect original releases
+        run: python scripts/maintain_upstream.py check
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Test selected source
+        shell: pwsh
+        run: ./build-hangul.ps1 -TestsOnly -JavaHome $env:JAVA_HOME -AndroidSdk $env:ANDROID_HOME
+      - name: Prepare requested merge candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        run: python scripts/maintain_upstream.py prepare --tag "$env:UPSTREAM_TAG"
+        env:
+          UPSTREAM_TAG: ${{ inputs.tag }}
+      - name: Test candidate without changing main
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        run: python scripts/maintain_upstream.py verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-upstream-inspection
+          path: |
+            work/upstream-status.json
+            work/upstream-candidate.json
+            work/upstream-proof.json
+            work/upstream-verification.log

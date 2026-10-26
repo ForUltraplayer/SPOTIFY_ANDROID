@@ -70,6 +70,8 @@ release 빌드에는 서명 설정이 필요합니다 (`MYSPOTI_KEYSTORE`, `MYSP
 | `base/app/.../data/api/HangulReadings.kt` | 앱 연결, 캐시 |
 | `build-hangul.ps1` | release APK 빌드 |
 
+원본 릴리스 감지, 별도 병합 후보 검사와 검증 후 반영 명령은 [원본 유지 관리](docs/MAINTENANCE.md)를 참고하세요. 앱 식별자와 서명 설정이 바뀌거나 충돌이 남으면 반영을 중단합니다.
+
 </details>
 
 ## 라이선스
