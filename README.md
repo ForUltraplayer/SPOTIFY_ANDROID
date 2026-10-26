@@ -1,5 +1,7 @@
 # Myspoti 한글 (Android)
 
+**한국어** | [English](README.en.md)
+
 안드로이드 Spotify 클라이언트 [Myspoti](https://github.com/kota-zo/myspoti)에 **일본어 노래의 한글 발음 가사**를 더한 수정판입니다. 음악 재생과 한글 발음 표시를 앱 하나에서 하며, PC나 별도 서버가 필요하지 않습니다.
 
 > [!NOTE]
