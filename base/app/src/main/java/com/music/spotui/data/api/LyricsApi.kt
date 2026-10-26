@@ -102,7 +102,10 @@ object LyricsApi {
         return job.await()
     }
 
+    private class ResolutionStatus { @Volatile var retryable = false }
+
     private suspend fun resolve(track: Track): Lyrics? = coroutineScope {
+        val status = ResolutionStatus()
         // Extensions that provide lyrics are asked at the same time as the app's own sources
         // (each within its time limit); the better answer is kept (LyricsMerge), Spotify's own
         // complete lyrics first at the same level, and then the extensions are not waited for.
@@ -111,14 +114,15 @@ object LyricsApi {
                 com.music.spotui.extensions.Extensions.lyricsFor(track.trackId, track.title, track.artist, track.album, track.durationMs, track.coverUrl)
             }.getOrNull()
         } else null
-        val own = if (wordSync) wordFirst(track) else fromSpotify(track) ?: lineFallbacks(track)
+        val own = if (wordSync) wordFirst(track, status) else fromSpotify(track) ?: lineFallbacks(track)
         val fromExt = when {
             ext == null -> null
             own != null && com.music.spotui.extensions.LyricsMerge.rank(own) == 3 && com.music.spotui.extensions.LyricsMerge.isSpotifyComplete(own) -> { ext.cancel(); null }
             else -> ext.await()
         }
         val result = com.music.spotui.extensions.LyricsMerge.choose(own, fromExt)
-        cache[track.key] = result ?: Miss()
+        if (result != null) cache[track.key] = result
+        else if (!status.retryable) cache[track.key] = Miss()
         Log.d("LyricsApi", "${track.title}: ${result?.let { "${it.lines.size} lines from ${it.provider}, synced=${it.synced}, words=${it.wordSynced}" } ?: "none"}")
         result
     }
@@ -131,27 +135,33 @@ object LyricsApi {
      * when it has them, then LyricsPlus, lrc.red and Kugou, asked together; the line-synced
      * chain after them. Spotify's colours are kept whoever gives the words.
      */
-    private suspend fun wordFirst(track: Track): Lyrics? = coroutineScope {
-        // The catalogues are asked with the full title: "Old Town Road - Remix" cut down to
-        // "Old Town Road" found the original (1:53), refused for its length (reported: lyrics
-        // not complete). The comparison still uses the title without its asides.
+    private suspend fun wordFirst(track: Track, status: ResolutionStatus): Lyrics? = coroutineScope {
+        // Preserve exact recording/version labels first. LyricsPlus alone may retry
+        // feat-only and primary-artist candidates, with recording identity checks.
         val asked = track.title.trim()
         val title = cleanTitle(track.title)
         val artist = track.artist.substringBefore(",").trim()
         val durationMs = track.durationMs
         val spotify = async { fromSpotify(track) }
-        val plus = async { kotlinx.coroutines.withTimeoutOrNull(WORD_WAIT_MS) { fromLyricsPlus(asked, title, artist, durationMs) } }
+        val plus = async { fromLyricsPlus(track).also { if (it.retryable) status.retryable = true }.lyrics }
         val red = async { kotlinx.coroutines.withTimeoutOrNull(WORD_WAIT_MS) { fromLrcRed(asked, title, artist, durationMs) } }
         val kugou = async { kotlinx.coroutines.withTimeoutOrNull(WORD_WAIT_MS) { fromKugou(title, artist, durationMs) } }
         val sp = spotify.await()
         if (sp != null && sp.wordSynced && sp.uncapped) return@coroutineScope sp.also { plus.cancel(); red.cancel(); kugou.cancel() }
         // Shown at once while the word timings are looked for (reported: lyrics slow to come).
         if (sp != null) early.value = track.key to sp
-        val words = (plus.await() ?: red.await() ?: kugou.await())?.takeIf { it.wordSynced }
+        val fallback = if (sp == null) async {
+            lineFallbacks(track).also { if (it != null) early.value = track.key to it }
+        } else null
+        val plusResult = if (sp != null) kotlinx.coroutines.withTimeoutOrNull(WORD_WAIT_MS) { plus.await() } else plus.await()
+        if (sp != null && !plus.isCompleted) plus.cancel()
+        val words = plusResult?.takeIf { it.wordSynced } ?: red.await()?.takeIf { it.wordSynced }
+            ?: kugou.await()?.takeIf { it.wordSynced }
         when {
-            words != null -> alignTo(words, sp).copy(colors = sp?.colors)
+            words != null -> { fallback?.cancel(); alignTo(words, sp).copy(colors = sp?.colors) }
             sp != null -> sp
-            else -> lineFallbacks(track)
+            plusResult != null -> { fallback?.cancel(); plusResult }
+            else -> fallback?.await()
         }
     }
 
@@ -325,34 +335,46 @@ object LyricsApi {
     }
 
     // ── Word by word: LyricsPlus (Apple Music's timing, by title / artist / length) ──
-    private val LYRICS_PLUS = listOf("https://lyricsplus.binimum.org", "https://lyricsplus.prjktla.my.id")
+    private val lyricsPlus = LyricsPlusResolver(::lyricsPlusRequest)
 
-    private fun fromLyricsPlus(asked: String, title: String, artist: String, durationMs: Long): Lyrics? {
-        val q = "title=${enc(asked)}&artist=${enc(artist)}" + if (durationMs > 0) "&duration=${durationMs / 1000}" else ""
-        for (base in LYRICS_PLUS) {
-            val body = httpGet("$base/v2/lyrics/get?$q", timeoutMs = 5000) ?: continue
-            val o = runCatching { JSONObject(body) }.getOrNull() ?: continue
-            val meta = o.optJSONObject("metadata")
-            if (meta != null && !sameSong(meta.optString("title"), meta.optString("artist"), parseClock(meta.optString("totalDuration")), title, artist, durationMs)) return null
-            val arr = o.optJSONArray("lyrics") ?: continue
-            val lines = ArrayList<LyricLine>()
-            for (i in 0 until arr.length()) {
-                val l = arr.optJSONObject(i) ?: continue
-                val syl = l.optJSONArray("syllabus")
-                val words = syl?.let { s ->
-                    (0 until s.length()).mapNotNull { j -> s.optJSONObject(j) }
-                        .filterNot { it.optBoolean("isBackground") }
-                        .map { w -> val t = w.optLong("time"); LyricWord(t, t + w.optLong("duration"), w.optString("text")) }
-                }?.takeIf { it.isNotEmpty() }
-                val text = words?.joinToString("") { it.text }?.trim() ?: l.optString("text").trim()
-                if (text.isNotEmpty()) lines += LyricLine(l.optLong("time"), text, words)
-            }
-            if (lines.isEmpty()) continue
-            val source = meta?.optString("source").orEmpty()
-            return Lyrics(lines, synced = true, language = meta?.optString("language")?.takeIf { it.isNotBlank() },
-                provider = if (source.contains("apple", true)) "Apple Music · LyricsPlus" else "LyricsPlus")
+    private suspend fun fromLyricsPlus(track: Track): LyricsPlusResolver.Result =
+        kotlinx.coroutines.runInterruptible(kotlinx.coroutines.Dispatchers.IO) {
+            lyricsPlus.resolve(LyricsPlusResolver.Query(track.title, track.artist, track.album, track.durationMs))
         }
-        return null
+
+    private fun lyricsPlusRequest(spec: String, timeoutMs: Int): LyricsPlusResolver.Reply {
+        com.music.spotui.data.DataSaver.check()
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        val conn = (URL(spec).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
+            setRequestProperty("User-Agent", UA)
+            setRequestProperty("Accept", "application/json")
+        }
+        return try {
+            conn.connect()
+            val left = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtLeast(1).toInt()
+            conn.readTimeout = left
+            val status = conn.responseCode
+            val body = if (status == 200) conn.inputStream.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                    val remaining = ((deadline - System.nanoTime()) / 1_000_000L)
+                    if (remaining <= 0) throw java.net.SocketTimeoutException("LyricsPlus request budget exceeded")
+                    conn.readTimeout = remaining.toInt()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (output.size() + count > 4 * 1024 * 1024) throw java.io.IOException("LyricsPlus response too large")
+                    output.write(buffer, 0, count)
+                }
+                output.toString("UTF-8")
+            } else null
+            if (status != 200) Log.d("LyricsApi", "LyricsPlus HTTP $status")
+            LyricsPlusResolver.Reply(status, body, conn.getHeaderField("Retry-After"))
+        } finally { conn.disconnect() }
     }
 
     // ── Word by word: lrc.red (Apple Music TTML, found by ISRC) ──

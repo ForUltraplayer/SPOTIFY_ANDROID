@@ -8,12 +8,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath (Join-Path $JavaHome 'bin\java.exe'))) { throw 'JDK 17 경로를 지정해 주세요.' }
-if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'platforms\android-37'))) { throw 'Android SDK 37 경로를 지정해 주세요.' }
+if (-not @('android-37','android-37.0' | Where-Object { Test-Path -LiteralPath (Join-Path $AndroidSdk ('platforms\' + $_)) }).Count) { throw 'Android SDK 37 경로를 지정해 주세요.' }
 $env:JAVA_HOME = $JavaHome
 $env:ANDROID_HOME = $AndroidSdk
 $env:ANDROID_SDK_ROOT = $AndroidSdk
 $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release.json') -Raw | ConvertFrom-Json
-$arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest','--tests','com.music.spotui.data.api.HangulReadingEngineTest')
+$arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest','--tests','com.music.spotui.data.api.HangulReadingEngineTest','--tests','com.music.spotui.data.api.LyricsPlusResolverTest','--tests','com.music.spotui.data.api.LyricsApiAuditTest')
 if (-not $TestsOnly) { $arguments += ':app:assembleRelease' }
 $arguments += '-PappVersionName=' + $release.version
 $arguments += '-PappVersionCode=' + $release.versionCode
