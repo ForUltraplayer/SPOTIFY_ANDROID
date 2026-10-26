@@ -12,7 +12,9 @@ on:
         type: string
   push:
     branches: [main]
+    paths: ['base/**', 'release.json', 'build-hangul.ps1', 'scripts/**', '.github/workflows/maintenance.yml']
   pull_request:
+    paths: ['base/**', 'release.json', 'build-hangul.ps1', 'scripts/**', '.github/workflows/maintenance.yml']
 permissions:
   contents: read
 jobs:
@@ -30,7 +32,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: 'false'
       - run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - run: python -m unittest discover -s scripts -p test_maintenance.py
       - name: Detect original releases
