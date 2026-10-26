@@ -4,11 +4,9 @@ Each release on GitHub shows its section below. The app shows it too when it off
 
 ## 2.0.1-hangul.5
 
-- Retry failed Hangul pronunciation lookups up to three additional times at two-second intervals, with a 60-second total budget and cancellation when songs change.
-- Allow bounded retries through the negative cache while preserving successful pronunciation caches, settings and login storage.
-- Keep `app.myspoti.hangul` and the existing release signer; increase the version code to 1087 for an in-place update.
-- Connect the existing in-app update checker to this fork's beta releases and choose the matching Hangul APK. Android installation confirmation is still required.
-- Pass 63 scoped tests and a signed release build. Phone update installation and playback remain unverified.
+- Retry failed Hangul pronunciation lookups (up to 3 times, 2 s apart; cancelled on song change)
+- Fix the failure cache blocking retries
+- In-app update check now points to this repo's releases
 
 ## 2.0.2-beta.4
 
