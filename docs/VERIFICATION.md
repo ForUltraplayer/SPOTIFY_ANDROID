@@ -82,3 +82,5 @@ PC 조사에서 확보했던 가사와 메타데이터 응답을 실제로 컴�
 충돌이 없는 현재 기준 태그 v2.0.2-beta.4로도 후보 준비부터 전체 검사와 반영까지 실행했다. 한글 가사와 업데이트 검사 63 개에 Spotify API 및 Android 호스트 검사를 더해 JVM 검사 총 196 개가 통과했고 실패와 오류는 0 개였다. 검증한 후보를 반영한 결과 release.json에 원본 태그를 기록하는 변경만 발생했으며 앱 실행 코드와 버전 코드, 패키지 ID 및 서명 설정은 유지됐다. 자동 검사 통과는 실제 휴대폰의 재생 및 업데이트 검증과 구분한다.
 
 Gradle은 --no-daemon으로 완료했다. 별도 가사 서버나 휴대폰 앱을 실행하지 않았고 GitHub 유지 관리 워크플로의 실행 위치와 일일 주기 및 중지 방법은 docs/MAINTENANCE.md에 기록했다. 공개 배포 APK는 2.0.1-hangul.5를 유지한다.
+
+GitHub Windows 실행기의 전체 검사도 성공했다: https://github.com/ForUltraplayer/SPOTIFY_ANDROID/actions/runs/40276511339 . 첫 원격 실행은 SDK 준비 도구가 폐기된 tools 패키지를 요청해 실패했다. 현재 SDK 준비 도구와 platform-tools를 명시해 수정한 뒤 Python 유지 관리 검사와 전체 Gradle 검사가 모두 통과했다. 이 결과는 GitHub의 깨끗한 SDK 환경에서 확인한 빌드 및 JVM 검사이며 실제 휴대폰 검증을 대신하지 않는다.
