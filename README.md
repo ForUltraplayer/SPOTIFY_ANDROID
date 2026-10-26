@@ -4,6 +4,23 @@ Spotify 재생 앱 Myspoti에 기존 한글 발음 가사 조회를 통합한 �
 
 [APK 다운로드](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases)에서 설치 파일을 받는다. 현재 버전은 `2.0.1-hangul.4`, 앱 식별자는 `app.myspoti.hangul`, 버전 코드는 `1086`다. 사전 기반 변환과 기존 자료를 사용하며 유료 API 키가 필요하지 않다.
 
+## 로그인 안내
+
+이 앱은 내부 웹뷰에서 Spotify 로그인 화면을 연다. 소셜 로그인 버튼이 보인다고 정상 동작까지 검증한 상태는 아니다. 이번 버전에서는 가사 조회를 수정했으며 소셜 인증 흐름은 변경하지 않았다.
+
+| 방식 | 확인 상태 |
+| --- | --- |
+| Google | 이전 기기 시험에서 실패, 현재 APK에서 재검증하지 않음 |
+| Apple | 실제 기기 로그인 미검증 |
+| Facebook | 실제 기기 로그인 미검증 |
+| 이메일과 Spotify 비밀번호 | 이전 기기 시험에서 로그인과 재생 성공, 현재 APK의 기기 재검증은 대기 |
+
+소셜 로그인이 되지 않으면 Spotify 계정에 등록된 이메일 주소와 **Spotify용 비밀번호**로 로그인한다. Google이나 Apple 계정의 비밀번호를 이메일 로그인 칸에 입력하는 방식이 아니다. Spotify용 비밀번호가 없다면 공식 비밀번호 재설정 경로에서 설정할 수 있다.
+
+Apple의 이메일 가리기를 사용한 계정은 Apple이 만든 중계 이메일 주소를 사용해야 한다. Facebook은 기존에 연결돼 현재 로그인 방법에 남아 있는 계정만 사용할 수 있으며 신규 연결은 Spotify에서 지원하지 않는다.
+
+공식 안내는 [비밀번호 설정](https://www.spotify.com/password-reset/), [Apple 로그인](https://support.spotify.com/us/article/apple-login-help/), [Facebook 로그인](https://support.spotify.com/us/article/facebook-login-help/)에서 확인한다. 계정 인증과 비밀번호 입력은 사용자가 직접 진행한다.
+
 ## 기능
 
 - 한음, 나무위키와 지정한 티스토리 자료의 일본어 원문과 기존 한글 발음을 대조한다.
