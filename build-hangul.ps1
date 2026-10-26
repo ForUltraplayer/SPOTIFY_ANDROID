@@ -4,7 +4,8 @@
 param(
     [string]$JavaHome = $env:JAVA_HOME,
     [string]$AndroidSdk = $env:ANDROID_HOME,
-    [switch]$TestsOnly
+    [switch]$TestsOnly,
+    [switch]$FullCompatibility
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath (Join-Path $JavaHome 'bin\java.exe'))) { throw 'JDK 17 경로를 지정해 주세요.' }
@@ -16,6 +17,7 @@ $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release.json') -Ra
 $gradleSource=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'base\app\build.gradle.kts'))
 if (-not $gradleSource.Contains(('applicationId = "'+$release.applicationId+'"'))) { throw '앱 식별자가 release.json과 다릅니다.' }
 $arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest','--tests','com.music.spotui.data.api.HangulReadingEngineTest','--tests','com.music.spotui.data.api.HangulReadingRetryTest','--tests','com.music.spotui.data.api.LyricsPlusResolverTest','--tests','com.music.spotui.data.api.LyricsApiAuditTest','--tests','com.music.spotui.data.api.UpdateCheckerTest')
+if ($FullCompatibility) { $arguments += @(':api-spotify:test',':host-android:testDebugUnitTest') }
 if (-not $TestsOnly -and -not $env:MYSPOTI_KEYSTORE -and -not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'base\keystore\keystore.properties'))) {
     throw '업데이트용 APK는 기존 release 서명키가 필요합니다. debug 키로 대체하지 않습니다.'
 }

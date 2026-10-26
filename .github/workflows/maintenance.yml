@@ -31,7 +31,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
       - run: python -m unittest discover -s scripts -p test_maintenance.py
       - name: Detect original releases
         run: python scripts/maintain_upstream.py check
@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - name: Test selected source
         shell: pwsh
-        run: ./build-hangul.ps1 -TestsOnly -JavaHome $env:JAVA_HOME -AndroidSdk $env:ANDROID_HOME
+        run: ./build-hangul.ps1 -TestsOnly -FullCompatibility -JavaHome $env:JAVA_HOME -AndroidSdk $env:ANDROID_HOME
       - name: Prepare requested merge candidate
         if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
         run: python scripts/maintain_upstream.py prepare --tag "$env:UPSTREAM_TAG"

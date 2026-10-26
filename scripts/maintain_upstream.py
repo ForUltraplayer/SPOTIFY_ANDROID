@@ -136,7 +136,7 @@ def verify(args):
     log = ROOT / 'work/upstream-verification.log'
     with log.open('w', encoding='utf-8') as output:
         command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root/'build-hangul.ps1'),
-                   '-JavaHome', args.java_home, '-AndroidSdk', args.android_sdk, '-TestsOnly']
+                   '-JavaHome', args.java_home, '-AndroidSdk', args.android_sdk, '-TestsOnly', '-FullCompatibility']
         subprocess.run(command, cwd=root, check=True, stdout=output, stderr=subprocess.STDOUT, timeout=900)
     if before != candidate_hash(state): raise ValueError('Candidate changed during inspection')
     proof = {'result': 'passed', 'head': state['head'], 'candidate': before,
