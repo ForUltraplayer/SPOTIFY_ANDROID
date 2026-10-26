@@ -63,9 +63,11 @@ object UpdateChecker {
         val all = (0 until assets.length()).map { assets.getJSONObject(it) }
         // This release's own APK first: a release carrying several APKs (both
         // channels) must not hand a phone the other channel's build.
-        val want = "myspoti-${release.optString("tag_name").removePrefix("v")}.apk"
+        val version = release.optString("tag_name").removePrefix("v")
+        val hangul = version.contains("-hangul.")
+        val want = if (hangul) "Myspoti-Hangul-$version.apk" else "myspoti-$version.apk"
         return (all.firstOrNull { it.optString("name") == want }
-            ?: all.firstOrNull { it.optString("name").endsWith(".apk", ignoreCase = true) })
+            ?: if (hangul) null else all.firstOrNull { it.optString("name").endsWith(".apk", ignoreCase = true) })
             ?.optString("browser_download_url").orEmpty()
     }
 
@@ -89,7 +91,8 @@ object UpdateChecker {
         .trim()
 
     /** This build is a beta ("2.0.0-beta.1"). */
-    val isBeta get() = BuildConfig.VERSION_NAME.contains("-beta")
+    internal fun betaChannel(version: String) = version.contains("-beta") || version.contains("-hangul.")
+    val isBeta get() = betaChannel(BuildConfig.VERSION_NAME)
 
     /**
      * "1.10.0" > "1.9.2". A release is newer than its betas ("2.0.0" > "2.0.0-beta.3"), and

@@ -32,4 +32,18 @@ class UpdateCheckerTest {
         assertEquals("https://x/myspoti.apk", UpdateChecker.apkAsset(release))
         assertEquals("", UpdateChecker.apkAsset(org.json.JSONObject("{}")))
     }
+    @Test fun hangulBuildsFollowTheBetaReleaseListAndCompareTheirOwnVersions() {
+        assertTrue(UpdateChecker.betaChannel("2.0.1-hangul.5"))
+        assertTrue(UpdateChecker.isNewer("2.0.1-hangul.5", "2.0.1-hangul.4"))
+        assertFalse(UpdateChecker.isNewer("2.0.1-hangul.4", "2.0.1-hangul.5"))
+        assertFalse(UpdateChecker.isNewer("2.0.1-hangul.5", "2.0.1-hangul.5"))
+    }
+    @Test fun hangulReleasesSelectOnlyTheirMatchingApk() {
+        val release = org.json.JSONObject("""{"tag_name":"v2.0.1-hangul.5","assets":[
+            {"name":"myspoti-2.0.1.apk","browser_download_url":"https://x/upstream.apk"},
+            {"name":"Myspoti-Hangul-2.0.1-hangul.5.apk","browser_download_url":"https://x/hangul.apk"}]}""")
+        assertEquals("https://x/hangul.apk", UpdateChecker.apkAsset(release))
+        release.getJSONArray("assets").remove(1)
+        assertEquals("", UpdateChecker.apkAsset(release))
+    }
 }

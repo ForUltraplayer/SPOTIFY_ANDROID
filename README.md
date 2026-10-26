@@ -5,9 +5,9 @@
 안드로이드 Spotify 클라이언트 [Myspoti](https://github.com/kota-zo/myspoti)에 **일본어 노래의 한글 발음 가사**를 더한 수정판입니다. 음악 재생과 한글 발음 표시를 앱 하나에서 하며, PC나 별도 서버가 필요하지 않습니다.
 
 > [!NOTE]
-> 현재 버전은 **2.0.1-hangul.4 베타**입니다. 빌드와 서명은 확인했지만 이번 APK의 휴대폰 설치와 실제 재생 검증은 아직 진행 중입니다.
+> 현재 버전은 **2.0.1-hangul.5 베타**입니다. 빌드와 서명은 확인했지만 이번 APK의 휴대폰 설치와 실제 재생 검증은 아직 진행 중입니다.
 
-**[⬇ APK 받기 (Myspoti-Hangul-2.0.1-hangul.4.apk)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/latest)**
+**[⬇ APK 받기 (Myspoti-Hangul-2.0.1-hangul.5.apk)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5)**
 
 ## 한눈에 보기
 
@@ -42,6 +42,7 @@ Myspoti는 kota-zo가 만든 오픈소스 안드로이드 Spotify 앱입니다. 
 - 제목의 feat. 표기를 빼거나 공동 가수 중 대표 가수로 재검색 (일본어 쉼표가 들어간 그룹명과 전각 제목은 보존)
 - 가수, 앨범, 길이가 다른 녹음의 가사 배제
 - 가사 서버의 요청 제한과 일시 오류 구분
+- 발음 조회 실패 시 2 초 간격으로 최대 3 회 추가 재시도, 전체 조회 예산 60 초, 곡 전환 시 취소
 
 **선택 기능**
 
@@ -50,12 +51,14 @@ Myspoti는 kota-zo가 만든 오픈소스 안드로이드 Spotify 앱입니다. 
 
 ## 설치
 
-1. [배포 페이지](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/latest)에서 `Myspoti-Hangul-2.0.1-hangul.4.apk`를 받습니다.
+1. [배포 페이지](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5)에서 `Myspoti-Hangul-2.0.1-hangul.5.apk`를 받습니다.
 2. APK를 열고, 안드로이드가 요청하면 브라우저나 파일 관리자의 앱 설치를 한 번 허용합니다.
 3. **Log in with Spotify**를 눌러 로그인합니다. (로그인 방식은 아래 안내 참고)
 4. 곡을 재생하고 가사 화면을 열면 일본어 줄 아래에 한글 발음이 표시됩니다.
 
 새 버전은 이 저장소의 배포 페이지에서 받아 기존 앱 위에 덮어 설치합니다. 배포 APK는 이전 버전과 같은 키로 서명하므로 덮어 설치할 수 있습니다. 직접 빌드한 APK처럼 서명이 다른 앱은 덮어 설치할 수 없습니다.
+
+**기존 앱을 삭제하지 않고 APK를 열어 업데이트합니다.** 앱 식별자는 유지하고 버전 코드는 1086에서 1087로 올렸습니다. 2.0.1-hangul.4 이하에서는 이번 APK를 직접 받아 설치합니다. 2.0.1-hangul.5부터는 자동 업데이트 확인 설정이 켜져 있으면 앱 실행 후 이 저장소의 새 베타를 확인하고 업데이트를 안내합니다. 다운로드와 설치는 앱의 안내를 따르며 안드로이드의 설치 확인이 필요합니다.
 
 ## 로그인 안내
 
@@ -97,8 +100,10 @@ Myspoti는 kota-zo가 만든 오픈소스 안드로이드 Spotify 앱입니다. 
 | --- | --- |
 | Java 발음 엔진 검사 | 22 개 통과 |
 | 원문 조회 검사 | 26 개 통과 |
+| 발음 재시도와 실패 캐시 검사 | 9 개 통과 |
+| 업데이트 버전과 APK 선택 검사 | 6 개 통과 |
 | release APK 빌드 (Kotlin, Compose, R8) | 통과 |
-| 서명 | 이전 버전(1085)과 같은 서명자 확인, 새 버전 코드 1086 |
+| 서명 | 이전 버전(1086)과 같은 서명자 확인, 새 버전 코드 1087 |
 | 실제 문서 연결 (PC JVM) | 모니터링 85/85 줄, Execution Clap(처형박수) 57/60 줄 |
 | 휴대폰 설치, 로그인 유지, 재생 | 대기 |
 
@@ -115,7 +120,7 @@ JDK 17과 Android SDK 37을 준비하고 다음 명령을 실행합니다.
 .\build-hangul.ps1 -JavaHome 'JDK 설치 경로' -AndroidSdk 'Android SDK 경로'
 ```
 
-서명 환경 변수 `MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWORD`, `MYSPOTI_KEY_ALIAS`, `MYSPOTI_KEY_PASSWORD`가 있으면 해당 키로 서명합니다. 없으면 개발용 키를 사용하므로 배포 APK로 설치한 앱을 덮어 설치할 수 없습니다. 개인 키와 자격 정보는 저장소에 넣지 않습니다.
+서명 환경 변수 `MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWORD`, `MYSPOTI_KEY_ALIAS`, `MYSPOTI_KEY_PASSWORD` 또는 기존 서명 속성 파일을 준비합니다. 빌드 스크립트는 서명 설정이 없으면 release 빌드를 중단합니다. 배포 APK로 설치한 앱을 업데이트하려면 기존 키를 사용해야 합니다. 버전과 업데이트 저장소는 `release.json`에서 지정합니다. 개인 키와 자격 정보는 저장소에 넣지 않습니다.
 
 | 경로 | 역할 |
 | --- | --- |

@@ -18,9 +18,7 @@ object HangulReadings {
     data class Result(val lines: List<String>, val source: String, val matched: Int, val total: Int, val generated: Int = 0)
     private val engine by lazy { HangulReadingEngine() }
     private val resolutionLock = ReentrantLock()
-    private val negative = object : LinkedHashMap<String, Long>() {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 100
-    }
+    private val failures = ReadingFailureCache()
     private const val LIFETIME = 30L * 86400 * 1000
     private fun prefs() = Graph.app.getSharedPreferences("hangul_readings", Context.MODE_PRIVATE)
     fun enabled(): Boolean = prefs().getBoolean("enabled", true)
@@ -59,12 +57,12 @@ object HangulReadings {
     }
 
     /** The tokenizer and cache have one owner; cancelled waiters can leave immediately. */
-    fun resolve(track: LyricsApi.Track, lyrics: Lyrics, force: Boolean = false): Result {
+    fun resolve(track: LyricsApi.Track, lyrics: Lyrics, force: Boolean = false, retryAttempt: Int = 0, remainingMs: Long = 32_000): Result {
         resolutionLock.lockInterruptibly()
-        try { return resolveLocked(track, lyrics, force) }
+        try { return resolveLocked(track, lyrics, force, retryAttempt, remainingMs) }
         finally { resolutionLock.unlock() }
     }
-    private fun resolveLocked(track: LyricsApi.Track, lyrics: Lyrics, force: Boolean): Result {
+    private fun resolveLocked(track: LyricsApi.Track, lyrics: Lyrics, force: Boolean, retryAttempt: Int, remainingMs: Long): Result {
         val texts = lyrics.lines.map { it.text }
         val url = source(track)
         val key = digest(listOf("hangul-v2", track.title, track.artist, url, texts.joinToString("\n")).joinToString("|"))
@@ -81,11 +79,13 @@ object HangulReadings {
             }.getOrNull()
             if (saved != null) return complete(texts, saved)
         }
+        var searched = false
         try {
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
-            if (!force && negative.getOrDefault(key, 0) > System.currentTimeMillis())
+            if (!failures.allow(key, retryAttempt, force))
                 throw IOException("일치하는 기존 한글 발음 자료가 없습니다. 가사 메뉴에서 자료 주소를 지정해 주세요.")
-            val found = engine.resolve(track.title, track.artist, texts, url, learnedSource(aliasKey), HangulReadingEngine::fetch)
+            searched = true
+            val found = engine.resolve(track.title, track.artist, texts, url, learnedSource(aliasKey), HangulReadingEngine::fetch, remainingMs)
             check(found.valid() && found.readings.size == texts.size)
             val result = Result(found.readings, found.source, found.matched, found.total)
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
@@ -98,12 +98,12 @@ object HangulReadings {
                 directory.listFiles()?.filter { it.extension == "json" }?.sortedByDescending { it.lastModified() }?.drop(500)?.forEach { it.delete() }
                 rememberSource(aliasKey, result.source)
             }
-            negative.remove(key)
+            failures.clear(key)
             return complete(texts, result)
         } catch (error: Exception) {
             if (error is InterruptedException || error is CancellationException || Thread.currentThread().isInterrupted) throw error
             if (error !is IOException) throw error
-            negative[key] = System.currentTimeMillis() + 600_000
+            if (searched) failures.failed(key)
             if (!automaticEnabled()) throw error
             val empty = Result(texts.map { if (HangulReadingEngine.japanese(it)) HangulReadingEngine.MISSING else it }, "", 0, texts.count(HangulReadingEngine::japanese))
             return complete(texts, empty).also { if (it.generated == 0) throw error }

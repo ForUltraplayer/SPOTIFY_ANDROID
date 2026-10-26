@@ -13,10 +13,14 @@ $env:JAVA_HOME = $JavaHome
 $env:ANDROID_HOME = $AndroidSdk
 $env:ANDROID_SDK_ROOT = $AndroidSdk
 $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release.json') -Raw | ConvertFrom-Json
-$arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest','--tests','com.music.spotui.data.api.HangulReadingEngineTest','--tests','com.music.spotui.data.api.LyricsPlusResolverTest','--tests','com.music.spotui.data.api.LyricsApiAuditTest')
+$arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest','--tests','com.music.spotui.data.api.HangulReadingEngineTest','--tests','com.music.spotui.data.api.HangulReadingRetryTest','--tests','com.music.spotui.data.api.LyricsPlusResolverTest','--tests','com.music.spotui.data.api.LyricsApiAuditTest','--tests','com.music.spotui.data.api.UpdateCheckerTest')
+if (-not $TestsOnly -and -not $env:MYSPOTI_KEYSTORE -and -not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'base\keystore\keystore.properties'))) {
+    throw '업데이트용 APK는 기존 release 서명키가 필요합니다. debug 키로 대체하지 않습니다.'
+}
 if (-not $TestsOnly) { $arguments += ':app:assembleRelease' }
 $arguments += '-PappVersionName=' + $release.version
 $arguments += '-PappVersionCode=' + $release.versionCode
+$arguments += '-PupdateRepo=' + $release.updateRepository
 Push-Location (Join-Path $PSScriptRoot 'base')
 try {
     & .\gradlew.bat @arguments

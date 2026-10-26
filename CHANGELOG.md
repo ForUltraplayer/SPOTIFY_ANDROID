@@ -2,6 +2,14 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.0.1-hangul.5
+
+- Retry failed Hangul pronunciation lookups up to three additional times at two-second intervals, with a 60-second total budget and cancellation when songs change.
+- Allow bounded retries through the negative cache while preserving successful pronunciation caches, settings and login storage.
+- Keep `app.myspoti.hangul` and the existing release signer; increase the version code to 1087 for an in-place update.
+- Connect the existing in-app update checker to this fork's beta releases and choose the matching Hangul APK. Android installation confirmation is still required.
+- Pass 63 scoped tests and a signed release build. Phone update installation and playback remain unverified.
+
 ## 2.0.2-beta.4
 
 - 🧩 **Download sources are extensions now**: the app no longer carries any download source. Install a download-source extension (Settings, Extensions) and downloads work as before: checked, encrypted, kept in Myspoti. Without one, downloads say so.

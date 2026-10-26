@@ -5,9 +5,9 @@
 A modified build of the Android Spotify client [Myspoti](https://github.com/kota-zo/myspoti) that adds **Korean (Hangul) pronunciation for Japanese song lyrics**. Playback and Hangul pronunciation work in one app, with no PC or separate server needed.
 
 > [!NOTE]
-> The current version is **2.0.1-hangul.4 beta**. The build and signature are verified, but installing this APK on a phone and testing real playback are still in progress.
+> The current version is **2.0.1-hangul.5 beta**. The build and signature are verified, but installing this APK on a phone and testing real playback are still in progress.
 
-**[⬇ Download the APK (Myspoti-Hangul-2.0.1-hangul.4.apk)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/latest)**
+**[⬇ Download the APK (Myspoti-Hangul-2.0.1-hangul.5.apk)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5)**
 
 ## At a glance
 
@@ -42,6 +42,7 @@ This build keeps Myspoti's playback, library and lyrics features as they are and
 - Retries without the feat. part of the title, or with the lead artist of a joint credit (group names with Japanese commas and full-width titles are kept)
 - Rejects lyrics from recordings with a different artist, album or length
 - Tells lyrics-server rate limits apart from temporary errors
+- Retries failed pronunciation lookups up to three additional times, waiting two seconds between attempts, with a 60-second overall budget; changing songs cancels the request
 
 **Optional features**
 
@@ -50,12 +51,14 @@ This build keeps Myspoti's playback, library and lyrics features as they are and
 
 ## Installation
 
-1. Download `Myspoti-Hangul-2.0.1-hangul.4.apk` from the [releases page](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/latest).
+1. Download `Myspoti-Hangul-2.0.1-hangul.5.apk` from the [releases page](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5).
 2. Open the APK, and when Android asks, allow installs from your browser or file manager once.
 3. Tap **Log in with Spotify** and sign in. (See the login notes below.)
 4. Play a song and open the lyrics view. Hangul pronunciation appears under each Japanese line.
 
 To update, download the new version from this repository's releases page and install it over the existing app. Release APKs are signed with the same key as previous versions, so they install over them. An app signed with a different key, such as one you built yourself, cannot be updated this way.
+
+**Keep the existing app installed and open the APK to update it.** The app ID is unchanged and the version code increases from 1086 to 1087. Install this APK manually when updating from 2.0.1-hangul.4 or earlier. Starting with 2.0.1-hangul.5, the automatic update check, when enabled, checks this repository for newer beta releases after app launch. Follow the in-app prompts to download and install an update; Android requires installation confirmation.
 
 ## Login notes
 
@@ -97,8 +100,10 @@ Automatically generated pronunciation never overwrites the cache of human-writte
 | --- | --- |
 | Java pronunciation engine tests | 22 passed |
 | Lyrics lookup tests | 26 passed |
+| Pronunciation retry and failure-cache tests | 9 passed |
+| Update version and APK-selection tests | 6 passed |
 | Release APK build (Kotlin, Compose, R8) | Passed |
-| Signature | Same signer as the previous version (1085) confirmed; new version code 1086 |
+| Signature | Same signer as the previous version (1086) confirmed; new version code 1087 |
 | Matching against real pages (PC JVM) | Monitoring 85/85 lines, Execution Clap 57/60 lines |
 | Phone install, login persistence, playback | Pending |
 
@@ -115,7 +120,7 @@ Prepare JDK 17 and Android SDK 37, then run:
 .\build-hangul.ps1 -JavaHome 'path to JDK' -AndroidSdk 'path to Android SDK'
 ```
 
-If the signing environment variables `MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWORD`, `MYSPOTI_KEY_ALIAS` and `MYSPOTI_KEY_PASSWORD` are set, that key is used. Otherwise a development key is used, and the result cannot be installed over an app installed from a release APK. Private keys and credentials are never committed to this repository.
+Provide the signing environment variables `MYSPOTI_KEYSTORE`, `MYSPOTI_KEYSTORE_PASSWORD`, `MYSPOTI_KEY_ALIAS` and `MYSPOTI_KEY_PASSWORD`, or the existing signing properties file. The script stops a release build when signing configuration is missing. Updating an app installed from a release APK requires the original key. The version and update repository are set in `release.json`. Private keys and credentials are never committed to this repository.
 
 | Path | Role |
 | --- | --- |

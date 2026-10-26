@@ -422,6 +422,10 @@ final class HangulReadingEngine {
     }
 
     Result resolve(String title, String artist, List<String> originals, String sourceUrl, String learnedUrl, Fetcher fetcher) throws IOException {
+        return resolve(title, artist, originals, sourceUrl, learnedUrl, fetcher, 32_000L);
+    }
+
+    Result resolve(String title, String artist, List<String> originals, String sourceUrl, String learnedUrl, Fetcher fetcher, long remainingMillis) throws IOException {
         if (title.length() > 300 || artist.length() > 500 || String.join("\n", originals).length() > 40000)
             throw new IOException("곡 정보 또는 가사 길이 제한 초과");
         List<String> titles = titles(title, artist);
@@ -444,7 +448,8 @@ final class HangulReadingEngine {
         for (String row : originals) if (japanese(row) && !HANGUL.matcher(row).find() && normalize(row).length() >= 10 && fragments++ < 2)
             searches.add(new String[]{row.substring(0,Math.min(100,row.length())), "content"});
         Set<String> visited = new HashSet<>();
-        long deadline = System.nanoTime() + 32_000_000_000L;
+        if (remainingMillis <= 0) throw new IOException("조회 시간 초과");
+        long deadline = System.nanoTime() + Math.min(32_000L, remainingMillis) * 1_000_000L;
         requestDeadline.set(deadline);
         int search = 0;
         try {
@@ -470,6 +475,7 @@ final class HangulReadingEngine {
             try {
                 String markup = fetcher.get(url);
                 if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
+                if (System.nanoTime() >= deadline) throw new IOException("조회 시간 초과");
                 Page page = parse(markup); Result result = match(originals, page, url);
                 if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
                 if (result.valid()) return result;

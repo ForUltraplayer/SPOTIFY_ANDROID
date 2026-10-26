@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.music.spotui.data.api.LyricTranslate
 import com.music.spotui.data.api.LyricsApi
 import com.music.spotui.data.api.HangulReadings
+import com.music.spotui.data.api.HangulReadingRetry
 import com.music.spotui.data.entity.Lyrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,7 +92,11 @@ class LyricsViewModel constructor() : ViewModel() {
         _state.value = current.copy(readingLoading = true,readingError = null)
         readingJob = viewModelScope.launch {
             try {
-                val found = kotlinx.coroutines.runInterruptible(Dispatchers.IO) { HangulReadings.resolve(track,lyrics,force) }
+                val found = HangulReadingRetry.resolve { attempt, remaining ->
+                    kotlinx.coroutines.runInterruptible(Dispatchers.IO) {
+                        HangulReadings.resolve(track, lyrics, force && attempt == 0, attempt, remaining)
+                    }
+                }
                 val latest = _state.value as? State.Loaded ?: return@launch
                 if (loadedKey != track.key || latest.lyrics != lyrics) return@launch
                 _state.value = latest.copy(readings=found.lines,readingSource=found.source.takeIf { it.isNotBlank() },readingLoading=false,readingError=null,readingGenerated=found.generated)
