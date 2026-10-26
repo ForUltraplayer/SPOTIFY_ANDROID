@@ -33,7 +33,10 @@ def release(root=ROOT):
 
 
 def clean():
-    if git('status', '--porcelain', '--untracked-files=normal').stdout.strip():
+    # Compare content rather than stat-cache hints; Windows checkout line endings
+    # can temporarily appear modified after applying an otherwise identical tree.
+    changed = git('diff', '--quiet', check=False).returncode or git('diff', '--cached', '--quiet', check=False).returncode
+    if changed or git('ls-files', '--others', '--exclude-standard').stdout.strip():
         raise ValueError('Commit or preserve the current source changes before preparing/promoting a merge')
 
 
