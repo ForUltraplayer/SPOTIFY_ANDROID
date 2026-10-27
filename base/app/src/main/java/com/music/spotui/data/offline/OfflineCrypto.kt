@@ -165,6 +165,22 @@ object OfflineCrypto {
                 usingOther = dash == null
                 return length
             }
+            // A YouTube link kept in a phone list: its audio address is asked here, waited for while
+            // newly issued, and asked for once more when it is refused.
+            if (dataSpec.uri.scheme == com.music.spotui.video.YouTubeLinks.SCHEME) {
+                val status = { e: Throwable -> (e as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode }
+                val length = com.music.spotui.extensions.AudioRoute.openStream(
+                    ask = { again -> com.music.spotui.video.YouTubeLinks.resolve(dataSpec.uri, again) },
+                    open = { stream ->
+                        com.music.spotui.video.YouTubeLinks.untilServed(status) {
+                            try { openUrl(dataSpec, stream) } catch (e: IOException) { runCatching { other.close() }; throw e }
+                        }
+                    },
+                    status = status,
+                )
+                usingOther = true
+                return length
+            }
             val file = dataSpec.uri.takeIf { it.scheme == "file" }?.path?.let(::File)
             if (file == null || !isEncrypted(file)) {
                 usingOther = true

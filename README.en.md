@@ -4,15 +4,15 @@
 
 A build of the Android Spotify app [Myspoti](https://github.com/kota-zo/myspoti) that adds Korean (Hangul) pronunciation for Japanese song lyrics. Pronunciation is pulled from Haneum and Namuwiki and matched line by line. Everything runs in the app, no PC or server needed.
 
-Current version: 2.0.1-hangul.5 beta.
+Current version: 2.0.1-hangul.9 beta.
 
-**[⬇ Download APK (v2.0.1-hangul.5)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5)**
+**[⬇ Download APK (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
 
 PC version: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
 
 ## Install
 
-1. Download and open `Myspoti-Hangul-2.0.1-hangul.5.apk`. Allow app installs if Android asks.
+1. Download and open `Myspoti-Hangul-2.0.1-hangul.9.apk`. Allow app installs if Android asks.
 2. Sign in with **Log in with Spotify**.
 3. Play a song and open the lyrics view. Hangul pronunciation shows under each Japanese line.
 
@@ -41,6 +41,9 @@ Requires Android 10+. Free Spotify accounts work. Installs as a separate app (`a
 - Retries failed lookups (up to 3 times, 2 s apart)
 - Automatic pronunciation for missing lines using an on-device dictionary (off by default)
 - Copy song title (long-press the title in the lyrics view)
+- Per-song lyric sync adjustment (lyrics menu)
+- YouTube links in Spotify playlists, played mixed with the Spotify songs (the playlist's + and ⋮). Reorder them with the sort menu's manual edit; the order is kept on this phone only and Spotify's own order is unchanged.
+- Export and import phone lists as files
 
 For Myspoti's original features, see the [original README](README_UPSTREAM.md).
 

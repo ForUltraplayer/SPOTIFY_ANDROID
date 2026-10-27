@@ -82,8 +82,35 @@ public class HangulReadingEngineTest {
                 Arrays.asList("기존 발음", HangulReadingEngine.MISSING, "Hello world"));
         assertEquals("기존 발음", lines.get(0)); assertEquals("Hello world", lines.get(2));
         assertTrue(lines.get(1).matches(".*[가-힣].*")); assertEquals(3, lines.size());
-        assertEquals("각코우", HangulReadingEngine.kanaToHangul("ガッコウ"));
-        assertEquals("수우파아", HangulReadingEngine.kanaToHangul("スーパー"));
+    }
+
+    @Test public void kanaConversionFollowsAuthoredLyricConventions() {
+        // Long vowels dropped, っ as ㅅ, ん as ㄴ, じょ as 조; a lengthened e is written 이.
+        String[][] cases = {{"ガッコウ","갓코"}, {"キャット","캿토"}, {"スーパー","수파"}, {"しんぶん","신분"},
+                {"フィナーレ","피나레"}, {"アイデンティティ","아이덴티티"}, {"どうして","도시테"}, {"とうきょう","토쿄"},
+                {"ねえ","네"}, {"ゲーム","게이무"}, {"ショッピング","숏핀구"}, {"じょうしき","조시키"}, {"いい","이이"},
+                {"Love 123!","Love 123!"}};
+        for (String[] pair : cases) assertEquals(pair[0], pair[1], HangulReadingEngine.kanaToHangul(pair[0]));
+    }
+
+    @Test public void automaticReadingJoinsTokensAndKeepsKanjiVerbEndings() {
+        // A kanji verb's okurigana う is spoken; a volitional ょう split into its own token is a long vowel.
+        List<String> lines = engine.completeAutomatically(Arrays.asList("思う", "遊びましょう", "今日"), null);
+        assertEquals(Arrays.asList("오모우", "아소비마쇼", "쿄"), lines);
+    }
+
+    @Test public void keepsSlashesAndCornerBracketsThatBelongToTheTitle() throws Exception {
+        assertEquals("ハロ/ハワユ", HangulReadingEngine.titles("ハロ／ハワユ", "ナノウ").get(0));
+        assertEquals("W / X / Y", HangulReadingEngine.titles("W / X / Y", "Tani Yuuki").get(0));
+        assertEquals("Be The MUSIC!", HangulReadingEngine.titles("Be The MUSIC! (feat. 「Rising」一同)", "Example").get(0));
+        assertEquals("Lemon", HangulReadingEngine.titles("Lemon / 米津玄師", "Kenshi Yonezu").get(0));
+        List<String> visited = new java.util.ArrayList<>();
+        try {
+            engine.resolve("Be The MUSIC! (feat. 「Rising」一同)", "Example", LINES, "", url -> { visited.add(url); throw new IOException("missing"); });
+            fail("No source should match");
+        } catch (IOException expected) { }
+        for (String url : visited) assertFalse(url, url.startsWith("https://namu.wiki/w/") && url.contains("%28"));
+        assertTrue(visited.contains("https://namu.wiki/w/Be%20The%20MUSIC%21"));
     }
 
     @Test public void cancelledLookupDoesNotReturnAnOtherwiseValidDocument() throws Exception {

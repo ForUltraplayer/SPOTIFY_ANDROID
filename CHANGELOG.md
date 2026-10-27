@@ -2,6 +2,14 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.0.1-hangul.9
+
+- Automatic Hangul readings follow authored lyric conventions (long vowels dropped, っ as ㅅ, ん as ㄴ)
+- Pronunciation search keeps slashes and 「」 that belong to the title
+- Per-song lyric sync adjustment in the lyrics menu
+- YouTube links in Spotify playlists (the playlist's + and ⋮), mixed with its songs in an order kept on this phone; Next, Previous and shuffle follow it
+- Export and import phone lists as files; an unreadable list file is kept aside instead of being replaced
+
 ## 2.0.1-hangul.5
 
 - Retry failed Hangul pronunciation lookups (up to 3 times, 2 s apart; cancelled on song change)

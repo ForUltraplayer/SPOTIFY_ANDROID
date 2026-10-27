@@ -4,15 +4,15 @@
 
 안드로이드 Spotify 앱 [Myspoti](https://github.com/kota-zo/myspoti)에 일본어 노래의 한글 발음 표시를 추가한 버전입니다. 한음, 나무위키에 올라와 있는 한글 발음을 가져와 가사와 줄 단위로 맞춥니다. PC나 별도 서버 없이 앱 하나로 동작합니다.
 
-현재 2.0.1-hangul.5 베타입니다.
+현재 2.0.1-hangul.9 베타입니다.
 
-**[⬇ APK 다운로드 (v2.0.1-hangul.5)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.5)**
+**[⬇ APK 다운로드 (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
 
 PC 버전: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
 
 ## 설치
 
-1. `Myspoti-Hangul-2.0.1-hangul.5.apk`를 받아서 엽니다. 안드로이드가 물어보면 앱 설치를 허용합니다.
+1. `Myspoti-Hangul-2.0.1-hangul.9.apk`를 받아서 엽니다. 안드로이드가 물어보면 앱 설치를 허용합니다.
 2. **Log in with Spotify**로 로그인합니다.
 3. 곡을 재생하고 가사 화면을 열면 일본어 줄 아래에 한글 발음이 나옵니다.
 
@@ -41,6 +41,9 @@ Android 10 이상, 무료 Spotify 계정도 됩니다. 원본 Myspoti와는 별�
 - 조회 실패 시 자동 재시도 (2초 간격 최대 3회)
 - 자동 발음: 자료에 없는 줄을 기기 안 사전으로 변환 (기본 꺼짐)
 - 곡 제목 복사 (가사 화면에서 제목 길게 누르기)
+- 곡별 가사 싱크 조절 (가사 화면 메뉴)
+- YouTube 링크를 Spotify 플레이리스트에 추가해 Spotify 곡과 섞어 재생 (플레이리스트의 「+」, 「⋮」). 순서는 정렬 메뉴의 직접 편집으로 바꾸며 이 휴대폰에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.
+- 휴대폰 목록 파일 내보내기와 가져오기
 
 Myspoti 원래 기능은 [원본 README](README_UPSTREAM.md)를 참고하세요.
 

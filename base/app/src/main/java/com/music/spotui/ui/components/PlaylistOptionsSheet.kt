@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.GroupRemove
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -98,6 +99,8 @@ fun PlaylistOptionsSheet(
     onProfile: (String) -> Unit,
     /** "Add to this playlist" (search and suggestions), on your own playlists. */
     onAddSongs: (() -> Unit)? = null,
+    /** "Add a YouTube link", kept on this phone under the playlist; next to [onAddSongs]. */
+    onAddYouTube: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -180,6 +183,7 @@ fun PlaylistOptionsSheet(
                 OptionRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.blend_leave)) { leavingBlend = true }
             } else if (mine) {
                 onAddSongs?.let { add -> OptionRow(Icons.Outlined.AddCircleOutline, stringResource(R.string.add_songs_title)) { onDismiss(); add() } }
+                onAddYouTube?.let { add -> OptionRow(Icons.Outlined.Link, "YouTube 링크 추가") { onDismiss(); add() } }
                 OptionRow(Icons.Outlined.Edit, stringResource(R.string.playlist_edit_details)) { editing = true }
                 // Collaborative is not enough: only those who open its invitation link can add songs
                 // (a plain link only shows it). Inviting makes it collaborative, as in the official app.

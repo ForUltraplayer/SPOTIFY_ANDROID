@@ -49,11 +49,15 @@ object LocalPlaylists {
     val playlists: SnapshotStateMap<String, LocalPlaylist> = mutableStateMapOf()
     /** Spotify playlist id → phone files added to it on this phone. */
     val additions: SnapshotStateMap<String, List<LocalItem>> = mutableStateMapOf()
+    /** Spotify playlist id → its rows and the phone's items in the user's order (MixedOrder keys); Spotify's order is untouched. */
+    val orders: SnapshotStateMap<String, List<String>> = mutableStateMapOf()
 
     fun init(context: Context) {
         if (::file.isInitialized) return
         file = File(context.filesDir, "local_playlists.json")
-        runCatching { read(file.readText()) }
+        // An unreadable list (damaged, or from a newer version) is kept aside: the next change would replace it.
+        if (file.exists() && !runCatching { read(file.readText()) }.getOrDefault(false))
+            runCatching { file.copyTo(File(file.parentFile, "local_playlists.unreadable-${System.currentTimeMillis()}.json")) }
     }
 
     /** Newest first. */
@@ -74,12 +78,22 @@ object LocalPlaylists {
     fun remove(id: String, key: String) =
         update { playlists[id]?.let { playlists[id] = it.copy(items = it.items.filterNot { i -> i.key == key }) } }
 
-    fun addToSpotify(playlistId: String, track: LocalTrack) =
-        update { additions[playlistId] = additions[playlistId].orEmpty() + LocalItem.of(track) }
+    fun addToSpotify(playlistId: String, track: LocalTrack) = update {
+        val item = LocalItem.of(track)
+        additions[playlistId] = additions[playlistId].orEmpty() + item
+        // A saved order gets the new item at its end, where it shows without one.
+        orders[playlistId]?.let { orders[playlistId] = it + (MixedOrder.LOCAL + item.key) }
+    }
 
     fun removeFromSpotify(playlistId: String, key: String) = update {
         val left = additions[playlistId].orEmpty().filterNot { it.key == key }
         if (left.isEmpty()) additions.remove(playlistId) else additions[playlistId] = left
+        orders[playlistId]?.let { orders[playlistId] = it - (MixedOrder.LOCAL + key) }
+    }
+
+    /** The mixed order of a Spotify playlist; empty puts Spotify's order back (the phone's items after it). */
+    fun setOrder(playlistId: String, keys: List<String>) = update {
+        if (keys.isEmpty()) orders.remove(playlistId) else orders[playlistId] = keys.distinct().take(MixedOrder.MAX_KEYS)
     }
 
     private fun update(change: () -> Unit) {
@@ -111,12 +125,14 @@ object LocalPlaylists {
         }
         val adds = JSONObject()
         additions.forEach { (id, list) -> adds.put(id, JSONArray().apply { list.forEach { put(itemJson(it)) } }) }
-        return JSONObject().put("version", VERSION).put("playlists", lists).put("additions", adds).toString()
+        val mixed = JSONObject()
+        orders.forEach { (id, keys) -> mixed.put(id, JSONArray(keys)) }
+        return JSONObject().put("version", VERSION).put("playlists", lists).put("additions", adds).put("orders", mixed).toString()
     }
 
-    internal fun read(text: String) {
+    internal fun read(text: String): Boolean {
         val o = JSONObject(text)
-        if (o.optInt("version") != VERSION) return
+        if (o.optInt("version") != VERSION) return false
         val lists = o.optJSONArray("playlists") ?: JSONArray()
         for (i in 0 until lists.length()) {
             val p = lists.getJSONObject(i)
@@ -124,5 +140,39 @@ object LocalPlaylists {
         }
         val adds = o.optJSONObject("additions") ?: JSONObject()
         adds.keys().forEach { id -> items(adds.optJSONArray(id)).takeIf { it.isNotEmpty() }?.let { additions[id] = it } }
+        // Written by this version on: an older store has none, its items then follow Spotify's order.
+        val mixed = o.optJSONObject("orders") ?: JSONObject()
+        mixed.keys().forEach { id ->
+            val keys = mixed.optJSONArray(id) ?: return@forEach
+            (0 until minOf(keys.length(), MixedOrder.MAX_KEYS)).map { keys.optString(it) }
+                .filter { it.startsWith(MixedOrder.SPOTIFY) || it.startsWith(MixedOrder.LOCAL) }
+                .takeIf { it.isNotEmpty() }?.let { orders[id] = it }
+        }
+        return true
+    }
+
+    // ── Files (as the PC version's list export) ──
+
+    private const val FILE_FORMAT = "myspoti-hangul-local-playlist"
+    const val MAX_FILE_BYTES = 3 shl 20
+    private const val MAX_FILE_ITEMS = 2000
+
+    /** One list as a file. Phone files keep their phone address, which plays on this phone only. */
+    fun export(id: String): String? = playlists[id]?.let { p ->
+        JSONObject().put("format", FILE_FORMAT).put("version", VERSION).put("name", p.name)
+            .put("items", JSONArray().apply { p.items.forEach { put(itemJson(it)) } }).toString(2)
+    }
+
+    /** A new list from a file made by [export]; never replaces an existing one. */
+    fun import(text: String): LocalPlaylist {
+        require(text.length <= MAX_FILE_BYTES) { "3 MB 이하의 목록 파일만 가져올 수 있습니다." }
+        val o = runCatching { JSONObject(text) }.getOrNull()
+        require(o != null && o.optString("format") == FILE_FORMAT && o.optInt("version") == VERSION) { "이 앱에서 내보낸 목록 파일이 아닙니다." }
+        val found = items(o.optJSONArray("items"))
+        require(found.size <= MAX_FILE_ITEMS) { "목록 파일의 곡이 너무 많습니다." }
+        val p = LocalPlaylist(UUID.randomUUID().toString(), o.optString("name").trim().ifEmpty { "가져온 목록" }.take(200),
+            found.map { it.copy(key = UUID.randomUUID().toString()) }, System.currentTimeMillis())
+        update { playlists[p.id] = p }
+        return p
     }
 }

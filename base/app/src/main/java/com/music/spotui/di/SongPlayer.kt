@@ -447,7 +447,7 @@ object SongPlayer {
         val state = boundState ?: return
         val holding = SystemClock.elapsedRealtime() < shuffleWantedUntil
         if (holding && s.shuffle == shuffleWanted) shuffleWantedUntil = 0L
-        if (!holding || s.shuffle == shuffleWanted) state.shuffle.value = s.shuffle
+        if (!holding || s.shuffle == shuffleWanted) state.shuffle.value = MixedPlayback.shuffleShown(s.contextUri.orEmpty()) ?: s.shuffle
         // The page reports a speed other than 1 only for episodes: music stays at 1.
         _speed.value = s.speed.takeIf { it > 0.0 } ?: 1.0
         _repeatMode.value = s.repeat.ordinal
@@ -476,8 +476,9 @@ object SongPlayer {
             refreshCurrentLiked()
             refreshDevice()
             // The engine moved on by itself from a song no extension had: the new one is asked there.
+            // A mixed list (MixedPlayback) first plays the phone's rows that come before the new song.
             if (playing && !adState.value) main.post {
-                if (_nowPlaying.value.uri == uri) backToExtensions(song, leftId, upcomingSongs(song)) { intendPlaying(); playing = true; transport { api.player.resume() } }
+                if (_nowPlaying.value.uri == uri && !MixedPlayback.engineMoved(_nowPlaying.value.contextUri, id)) backToExtensions(song, leftId, upcomingSongs(song)) { intendPlaying(); playing = true; transport { api.player.resume() } }
             }
         }
         val mv = com.music.spotui.video.MusicVideoController
@@ -670,10 +671,11 @@ object SongPlayer {
      * audio-source extensions: asked first when one is on ([askExtensions]), they play it in the
      * local player with the rest as the queue; a miss plays on Spotify as before. Without
      * [songs], the song is looked up on Spotify (a link, Recents, an extension's block).
+     * [engineShuffleOff]: the engine's shuffle goes off first, [order] being shuffled already (MixedPlayback).
      */
     fun playSong(
         song: String, context: Context? = null, contextUri: String? = null, order: List<String>? = null, positionMs: Long? = null,
-        songs: List<SongsModel>? = null, askExtensions: Boolean = true,
+        songs: List<SongsModel>? = null, askExtensions: Boolean = true, engineShuffleOff: Boolean = false,
     ) {
         // Data saver on mobile data: Spotify can't stream, only downloads and Local Files play.
         if (com.music.spotui.data.DataSaver.active) {
@@ -712,6 +714,7 @@ object SongPlayer {
         transport { isLatest ->
             playChecked(itemUri, isLatest) {
                 Log.d(TAG, "playing $itemUri in ${ctx ?: "no context"}: ${queueTag()}")
+                if (engineShuffleOff && api.player.state.value?.shuffle == true) api.player.setShuffle(false)
                 if (ctx != null) api.player.play(ctx, trackUri = itemUri, positionMs = positionMs, order = order?.takeIf { ctx == contextUri })
                 else api.player.play(itemUri)
             }
@@ -943,6 +946,8 @@ object SongPlayer {
         Log.d(TAG, "next tapped")
         Haptics.click()
         if (LocalPlayer.active.value) { LocalPlayer.next(); return }
+        // A mixed list whose next row is on the phone: it plays now, Spotify waits.
+        if (MixedPlayback.next()) return
         com.music.spotui.extensions.Extensions.skipAsked("forward")
         // Spotify is refusing licences: every skip asks for one more and makes the limit last
         // (a tester's log: 183 refusals in 8 min of fast skipping, the page then skipping on its
@@ -1067,6 +1072,8 @@ object SongPlayer {
     fun previous() {
         Haptics.click()
         if (LocalPlayer.active.value) { LocalPlayer.previous(); return }
+        // A mixed list whose row before is on the phone: it plays now (the engine would skip it).
+        if (MixedPlayback.previous()) return
         if (getCurrentPosition() <= 3_000) com.music.spotui.extensions.Extensions.skipAsked("backward")
         intendPlaying()
         // A previous counts as -1 in the burst. Skips still waiting to be sent (nexts tapped
@@ -1177,10 +1184,11 @@ object SongPlayer {
     }
 
     /** Shuffle as the player shows it (Spotify's, or the local queue's). */
-    fun isShuffleOn(): Boolean = if (LocalPlayer.active.value) LocalPlayer.shuffled else boundState?.shuffle?.value == true
+    fun isShuffleOn(): Boolean = MixedPlayback.shuffleShown(_nowPlaying.value.contextUri) ?: if (LocalPlayer.active.value) LocalPlayer.shuffled else boundState?.shuffle?.value == true
 
     fun setShuffle(on: Boolean) {
         Haptics.toggle(on)
+        if (MixedPlayback.setShuffle(on)) return
         if (LocalPlayer.active.value) { LocalPlayer.setShuffle(on); return }
         shuffleWanted = on
         shuffleWantedUntil = SystemClock.elapsedRealtime() + SHUFFLE_HOLD_MS

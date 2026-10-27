@@ -96,7 +96,10 @@ object LocalPlayer {
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private object NoAudioNotRetried : androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy() {
         override fun getRetryDelayMsFor(info: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-            if (com.music.spotui.extensions.AudioRoute.isNoAudio(info.exception)) C.TIME_UNSET else super.getRetryDelayMsFor(info)
+            if (com.music.spotui.extensions.AudioRoute.isNoAudio(info.exception)
+                // A private or removed YouTube link stays so; asking again would only repeat the look-up.
+                || generateSequence<Throwable>(info.exception) { it.cause }.take(8).any { it is com.music.spotui.video.YouTubeLinks.Unavailable })
+                C.TIME_UNSET else super.getRetryDelayMsFor(info)
     }
 
     private val prefetch = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
@@ -145,6 +148,7 @@ object LocalPlayer {
      */
     fun play(list: List<LocalTrack>, index: Int, shuffle: Boolean = false, context: String? = null, contextUri: String = "", startMs: Long = 0L, continues: Boolean = false) {
         if (list.isEmpty()) return
+        MixedPlayback.localStarted(contextUri)
         SongPlayer.pauseEngineForLocal()
         forgetRadio(); this.continues = continues
         tracks.clear(); tracks.addAll(list); unshuffled = null
@@ -186,6 +190,8 @@ object LocalPlayer {
         }
     }
     fun previous() {
+        // A mixed list: before the first row of this run comes a Spotify song, played there.
+        if (MixedPlayback.previous()) return
         exo?.let {
             if (it.currentPosition > 3000 || !it.hasPreviousMediaItem()) it.seekTo(0)
             else { com.music.spotui.extensions.Extensions.skipAsked("backward"); it.seekToPreviousMediaItem() }
@@ -362,6 +368,8 @@ object LocalPlayer {
      * comes, or Spotify goes on when it had none. False: the queue just ends (see AudioRoute.continues).
      */
     private fun atEnd(p: ExoPlayer): Boolean {
+        // The phone's rows of a mixed list are over: Spotify goes on with the list's next song.
+        if (MixedPlayback.runEnded()) return true
         continueIfLast(p)
         if (radioOf == null || radioOf != spotifyId(current())) return false
         if (radioEmpty) spotifyContinues() else moveOnWhenReady = true
@@ -392,6 +400,8 @@ object LocalPlayer {
     fun position() = exo?.currentPosition ?: 0L
     fun duration() = exo?.duration?.takeIf { it > 0 } ?: current()?.durationMs ?: 0L
     fun current(): LocalTrack? = exo?.currentMediaItemIndex?.let { tracks.getOrNull(it) }
+    /** Where the current song is in the queue given to [play] (no shuffle). */
+    fun currentIndex(): Int = exo?.currentMediaItemIndex ?: 0
 
     private fun log(line: String) = app.myspoti.host.android.Logbook.log("local: $line")
 

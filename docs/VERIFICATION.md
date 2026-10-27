@@ -84,3 +84,27 @@ PC 조사에서 확보했던 가사와 메타데이터 응답을 실제로 컴�
 Gradle은 --no-daemon으로 완료했다. 별도 가사 서버나 휴대폰 앱을 실행하지 않았고 GitHub 유지 관리 워크플로의 실행 위치와 일일 주기 및 중지 방법은 docs/MAINTENANCE.md에 기록했다. 공개 배포 APK는 2.0.1-hangul.5를 유지한다.
 
 GitHub Windows 실행기의 전체 검사도 성공했다: https://github.com/ForUltraplayer/SPOTIFY_ANDROID/actions/runs/40276511339 . 첫 원격 실행은 SDK 준비 도구가 폐기된 tools 패키지를 요청해 실패했다. 현재 SDK 준비 도구와 platform-tools를 명시해 수정한 뒤 Python 유지 관리 검사와 전체 Gradle 검사가 모두 통과했다. 이 결과는 GitHub의 깨끗한 SDK 환경에서 확인한 빌드 및 JVM 검사이며 실제 휴대폰 검증을 대신하지 않는다.
+
+# 안드로이드 2.0.1-hangul.9 검증
+
+2026년 10월 28일에 PC와 휴대폰에서 확인했다. 앱 식별자는 app.myspoti.hangul, 버전 코드는 1091이다. 배포 APK의 서명자 SHA-256은 b56cf5007389de3d98c4064cf448c37c9c393118bdff9d52d037cf33452034c6로 hangul.5와 같다. 사용자가 휴대폰에 덮어 설치해 확인한 뒤 배포를 승인했다. 이전 시험 빌드에서는 YouTube 재생과 가사 표시를 휴대폰에서 확인했다.
+
+## 변경과 검사
+
+PC 0.7.2의 자동 발음 표기 관례와 발음 자료 제목 후보 처리를 옮겼다. 저작 발음 84 줄 기준 완전 일치는 25 줄(30%)에서 50 줄(60%)로 늘었다. 가사 화면에 곡별 싱크 조절을 추가했다. YouTube 링크는 휴대폰 목록이나 Spotify 플레이리스트 아래에 저장하고 NewPipeExtractor로 받은 음원 주소를 앱 안 재생기로 재생한다. Spotify 플레이리스트에서는 링크와 휴대폰 파일을 Spotify 곡 사이에 섞어 표시하며, 섞인 순서는 local_playlists.json에만 저장하고 Spotify의 곡 순서는 바꾸지 않는다. 다음 곡, 이전 곡, 셔플은 이 순서를 따른다.
+
+| 항목 | 결과 | 범위 |
+| --- | --- | --- |
+| 앱 모듈 검사 | 92 개 통과 | 기존 63 개와 신규 29 개 |
+| 혼합 목록 이동 검사 | 8 개 통과 | 링크 위치 5 가지에서 다음, 이전, 곡 끝을 섞은 무작위 이동 |
+| 혼합 순서 검사 | 10 개 통과 | 병합, 재시작 후 유지, Spotify 쪽 곡 추가와 삭제, 재생 순서, 반복 재생 |
+| 유지 관리 검사 | 7 개 통과 | scripts/test_maintenance.py |
+| YouTube 음원 요청 | 2 개 영상 확인 | PC JVM에서 일반 Range 요청 첫 시도 HTTP 206 |
+| release 빌드 | 통과 | JDK 21, Android SDK 37, R8 포함 |
+| APK 식별자와 버전 | 확인 | app.myspoti.hangul, 1091, 2.0.1-hangul.9 |
+
+APK SHA-256은 9e5840673e799b5f5fa0058144ea76af5bc70e9eaa35348c19b92e3d1cb926de이다. 블루투스와 잠금 화면 버튼, 긴 목록에서의 반복 전환은 별도로 측정하지 않았다.
+
+## 기존 앱 위 업데이트
+
+hangul.5 이후 설치본은 시험판 릴리스를 조회하므로 v2.0.1-hangul.9 태그와 Myspoti-Hangul-2.0.1-hangul.9.apk 자산을 업데이트로 안내한다. Gradle의 기본 버전은 release.json을 읽으므로 -P 값 없이 빌드해도 1091보다 낮아지지 않는다. 서명은 scripts/sign-hangul-apk.ps1로 하며 키와 비밀번호 파일은 저장소 밖에 둔다.

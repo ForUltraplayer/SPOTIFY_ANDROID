@@ -22,7 +22,11 @@ android {
     // signed with the first key, as "Myspoti Beta"; releases are "app.myspoti.stable",
     // signed with their own key, as "Myspoti".
     // Local builds (no version given) are on the beta side, like the phone test builds.
-    val version = (findProperty("appVersionName") as String?) ?: "2.0.1"
+    // Without -P properties the Hangul build's own release.json (repository root) gives the version,
+    // so a plain Gradle build never goes back to a version code lower than the installed app's.
+    val releaseJson = rootProject.file("../release.json").takeIf { it.isFile }?.readText().orEmpty()
+    fun releaseField(name: String) = Regex("\"$name\"\\s*:\\s*\"?([^\",}\\s]+)").find(releaseJson)?.groupValues?.get(1)
+    val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.0.1"
     val beta = findProperty("appVersionName") == null || version.contains("-")
     defaultConfig {
         applicationId = "app.myspoti.hangul"
@@ -32,7 +36,7 @@ android {
         minSdk = 29
         targetSdk = 36
         // CI release builds pass the tag's version (-PappVersionName / -PappVersionCode).
-        versionCode = (findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 200
+        versionCode = (findProperty("appVersionCode") as String?)?.toIntOrNull() ?: releaseField("versionCode")?.toIntOrNull() ?: 200
         versionName = version
         // GitHub "owner/repo" whose releases the app checks for updates; empty = off
         // (local builds). CI sets it to the repository it builds.

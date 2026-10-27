@@ -40,6 +40,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.FileOpen
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.AlertDialog
@@ -154,7 +156,10 @@ private fun SheetRow(icon: ImageVector, label: String, detail: String? = null, o
 fun LibraryCreateSheet(navController: NavController, onDismiss: () -> Unit, onLibraryChanged: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var asking by remember { mutableStateOf<String?>(null) } // "playlist" | "folder" | "local"
+    var asking by remember { mutableStateOf<String?>(null) } // "playlist" | "folder" | "local" | "youtube" | "importing"
+    var linkTrack by remember { mutableStateOf<LocalTrack?>(null) }
+    // The picker answers after the sheet hid itself; the sheet closes then, whatever the answer.
+    val importList = rememberLocalPlaylistImport { p -> onDismiss(); p?.let { navController.navigate(localPlaylistRoute(it.id)) } }
     when (asking) {
         "playlist" -> NameDialog(stringResource(R.string.create_playlist_content_description), context.getString(R.string.my_playlist),
             stringResource(R.string.create_playlist_create_button), onDismiss = onDismiss) { name ->
@@ -174,12 +179,20 @@ fun LibraryCreateSheet(navController: NavController, onDismiss: () -> Unit, onLi
             navController.navigate(localPlaylistRoute(p.id))
         }
         "blend" -> BlendSheet(navController, onDismiss)
+        // A YouTube link goes to a phone list or under a Spotify playlist, as a phone file does.
+        "youtube" -> when (val track = linkTrack) {
+            null -> YouTubeLinkDialog(onDismiss) { linkTrack = it }
+            else -> AddLocalToPlaylistSheet(track, onDismiss)
+        }
+        "importing" -> Unit // The file picker is open; this sheet stays to receive its answer.
         else -> ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
             Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
                 SheetRow(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.assisted_curation_search_playlist)) { asking = "playlist" }
                 SheetRow(Icons.Outlined.Group, stringResource(R.string.blend_title), stringResource(R.string.blend_detail)) { asking = "blend" }
                 SheetRow(Icons.Outlined.CreateNewFolder, stringResource(R.string.create_menu_item_folder_title)) { asking = "folder" }
                 SheetRow(Icons.Outlined.PhoneAndroid, stringResource(R.string.local_playlist_new), stringResource(R.string.local_add_note)) { asking = "local" }
+                SheetRow(Icons.Outlined.Link, "YouTube 링크 추가", "이 휴대폰의 목록이나 Spotify 플레이리스트 아래에 추가") { asking = "youtube" }
+                SheetRow(Icons.Outlined.FileOpen, "목록 파일 가져오기", "내보낸 휴대폰 목록을 새 목록으로 추가") { asking = "importing"; importList() }
             }
         }
     }
@@ -430,7 +443,7 @@ fun FolderScreen(navController: NavController, uri: String, initialName: String)
 
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
-private fun LocalItemRow(item: LocalItem, current: Boolean, onClick: () -> Unit) {
+internal fun LocalItemRow(item: LocalItem, current: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().pressable(0.97f, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -468,13 +481,18 @@ fun LocalPlaylistScreen(navController: NavController, id: String) {
     val playlist = LocalPlaylists.playlists[id]
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var addingLink by remember { mutableStateOf(false) }
+    val exportList = rememberLocalPlaylistExport()
     if (playlist == null) {
         LaunchedEffect(Unit) { navController.navigateUp() }
         return
     }
+    if (addingLink) YouTubeLinkDialog(onDismiss = { addingLink = false }) { addingLink = false; LocalPlaylists.add(id, it) }
     if (menu) ModalBottomSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             SheetRow(Icons.Outlined.Edit, stringResource(R.string.local_rename)) { menu = false; renaming = true }
+            SheetRow(Icons.Outlined.Link, "YouTube 링크 추가") { menu = false; addingLink = true }
+            SheetRow(Icons.Outlined.SaveAlt, "파일로 내보내기", "다른 휴대폰에서는 YouTube 링크만 재생됩니다") { menu = false; exportList(id) }
             SheetRow(Icons.Outlined.Delete, stringResource(R.string.local_delete_playlist)) {
                 menu = false
                 navController.navigateUp()

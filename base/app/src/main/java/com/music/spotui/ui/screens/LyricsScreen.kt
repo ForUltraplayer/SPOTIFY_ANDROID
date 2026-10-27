@@ -162,9 +162,13 @@ private fun rememberPosition(running: Boolean): () -> Long {
     val frame = rememberFrameClock(running, fps = 30)
     return remember(frame) {
         // What is heard: Bluetooth plays it a little later than the player is.
-        { frame.value; (SongPlayer.getCurrentPosition() - com.music.spotui.di.OutputLag.ms()).coerceAtLeast(0L) }
+        // The song's own lyric adjustment moves the lyrics, not the audio.
+        { frame.value; (SongPlayer.getCurrentPosition() - com.music.spotui.di.OutputLag.ms() + currentLyricsOffset()).coerceAtLeast(0L) }
     }
 }
+
+private fun currentLyricsOffset(): Long =
+    com.music.spotui.data.api.LyricsOffsets.of(SongPlayer.currentLyricsTrack()?.key)
 
 private fun activeIndexFor(lyrics: Lyrics, positionMs: Long): Int {
     if (!lyrics.synced) return -1
@@ -195,7 +199,7 @@ private fun sungChars(words: List<LyricWord>, starts: List<Int>, p: Long): Float
 /** Seek to a tapped synced line and make sure we're playing. */
 private fun jumpTo(timeMs: Long) {
     com.music.spotui.di.Haptics.click()
-    SongPlayer.seekTo(timeMs)
+    SongPlayer.seekTo((timeMs - currentLyricsOffset()).coerceAtLeast(0L))
     if (!SongPlayer.isPlaying()) SongPlayer.play()
 }
 
@@ -400,6 +404,8 @@ fun LyricsScreen(
     var readingSourceDialog by remember { mutableStateOf(false) }
     var readingSourceInput by remember { mutableStateOf("") }
     var readingSourceError by remember { mutableStateOf<String?>(null) }
+    var offsetDialog by remember { mutableStateOf(false) }
+    if (offsetDialog) LyricsOffsetDialog { offsetDialog = false }
     if (readingSourceDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { readingSourceDialog = false },
@@ -508,6 +514,7 @@ fun LyricsScreen(
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", title))
                     },
+                    onOffset = { offsetDialog = true },
                     translating = (state as? LyricsViewModel.State.Loaded)?.showTranslation == true,
                     onTranslate = { vm.toggleTranslation(targetLanguage) },
                     onReload = { SongPlayer.currentLyricsTrack()?.let { vm.load(it, force = true) } },
@@ -634,6 +641,32 @@ fun LyricsScreen(
 }
 
 @Composable
+private fun LyricsOffsetDialog(onDismiss: () -> Unit) {
+    val key = SongPlayer.currentLyricsTrack()?.key
+    if (key.isNullOrEmpty()) { LaunchedEffect(Unit) { onDismiss() }; return }
+    val offsets = com.music.spotui.data.api.LyricsOffsets
+    val current = offsets.of(key)
+    fun shift(ms: Long) = offsets.set(key, current + ms)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("가사 싱크 조절") },
+        text = { Column {
+            Text("이 곡에만 적용합니다. 가사가 늦게 나오면 먼저, 빨리 나오면 나중으로 옮기세요.")
+            Text(offsets.describe(current), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                androidx.compose.material3.TextButton(onClick = { shift(-1000) }) { Text("-1초") }
+                androidx.compose.material3.TextButton(onClick = { shift(-offsets.STEP_MS) }) { Text("-0.25초") }
+                androidx.compose.material3.TextButton(onClick = { shift(offsets.STEP_MS) }) { Text("+0.25초") }
+                androidx.compose.material3.TextButton(onClick = { shift(1000) }) { Text("+1초") }
+            }
+            Text("+는 가사를 먼저, -는 나중에 표시합니다.", fontSize = 12.sp, color = Color.Gray)
+        } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("닫기") } },
+        dismissButton = { androidx.compose.material3.TextButton(enabled = current != 0L, onClick = { offsets.set(key, 0) }) { Text("되돌리기") } },
+    )
+}
+
+@Composable
 private fun LyricsMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
@@ -644,6 +677,7 @@ private fun LyricsMenu(
     automaticEnabled: Boolean,
     onAutomaticToggle: () -> Unit,
     onCopyTitle: () -> Unit,
+    onOffset: () -> Unit,
     translating: Boolean,
     onTranslate: () -> Unit,
     onReload: () -> Unit,
@@ -653,6 +687,15 @@ private fun LyricsMenu(
     var words by remember { mutableStateOf(com.music.spotui.data.preferences.isLyricsWordSync(context)) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("곡 제목 복사") }, onClick = { onDismiss(); onCopyTitle() })
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text("가사 싱크 조절")
+                    Text(com.music.spotui.data.api.LyricsOffsets.describe(currentLyricsOffset()), fontSize = 12.sp, color = Color.Gray)
+                }
+            },
+            onClick = { onDismiss(); onOffset() },
+        )
         DropdownMenuItem(
             text = { Text("기존 한글 발음 자동 조회") },
             trailingIcon = { if (hangulEnabled) Icon(Icons.Default.Check, contentDescription = null) },

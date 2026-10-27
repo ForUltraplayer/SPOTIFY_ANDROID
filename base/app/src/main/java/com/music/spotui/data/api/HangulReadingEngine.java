@@ -234,7 +234,7 @@ final class HangulReadingEngine {
         }
         String[] joined = "캬 큐 쿄 갸 규 교 샤 슈 쇼 자 주 조 차 추 초 냐 뉴 뇨 햐 휴 효 뱌 뷰 뵤 퍄 퓨 표 먀 뮤 묘 랴 류 료".split(" ");
         for (int i=0;i<roots.length;i++) for(int j=0;j<3;j++) TITLE_HANGUL.put(roots[i]+"ゃゅょ".charAt(j),joined[i*3+j]);
-        String[] foreign = "てぃ 티 でぃ 디 とぅ 투 どぅ 두 ふぁ 파 ふぃ 피 ふぇ 페 ふぉ 포 うぃ 위 うぇ 웨 うぉ 워 しぇ 셰 じぇ 제 ちぇ 체 ゔぁ 바 ゔぃ 비 ゔぇ 베 ゔぉ 보".split(" ");
+        String[] foreign = "てぃ 티 でぃ 디 とぅ 투 どぅ 두 ふぁ 파 ふぃ 피 ふぇ 페 ふぉ 포 うぃ 위 うぇ 웨 うぉ 워 しぇ 셰 じぇ 제 ちぇ 체 ゔぁ 바 ゔぃ 비 ゔぇ 베 ゔぉ 보 ぢゃ 자 ぢゅ 주 ぢょ 조".split(" ");
         for(int i=0;i<foreign.length;i+=2) TITLE_HANGUL.put(foreign[i],foreign[i+1]);
     }
 
@@ -389,9 +389,12 @@ final class HangulReadingEngine {
         return phonetic.matched > raw.matched ? phonetic : raw;
     }
 
+    private static final List<String> KNOWN_ARTISTS = Arrays.asList("kenshiyonezu","米津玄師","요네즈켄시","yoasobi");
+
     static List<String> titles(String title, String artist) {
         LinkedHashSet<String> candidates = new LinkedHashSet<>();
-        String normalized = Normalizer.normalize(title, Normalizer.Form.NFKC).replace('【','[').replace('】',']').replace('「','[').replace('」',']');
+        // 「」 stay as-is: they are usually part of a Japanese title and can nest inside (feat. ...).
+        String normalized = Normalizer.normalize(title, Normalizer.Form.NFKC).replace('【','[').replace('】',']');
         String text = normalized.replaceAll("(?i)[\\[(][^\\])]*(?:cover|歌ってみた|カバー|커버)[^\\])]*[\\])]", " ");
         text = text.replaceAll("(?i)\\s*[\\[(]\\s*(?:feat\\.?|ft\\.?)\\s+[^\\])]*[\\])]", "");
         text = text.replaceAll("(?i)\\s*[-–—]\\s*(?:feat\\.?|ft\\.?)\\s+.*$", "");
@@ -399,11 +402,22 @@ final class HangulReadingEngine {
         text = text.replaceAll("(?i)\\s*(?:[/|—–-]\\s*)?(?:covered\\s+by|cover\\s+by)\\b.*$", "");
         text = text.replaceAll("(?i)\\s*[-(]\\s*(?:remaster|live|radio|instrumental|edit|acoustic).*", "");
         text = text.replaceAll("(?i)\\s*(?:[/|—–-]\\s*)?(?:cover(?:\\s+ver(?:sion)?\\.?)?|歌ってみた|カバー|커버(?:곡)?)\\s*$", "");
-        List<String> pieces = Arrays.asList(text.split("\\s+[-–—|/]\\s*|\\s*[/／]\\s*"));
+        // A slash is often part of the title itself (ハロ/ハワユ, D/N/A, W / X / Y);
+        // split on it only when one side is an artist name.
+        Set<String> artists = new HashSet<>(KNOWN_ARTISTS);
+        artists.add(normalize(artist));
+        for (String name : artist.split("[,/&、]")) if (normalize(name).length() >= 2) artists.add(normalize(name));
+        artists.remove("");
+        List<String> pieces = new ArrayList<>();
+        for (String part : text.split("\\s+[-–—|]\\s*")) {
+            List<String> split = Arrays.asList(part.split("\\s*[/／]\\s*"));
+            if (split.stream().anyMatch(piece -> artists.contains(normalize(piece)))) pieces.addAll(split);
+            else pieces.add(part.replaceAll("^[\\s/|-]+|[\\s/|-]+$", ""));
+        }
         for (boolean japaneseFirst : new boolean[]{true,false}) for (String part : pieces) {
             String value = part.trim(), key = normalize(value);
             if (value.isEmpty() || COVER.matcher(value).matches() || normalize(artist).contains(key)
-                    || Arrays.asList("kenshiyonezu","米津玄師","요네즈켄시","yoasobi").contains(key)) continue;
+                    || KNOWN_ARTISTS.contains(key)) continue;
             if (!japaneseFirst || japanese(value)) candidates.add(value);
         }
         String koreanAlias=koreanTitleAlias(text.trim());
@@ -435,6 +449,8 @@ final class HangulReadingEngine {
         else {
             if (learnedUrl != null && !learnedUrl.isEmpty()) pending.add(checkedUrl(learnedUrl));
             for (String name : titles.subList(0, Math.min(3,titles.size()))) {
+            // A bracketed or feat. variant is never a document name; leave it to search.
+            if (name.matches("(?is).*(?:[\\[\\]()（）]|\\bfeat\\b|\\bft\\.).*")) continue;
             pending.add("https://namu.wiki/w/" + encode(name));
             if ((title + artist).toLowerCase(Locale.ROOT).matches(".*(?:kenshi|yonezu|米津玄師|요네즈).*"))
                 pending.add("https://namu.wiki/w/" + encode(name + "(요네즈 켄시)"));
@@ -506,39 +522,54 @@ final class HangulReadingEngine {
             if (!MISSING.equals(existing) || !japanese(original)) { result.add(existing); continue; }
             if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             if (tokenizer == null) tokenizer = new Tokenizer();
-            StringBuilder output = new StringBuilder();
+            StringBuilder readings = new StringBuilder();
             for (Token token : tokenizer.tokenize(original)) {
-                String reading = token.getReading();
-                if (reading == null || reading.equals("*")) reading = token.getSurface();
-                if (token.getSurface().equals("は") && token.getPartOfSpeechLevel1().equals("助詞")) reading = "ワ";
-                if (token.getSurface().equals("へ") && token.getPartOfSpeechLevel1().equals("助詞")) reading = "エ";
-                output.append(kanaToHangul(reading));
+                String surface = token.getSurface(), reading = token.getReading();
+                if (reading == null || reading.equals("*")) reading = surface;
+                if (surface.equals("は") && token.getPartOfSpeechLevel1().equals("助詞")) reading = "ワ";
+                if (surface.equals("へ") && token.getPartOfSpeechLevel1().equals("助詞")) reading = "エ";
+                // A kanji verb's okurigana う (思う, 迷う) is spoken, unlike a long vowel.
+                if (surface.endsWith("う") && reading.endsWith("ウ") && SMALL.indexOf(reading.charAt(Math.max(0, reading.length() - 2))) < 0
+                        && surface.codePoints().anyMatch(c -> c >= 0x4e00 && c <= 0x9fff))
+                    reading = reading.substring(0, reading.length() - 1) + VERB_U;
+                readings.append(reading);
             }
-            String value = output.toString();
+            // Convert once so a sokuon or long vowel at a token boundary joins the previous syllable.
+            String value = kanaToHangul(readings.toString());
             result.add(HANGUL.matcher(value).find() ? value : MISSING);
         }
         return result;
     }
 
+    // Marks a verb-ending う that is pronounced; kanaToHangul writes it as 우 instead of dropping it.
+    private static final char VERB_U = '\ue000';
+    private static final String SMALL = "ぁぃぅぇぉゃゅょァィゥェォャュョ";
+
+    /** Follows authored lyric readings: long vowels dropped (どうして -> 도시테), っ as ㅅ, ん as ㄴ. */
     static String kanaToHangul(String input) {
         String text = Normalizer.normalize(input, Normalizer.Form.NFKC);
         StringBuilder hiragana = new StringBuilder();
         for (char c : text.toCharArray()) hiragana.append(c >= 'ァ' && c <= 'ヶ' ? (char)(c - 0x60) : c);
         text = hiragana.toString();
         StringBuilder result = new StringBuilder();
-        String[] vowels = {"아","애","아","애","어","에","어","에","오","아","애","에","오","우","어","에","이","우","으","이","이"};
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i), next = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
-            if (c == 'っ' || c == 'ん') {
-                int batchim = c == 'ん' ? ("まみむめもばびぶべぼぱぴぷぺぽ".indexOf(next) >= 0 ? 16 : 4)
-                        : ("かきくけこがぎぐげご".indexOf(next) >= 0 ? 1 : "ぱぴぷぺぽばびぶべぼ".indexOf(next) >= 0 ? 17 : 19);
-                int last = result.length() - 1;
-                if (last >= 0 && result.charAt(last) >= '가' && result.charAt(last) <= '힣' && (result.charAt(last) - '가') % 28 == 0)
-                    result.setCharAt(last, (char)(result.charAt(last) + batchim));
+            int last = result.length() - 1, offset = last >= 0 ? result.charAt(last) - '가' : -1;
+            int vowel = offset >= 0 && offset < 11172 ? offset % 588 / 28 : -1;
+            boolean open = vowel >= 0 && offset % 28 == 0;
+            // う extends o, yo, u, yu and eu; お extends o and yo; え extends e and ye. いい keeps its second い.
+            boolean lengthens = c == 'う' ? vowel == 8 || vowel == 12 || vowel == 13 || vowel == 17 || vowel == 18
+                    : c == 'お' ? vowel == 8 || vowel == 12 : c == 'え' && (vowel == 5 || vowel == 7);
+            if (c == VERB_U) result.append('우');
+            else if (c == 'っ' || c == 'ん') {
+                if (open) result.setCharAt(last, (char)(result.charAt(last) + (c == 'ん' ? 4 : 19)));
                 else result.append(c == 'ん' ? "응" : "읏");
             } else if (c == 'ー') {
-                int last = result.length() - 1, offset = last >= 0 ? result.charAt(last) - '가' : -1;
-                result.append(offset >= 0 && offset < 11172 ? vowels[offset % 588 / 28] : "ー");
+                // A lengthened e is written as 이 (ゲーム -> 게이무); other long vowels are dropped.
+                if (vowel == 5 || vowel == 7) result.append('이');
+                else if (vowel < 0) result.append('ー');
+            } else if (open && lengthens && SMALL.indexOf(next) < 0) {
+                continue;
             } else {
                 String pair = i + 1 < text.length() ? TITLE_HANGUL.get(text.substring(i, i + 2)) : null;
                 if (pair != null) { result.append(pair); i++; }

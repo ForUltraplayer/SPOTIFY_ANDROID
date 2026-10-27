@@ -5,6 +5,7 @@ import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.headerTint
 
 import com.music.spotui.ui.theme.AppMuted
+import androidx.compose.foundation.layout.heightIn
 
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -518,6 +519,11 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
     var playlistMenu by remember { mutableStateOf(false) }
     var albumMenu by remember { mutableStateOf(false) }
     var addingSongs by remember { mutableStateOf(false) }
+    // The "+" asks what to add: Spotify songs, or a YouTube link kept on this phone under the playlist.
+    var addChoice by remember { mutableStateOf(false) }
+    var addingLink by remember { mutableStateOf(false) }
+    // Moving rows by hand (the mixed order kept on this phone; Spotify's order is not changed).
+    var editingOrder by remember(p.uri) { mutableStateOf(false) }
     var leaveAsk by remember { mutableStateOf(false) }
     // The profile id comes once per session (and is no Compose state): `name` is set just before it,
     // so reading it here redraws the page when the id is there.
@@ -575,10 +581,17 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
         dismissButton = { androidx.compose.material3.TextButton(onClick = { leaveAsk = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
     )
     if (addingSongs) com.music.spotui.ui.components.AddSongsScreen(p) { added -> addingSongs = false; if (added) vm.reload() }
+    if (addChoice) PlaylistAddChooser(onDismiss = { addChoice = false }, onSpotify = { addingSongs = true }, onYouTube = { addingLink = true })
+    if (addingLink) YouTubeLinkDialog(onDismiss = { addingLink = false }) { track ->
+        addingLink = false
+        com.music.spotui.data.local.LocalPlaylists.addToSpotify(p.uri.substringAfterLast(':'), track)
+        android.widget.Toast.makeText(context, context.getString(R.string.local_added_to, p.name), android.widget.Toast.LENGTH_SHORT).show()
+    }
     if (albumMenu) com.music.spotui.ui.components.AlbumOptionsSheet(p.uri, p.name) { albumMenu = false }
     if (playlistMenu) com.music.spotui.ui.components.PlaylistOptionsSheet(
         page = p,
         onAddSongs = if (p.type == "playlist" && vm.editableContext.value && !p.isBlend) ({ addingSongs = true }) else null,
+        onAddYouTube = if (p.type == "playlist" && vm.editableContext.value && !p.isBlend) ({ addingLink = true }) else null,
         onDismiss = { playlistMenu = false },
         onChanged = { vm.reload() },
         onEdited = { name, description -> vm.showDetails(name, description) },
@@ -645,6 +658,32 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
         }
     }
     val rows = shown.first
+    // A playlist with links or phone files under it, or an order set on this phone: one mixed list
+    // (MixedOrder), shown and played in that order. Without either, the page is Spotify's as before.
+    val playlistId = p.uri.substringAfterLast(':')
+    val mixed = p.type == "playlist" && (com.music.spotui.data.local.LocalPlaylists.additions[playlistId].orEmpty().isNotEmpty()
+        || com.music.spotui.data.local.LocalPlaylists.orders[playlistId] != null)
+    val mixedAll by remember(p, sort) {
+        derivedStateOf {
+            sort.applyMixed(com.music.spotui.data.local.MixedOrder.merge(all,
+                com.music.spotui.data.local.LocalPlaylists.additions[playlistId].orEmpty(),
+                com.music.spotui.data.local.LocalPlaylists.orders[playlistId].orEmpty()))
+        }
+    }
+    val mixedShown by remember(p, find, sort) {
+        derivedStateOf {
+            mixedAll.filter { r -> when (r) {
+                is com.music.spotui.data.local.MixedRow.Spotify -> com.music.spotui.ui.components.matchesFind(find, r.song.title, r.song.singer, r.song.album)
+                is com.music.spotui.data.local.MixedRow.Local -> com.music.spotui.ui.components.matchesFind(find, r.item.title, r.item.artist, r.item.album)
+            } }
+        }
+    }
+    fun playMixed(row: com.music.spotui.data.local.MixedRow?, shuffleIt: Boolean) {
+        val list = mixedAll
+        if (list.isEmpty()) return
+        val at = if (row == null) (if (shuffleIt) list.indices.random() else 0) else list.indexOf(row).coerceAtLeast(0)
+        com.music.spotui.di.MixedPlayback.play(p.uri, p.name, list, at, shuffleIt)
+    }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
@@ -796,11 +835,11 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)
                 ) {
-                    // Own playlist: "Add to this playlist" (search, suggestions), where the small cover was.
+                    // Own playlist: "Add to this playlist" (search, suggestions) or a YouTube link, where the small cover was.
                     if (p.type == "playlist" && vm.editableContext.value && !p.isBlend) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(36.dp).clip(CircleShape).background(AppText.copy(alpha = 0.12f)).pressable(0.9f) { addingSongs = true },
+                            modifier = Modifier.size(36.dp).clip(CircleShape).background(AppText.copy(alpha = 0.12f)).pressable(0.9f) { addChoice = true },
                         ) {
                             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_songs_title), tint = AppText, modifier = Modifier.size(24.dp))
                         }
@@ -843,7 +882,9 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                     // Sorting stays in reach in the header (the search field above the songs is folded).
                     if (findable && all.isNotEmpty()) {
                         Spacer(Modifier.width(16.dp))
-                        TrackSortButton(sort) { sort = it; TrackOrder.save(ctx, p.uri, it) }
+                        TrackSortButton(sort, onEditOrder = if (p.type == "playlist" && !p.isBlend) ({
+                            sort = TrackOrder(); TrackOrder.save(ctx, p.uri, sort); find = ""; editingOrder = true
+                        }) else null) { sort = it; TrackOrder.save(ctx, p.uri, it) }
                     }
                     Spacer(Modifier.weight(1f))
                     val smart = SmartShuffle.on.value == p.uri
@@ -889,6 +930,7 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                                     isThisContext && playing -> SongPlayer.pause()
                                     isThisContext -> SongPlayer.play()
                                     p.tracks.isNotEmpty() && SmartShuffle.on.value == p.uri -> vm.playSmart(p, null)
+                                    mixed -> playMixed(null, shuffle)
                                     p.tracks.isNotEmpty() -> vm.play(p, if (shuffle) p.tracks.random() else sort.apply(p.tracks).first(), sort)
                                 }
                             }
@@ -937,7 +979,36 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
         if (shown.first.isEmpty() && find.isNotBlank()) item(key = "find-empty") {
             com.music.spotui.ui.components.FindInListEmpty(stringResource(R.string.assisted_curation_search_empty_view_no_result_title, find.trim()))
         }
-        val (listed, keys) = shown
+        if (editingOrder) item(key = "order-edit") {
+            MixedOrderBar(
+                onReset = { com.music.spotui.data.local.LocalPlaylists.setOrder(playlistId, emptyList()) },
+                onDone = { editingOrder = false },
+            )
+        }
+        if (mixed || editingOrder) itemsIndexed(mixedShown, key = { _, r -> r.key }) { index, row ->
+            val move = { to: Int ->
+                com.music.spotui.data.local.LocalPlaylists.setOrder(playlistId, com.music.spotui.data.local.MixedOrder.move(mixedAll, index, to))
+            }
+            when (row) {
+                is com.music.spotui.data.local.MixedRow.Spotify -> if (editingOrder) MovableRow(row.song.title, row.song.singer, index, mixedShown.size, move)
+                else com.music.spotui.ui.components.SwipeToQueue(row.song) { TrackRow(
+                    song = row.song,
+                    showCover = true,
+                    isCurrent = row.song.id == currentSongId && !com.music.spotui.di.LocalPlayer.active.value,
+                    saved = SongPlayer.library["spotify:track:${row.song.spotifyTrackId}"] ?: ("spotify:track:${row.song.spotifyTrackId}" in saved),
+                    offline = com.music.spotui.data.offline.OfflineStore.statusOf(row.song.spotifyTrackId),
+                    addedBy = vm.adders.value.let { a -> a["row:" + row.song.rowUid] ?: a["song:" + row.song.spotifyTrackId] },
+                    onClick = { if (SmartShuffle.on.value == p.uri) vm.playSmart(p, row.song) else playMixed(row, false) },
+                    onMore = { menuSong = row.song },
+                ) }
+                is com.music.spotui.data.local.MixedRow.Local -> if (editingOrder) MovableRow(row.item.title, row.item.artist, index, mixedShown.size, move)
+                else com.music.spotui.ui.components.SwipeToRemove(row.item.key, onRemove = { com.music.spotui.data.local.LocalPlaylists.removeFromSpotify(playlistId, row.item.key) }) {
+                    val np = SongPlayer.nowPlaying.value
+                    LocalItemRow(row.item, com.music.spotui.di.LocalPlayer.active.value && np.uri == "local:${row.item.toTrack().id}") { playMixed(row, false) }
+                }
+            }
+        }
+        val (listed, keys) = if (mixed || editingOrder) emptyList<SongsModel>() to emptyList() else shown
         itemsIndexed(listed, key = { i, _ -> keys[i] }) { _, song ->
             com.music.spotui.ui.components.SwipeToQueue(song) { TrackRow(
                 song = song,
@@ -952,18 +1023,6 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
         }
         // "Recommended songs", as under an own playlist in the official apps (an empty one too).
         if (p.type == "playlist" && vm.editableContext.value && find.isBlank() && !p.isBlend) recommendedItems(vm, p, ctx, currentSongId)
-        // Phone files added to this Spotify playlist on this phone (Spotify can't hold them).
-        if (p.type == "playlist") {
-            val playlistId = p.uri.substringAfterLast(":")
-            val additions = com.music.spotui.data.local.LocalPlaylists.additions[playlistId].orEmpty()
-            if (additions.isNotEmpty()) {
-                item {
-                    Text(stringResource(R.string.local_added_section), color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(16.dp, 20.dp, 16.dp, 4.dp))
-                }
-                localItems(additions, p.name) { com.music.spotui.data.local.LocalPlaylists.removeFromSpotify(playlistId, it.key) }
-            }
-        }
         // An album: Spotify's "More like this", albums close to its first song.
         if (p.type == "album") item(key = "similar") { SimilarAlbums(navController, p.tracks.firstOrNull()?.spotifyTrackId.orEmpty(), p.uri) }
         item { Spacer(Modifier.height(com.music.spotui.ui.components.bottomBarsSpace())) }
@@ -1441,6 +1500,20 @@ data class TrackOrder(val sort: TrackSort = TrackSort.CUSTOM, val reversed: Bool
 
     fun apply(songs: List<SongsModel>): List<SongsModel> = sort.natural(songs).let { if (reversed) it.asReversed() else it }
 
+    /** A mixed list (MixedOrder) sorted the same way; a phone item sorts by its title, artist, album and length, last by date added. */
+    fun applyMixed(rows: List<com.music.spotui.data.local.MixedRow>): List<com.music.spotui.data.local.MixedRow> {
+        if (sort == TrackSort.CUSTOM) return if (reversed) rows.asReversed() else rows
+        val rowOf = java.util.IdentityHashMap<SongsModel, com.music.spotui.data.local.MixedRow>()
+        val songs = rows.map { r ->
+            when (r) {
+                is com.music.spotui.data.local.MixedRow.Spotify -> r.song
+                is com.music.spotui.data.local.MixedRow.Local -> SongsModel(id = 0, title = r.item.title, album = r.item.album, singer = r.item.artist,
+                    coverUri = r.item.artUri, url = "", durationMs = r.item.durationMs.toInt())
+            }.also { rowOf[it] = r }
+        }
+        return apply(songs).map { rowOf.getValue(it) }
+    }
+
     companion object {
         private const val PREFS = "track_sort"
 
@@ -1460,7 +1533,7 @@ data class TrackOrder(val sort: TrackSort = TrackSort.CUSTOM, val reversed: Bool
 
 /** Spotify's sort menu: picking the sort already chosen flips its direction (the arrow shows it). */
 @Composable
-private fun TrackSortButton(sort: TrackOrder, onSort: (TrackOrder) -> Unit) {
+private fun TrackSortButton(sort: TrackOrder, onEditOrder: (() -> Unit)? = null, onSort: (TrackOrder) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Icon(androidx.compose.material.icons.Icons.Default.SwapVert,
@@ -1480,10 +1553,42 @@ private fun TrackSortButton(sort: TrackOrder, onSort: (TrackOrder) -> Unit) {
                     onClick = { open = false; onSort(if (option == sort.sort) sort.copy(reversed = !sort.reversed) else TrackOrder(option)) },
                 )
             }
+            // The custom order changed by hand, YouTube links and phone files included; kept on this phone.
+            if (onEditOrder != null) androidx.compose.material3.DropdownMenuItem(
+                text = { Text("순서 직접 편집 (이 기기)", color = AppText) },
+                onClick = { open = false; onEditOrder() },
+            )
         }
     }
 }
 
+
+/** The bar over the rows while they are moved by hand: back to Spotify's order, and done. */
+@Composable
+private fun MixedOrderBar(onReset: () -> Unit, onDone: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("위아래 버튼으로 옮기면 이 기기에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.", color = AppMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        androidx.compose.material3.TextButton(onClick = onReset) { Text("Spotify 순서로", color = AppText) }
+        androidx.compose.material3.TextButton(onClick = onDone) { Text("완료", color = SpotifyGreen) }
+    }
+}
+
+/** A row while the order is edited: its title and buttons that move it one place up or down. */
+@Composable
+private fun MovableRow(title: String, artist: String, index: Int, count: Int, move: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp).heightIn(min = 56.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = AppText, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (artist.isNotBlank()) Text(artist, color = AppMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        androidx.compose.material3.IconButton(enabled = index > 0, onClick = { move(index - 1) }) {
+            Icon(Icons.Default.ArrowUpward, contentDescription = "위로", tint = if (index > 0) AppText else AppMuted)
+        }
+        androidx.compose.material3.IconButton(enabled = index < count - 1, onClick = { move(index + 1) }) {
+            Icon(Icons.Default.ArrowDownward, contentDescription = "아래로", tint = if (index < count - 1) AppText else AppMuted)
+        }
+    }
+}
 
 /** "More like this" under an album: Spotify's similar albums, from its first song. */
 @OptIn(com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi::class)
