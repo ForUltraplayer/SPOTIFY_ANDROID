@@ -6,6 +6,8 @@ A build of the Android Spotify app [Myspoti](https://github.com/kota-zo/myspoti)
 
 Current version: 2.0.1-hangul.9.
 
+> An unofficial hobby project. Maintenance and updates are not guaranteed, so please read the [Disclaimer](#disclaimer) first.
+
 **[⬇ Download APK (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
 
 PC version: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
@@ -108,6 +110,7 @@ See [upstream maintenance](docs/MAINTENANCE.md) (Korean) for release detection, 
 
 ## Disclaimer
 
+- This is an unofficial hobby project, provided as is without any warranty. Maintenance, updates and replies to issues happen when time allows and may stop without notice. Spotify changes can break features at any time.
 - This project is not affiliated with, endorsed by or sponsored by Spotify AB. Spotify is a trademark of Spotify AB.
 - The ad blocking and download-source extensions of the original Myspoti are kept as is. Blocking ads goes against the [Spotify Terms of Use](https://www.spotify.com/us/legal/end-user-agreement/), and Spotify may restrict accounts that do it. Use it at your own risk.
 - Lyrics and Hangul readings belong to their respective rights holders. This project does not distribute lyrics; they are only looked up and cached on your own device.

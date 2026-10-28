@@ -6,6 +6,8 @@
 
 현재 2.0.1-hangul.9 정식 버전입니다.
 
+> 개인이 취미로 만든 비공식 프로젝트입니다. 유지보수와 업데이트를 보장하지 않으니 [면책](#면책) 내용을 먼저 읽어 주세요.
+
 **[⬇ APK 다운로드 (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
 
 PC 버전: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
@@ -108,6 +110,7 @@ release 빌드에는 서명 설정이 필요합니다 (`MYSPOTI_KEYSTORE`, `MYSP
 
 ## 면책
 
+- 개인이 취미로 만든 비공식 프로젝트이며, 있는 그대로 제공하고 어떤 보증도 하지 않습니다. 유지보수, 업데이트, 문의 답변은 시간이 날 때 하며 예고 없이 멈출 수 있습니다. Spotify가 바뀌면 일부 기능이 언제든 동작하지 않을 수 있습니다.
 - 이 프로젝트는 Spotify AB와 관련이 없으며 Spotify의 승인이나 보증을 받지 않았습니다. Spotify는 Spotify AB의 상표입니다.
 - 원본 Myspoti의 광고 차단과 다운로드 확장 기능이 그대로 들어 있습니다. 광고 차단은 [Spotify 이용 약관](https://www.spotify.com/kr-ko/legal/end-user-agreement/)에 어긋나며 Spotify가 계정을 제한할 수 있습니다. 사용에 따른 책임은 사용자에게 있습니다.
 - 가사와 한글 발음 자료의 권리는 각 권리자에게 있습니다. 이 프로젝트는 가사를 배포하지 않고 사용자의 기기에서만 조회하고 저장합니다.
