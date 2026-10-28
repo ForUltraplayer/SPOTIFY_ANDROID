@@ -1,5 +1,4 @@
 ﻿# @file build-hangul.ps1
-# @author: ForUltraplayer
 # @brief Build and test the Android Hangul fork without requiring a connected phone.
 param(
     [string]$JavaHome = $env:JAVA_HOME,

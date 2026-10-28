@@ -1,5 +1,4 @@
 // @file MixedOrder.kt
-// @author: ForUltraplayer
 // @brief Merge a Spotify playlist with the links and phone files kept on this phone into one order of the user's.
 package com.music.spotui.data.local
 

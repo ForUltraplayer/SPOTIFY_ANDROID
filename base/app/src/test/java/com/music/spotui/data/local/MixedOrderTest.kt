@@ -1,5 +1,4 @@
 // @file MixedOrderTest.kt
-// @author: ForUltraplayer
 // @brief Check the mixed playlist order: merging, persistence, Spotify-side changes and the order songs play in.
 package com.music.spotui.data.local
 

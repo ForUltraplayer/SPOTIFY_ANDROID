@@ -1,5 +1,4 @@
 // @file YouTubeLinks.kt
-// @author: ForUltraplayer
 // @brief Keep YouTube videos as phone-only list items and resolve their audio when they play.
 package com.music.spotui.video
 

@@ -1,5 +1,4 @@
 // @file YouTubeLinkDialogs.kt
-// @author: ForUltraplayer
 // @brief Add YouTube links to phone lists and move phone lists in and out as files.
 package com.music.spotui.ui.screens
 

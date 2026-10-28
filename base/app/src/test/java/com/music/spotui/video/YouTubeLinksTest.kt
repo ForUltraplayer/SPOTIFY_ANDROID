@@ -1,5 +1,4 @@
 // @file YouTubeLinksTest.kt
-// @author: ForUltraplayer
 // @brief Check that a newly issued YouTube audio address is waited for only while it answers 403.
 package com.music.spotui.video
 

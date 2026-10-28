@@ -106,6 +106,14 @@ release 빌드에는 서명 설정이 필요합니다 (`MYSPOTI_KEYSTORE`, `MYSP
 
 </details>
 
+## 면책
+
+- 이 프로젝트는 Spotify AB와 관련이 없으며 Spotify의 승인이나 보증을 받지 않았습니다. Spotify는 Spotify AB의 상표입니다.
+- 원본 Myspoti의 광고 차단과 다운로드 확장 기능이 그대로 들어 있습니다. 광고 차단은 [Spotify 이용 약관](https://www.spotify.com/kr-ko/legal/end-user-agreement/)에 어긋나며 Spotify가 계정을 제한할 수 있습니다. 사용에 따른 책임은 사용자에게 있습니다.
+- 가사와 한글 발음 자료의 권리는 각 권리자에게 있습니다. 이 프로젝트는 가사를 배포하지 않고 사용자의 기기에서만 조회하고 저장합니다.
+- YouTube 재생에는 YouTube 이용 약관이 적용됩니다.
+- 권리자가 요청하면 해당 부분을 내립니다. [이슈](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/issues)로 연락해 주세요.
+
 ## 라이선스
 
 원본 Myspoti와 같은 GPL-3.0입니다. 외부 구성 요소는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.

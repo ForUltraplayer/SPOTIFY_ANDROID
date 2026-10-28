@@ -1,5 +1,4 @@
 # @file maintain_upstream.py
-# @author: ForUltraplayer
 # @brief Detect Myspoti updates and prepare, verify and promote isolated merge candidates.
 import argparse
 from datetime import datetime, timezone

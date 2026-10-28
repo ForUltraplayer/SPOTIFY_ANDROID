@@ -1,5 +1,4 @@
 // @file LyricsOffsetsTest.kt
-// @author: ForUltraplayer
 // @brief Check how a per-song lyric timing adjustment is described to the user.
 package com.music.spotui.data.api
 

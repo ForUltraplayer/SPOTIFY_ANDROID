@@ -1,5 +1,4 @@
 // @file MixedPlayback.kt
-// @author: ForUltraplayer
 // @brief Play a Spotify playlist with the phone's links and files among its songs, in the order shown.
 package com.music.spotui.di
 

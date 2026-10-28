@@ -1,5 +1,4 @@
 // @file MixedNavigator.kt
-// @author: ForUltraplayer
 // @brief Decide which player plays which row of a mixed list on every Next, Previous and song change.
 package com.music.spotui.data.local
 

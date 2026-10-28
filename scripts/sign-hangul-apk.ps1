@@ -1,5 +1,4 @@
 # @file sign-hangul-apk.ps1
-# @author: ForUltraplayer
 # @brief Sign the Gradle release APK with the personal release key and confirm it matches the installed app's signer.
 param([string]$Apk = (Join-Path $PSScriptRoot '..\base\app\build\outputs\apk\release\app-release.apk'),
       [string]$SigningDirectory = '(signing folder)')

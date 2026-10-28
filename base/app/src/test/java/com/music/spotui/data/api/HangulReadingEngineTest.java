@@ -1,5 +1,4 @@
 // @file HangulReadingEngineTest.java
-// @author: ForUltraplayer
 // @brief Regression checks for original-song readings, host detection and cover timing.
 package com.music.spotui.data.api;
 

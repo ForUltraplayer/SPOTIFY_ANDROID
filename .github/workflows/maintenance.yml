@@ -1,5 +1,4 @@
 # @file maintenance.yml
-# @author: ForUltraplayer
 # @brief Detect Myspoti releases and test the fork identity and lyrics contracts without release signing keys.
 name: Android upstream maintenance
 on:

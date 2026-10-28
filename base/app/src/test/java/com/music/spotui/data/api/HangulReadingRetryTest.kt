@@ -1,5 +1,4 @@
 // @file HangulReadingRetryTest.kt
-// @author: ForUltraplayer
 // @brief Verify bounded pronunciation retries, cancellation and negative-cache recovery.
 package com.music.spotui.data.api
 

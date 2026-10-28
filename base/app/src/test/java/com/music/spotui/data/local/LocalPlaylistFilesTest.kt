@@ -1,5 +1,4 @@
 // @file LocalPlaylistFilesTest.kt
-// @author: ForUltraplayer
 // @brief Check phone-list export, import into a new list, and refusal of foreign or unreadable data.
 package com.music.spotui.data.local
 

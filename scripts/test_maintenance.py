@@ -1,5 +1,4 @@
 # @file test_maintenance.py
-# @author: ForUltraplayer
 # @brief Preserve Android identity and prevent unresolved or stale upstream candidates from being promoted.
 import argparse
 import json

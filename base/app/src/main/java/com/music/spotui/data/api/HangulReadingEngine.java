@@ -1,5 +1,4 @@
 // @file HangulReadingEngine.java
-// @author: ForUltraplayer
 // @brief Match existing Korean readings to original Japanese lyrics, including covers.
 package com.music.spotui.data.api;
 

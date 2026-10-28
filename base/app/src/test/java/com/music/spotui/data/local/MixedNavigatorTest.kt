@@ -1,5 +1,4 @@
 // @file MixedNavigatorTest.kt
-// @author: ForUltraplayer
 // @brief Walk mixed lists back and forth with both players and check the row playing is always the one shown.
 package com.music.spotui.data.local
 

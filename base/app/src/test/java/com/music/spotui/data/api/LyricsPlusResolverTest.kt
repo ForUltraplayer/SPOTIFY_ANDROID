@@ -1,5 +1,4 @@
 // @file LyricsPlusResolverTest.kt
-// @author: ForUltraplayer
 // @brief Verify cover identity, normalized candidates, throttling and bounded network behavior.
 package com.music.spotui.data.api
 

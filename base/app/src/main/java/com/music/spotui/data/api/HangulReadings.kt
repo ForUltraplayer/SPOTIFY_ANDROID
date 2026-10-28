@@ -1,5 +1,4 @@
 // @file HangulReadings.kt
-// @author: ForUltraplayer
 // @brief Read authored Hangul lyrics with validated aliases and opt-in offline completion.
 package com.music.spotui.data.api
 

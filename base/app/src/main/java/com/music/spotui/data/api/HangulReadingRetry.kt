@@ -1,5 +1,4 @@
 // @file HangulReadingRetry.kt
-// @author: ForUltraplayer
 // @brief Bound current-song pronunciation retries and allow limited negative-cache bypasses.
 package com.music.spotui.data.api
 

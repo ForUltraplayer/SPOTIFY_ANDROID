@@ -1,5 +1,4 @@
 // @file LyricsPlusResolver.kt
-// @author: ForUltraplayer
 // @brief Resolve the same recording with bounded metadata candidates and transient-server cooldowns.
 package com.music.spotui.data.api
 

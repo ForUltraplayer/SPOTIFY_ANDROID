@@ -1,5 +1,4 @@
 // @file LyricsOffsets.kt
-// @author: ForUltraplayer
 // @brief Keep a bounded per-song lyric timing adjustment, as the PC version's sync control does.
 package com.music.spotui.data.api
 
