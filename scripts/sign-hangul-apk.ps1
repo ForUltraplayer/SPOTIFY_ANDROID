@@ -1,8 +1,10 @@
 # @file sign-hangul-apk.ps1
 # @brief Sign the Gradle release APK with the personal release key and confirm it matches the installed app's signer.
 param([string]$Apk = (Join-Path $PSScriptRoot '..\base\app\build\outputs\apk\release\app-release.apk'),
-      [string]$SigningDirectory = '(signing folder)')
+      # The key folder stays outside the repository; its location comes from the signing PC.
+      [string]$SigningDirectory = $env:HANGUL_SIGNING_DIR)
 $ErrorActionPreference = 'Stop'
+if (-not $SigningDirectory) { throw 'Pass -SigningDirectory or set HANGUL_SIGNING_DIR to the folder holding hangul-release.p12.' }
 $keystore = Join-Path $SigningDirectory 'hangul-release.p12'
 # One line holding the keystore password, kept beside the key and outside the repository.
 # Without it apksigner asks for the password as before.
