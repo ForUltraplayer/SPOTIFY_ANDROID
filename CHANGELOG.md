@@ -9,6 +9,7 @@ Each release on GitHub shows its section below. The app shows it too when it off
 - Per-song lyric sync adjustment in the lyrics menu
 - YouTube links in Spotify playlists (the playlist's + and ⋮), mixed with its songs in an order kept on this phone; Next, Previous and shuffle follow it
 - Export and import phone lists as files; an unreadable list file is kept aside instead of being replaced
+- In-app update check now includes regular releases, not only pre-releases (hangul.5 and earlier: install this APK by hand once)
 
 ## 2.0.1-hangul.5
 

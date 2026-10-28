@@ -4,7 +4,7 @@
 
 A build of the Android Spotify app [Myspoti](https://github.com/kota-zo/myspoti) that adds Korean (Hangul) pronunciation for Japanese song lyrics. Pronunciation is pulled from Haneum and Namuwiki and matched line by line. Everything runs in the app, no PC or server needed.
 
-Current version: 2.0.1-hangul.9 beta.
+Current version: 2.0.1-hangul.9.
 
 **[⬇ Download APK (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
 
@@ -20,8 +20,10 @@ Requires Android 10+. Free Spotify accounts work. Installs as a separate app (`a
 
 ## Updates
 
-- **hangul.5 and later**: the app checks for new versions and prompts you to update.
-- **hangul.4 and earlier**: download the new APK and install it over the existing app. No need to uninstall.
+- **hangul.9 and later**: the app checks for new versions and prompts you to update.
+- **hangul.5 and earlier**: download the hangul.9 APK once and install it over the existing app. No need to uninstall. From then on, the app tells you about updates.
+
+Apps up to hangul.5 only check pre-releases, so they can't see hangul.9, which is a regular release.
 
 ## Login
 
@@ -39,11 +41,35 @@ Requires Android 10+. Free Spotify accounts work. Installs as a separate app (`a
 - Remembers matched sources for faster display next time
 - Falls back to searching without feat., by lead artist, or with cleaned-up cover titles
 - Retries failed lookups (up to 3 times, 2 s apart)
-- Automatic pronunciation for missing lines using an on-device dictionary (off by default)
+- Automatic pronunciation for missing lines using an on-device dictionary (off by default), following Haneum/Namuwiki conventions (long vowels dropped, っ as final ㅅ, ん as final ㄴ)
 - Copy song title (long-press the title in the lyrics view)
-- Per-song lyric sync adjustment (lyrics menu)
-- YouTube links in Spotify playlists, played mixed with the Spotify songs (the playlist's + and ⋮). Reorder them with the sort menu's manual edit; the order is kept on this phone only and Spotify's own order is unchanged.
+- Per-song lyric sync adjustment (**가사 싱크 조절** in the lyrics menu, 0.25 s and 1 s steps, up to 60 s either way)
+- YouTube links in Spotify playlists, played together with the Spotify songs (see below)
 - Export and import phone lists as files
+
+## YouTube links and mixed playlists
+
+**Adding a link**
+
+- The Spotify playlist page's + → **YouTube 링크 추가** (Add YouTube link)
+- The playlist's ⋮ menu → **YouTube 링크 추가**
+- The library's + → **YouTube 링크 추가** (then pick a phone list or a Spotify playlist)
+- A phone list's ⋮ → **YouTube 링크 추가**
+
+Paste a YouTube or YouTube Music address. The optional title and artist are used to look up lyrics; left empty, the video's title and channel are used. For cover videos, entering the original title and artist finds lyrics more reliably. Private or removed videos are reported when you add them.
+
+**Order and playback**
+
+- YouTube links and phone files show among the Spotify songs as one list. They start after the Spotify songs.
+- Use the sort menu (⇅) → **순서 직접 편집 (이 기기)** (edit order on this device) and the up/down buttons; **Spotify 순서로** restores Spotify's order.
+- The order is kept on this phone only. The playlist's order on Spotify never changes, even when you only move Spotify songs.
+- YouTube plays audio only, no video. Next, Previous, shuffle and repeat follow the order on screen.
+- Swipe an item to the left to remove it from the list.
+
+**List files**
+
+- A phone list's ⋮ → **파일로 내보내기** saves it as a JSON file; the library's + → **목록 파일 가져오기** creates a new list from one. Existing lists are never overwritten.
+- On another phone only the YouTube links play; phone files point to the original phone's storage.
 
 For Myspoti's original features, see the [original README](README_UPSTREAM.md).
 
@@ -52,6 +78,9 @@ For Myspoti's original features, see the [original README](README_UPSTREAM.md).
 - Songs without Hangul pronunciation online won't show any.
 - Automatic pronunciation may not match how kanji are actually sung.
 - Google login may not work (see Login above).
+- YouTube links and the mixed order live on this phone only. Other devices and the official Spotify app don't see them.
+- Videos that need sign-in or are age-restricted may not play. YouTube audio quality is not affected by Spotify's quality setting.
+- Moving through mixed playlists with Bluetooth or lock-screen buttons hasn't been tested separately.
 
 ## Development
 

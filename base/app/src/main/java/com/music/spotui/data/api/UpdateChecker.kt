@@ -37,10 +37,7 @@ object UpdateChecker {
                 if (!r.isSuccessful) return@runCatching null
                 val text = r.body.string()
                 val list = if (isBeta) org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.getJSONObject(it) } } else listOf(JSONObject(text))
-                // Betas and releases are two apps: each one is offered its own channel only.
-                list.filter { !it.optBoolean("draft") && (!isBeta || it.optBoolean("prerelease")) }
-                    .map { Release(it.getString("tag_name").removePrefix("v"), it.getString("html_url"), cleanNotes(it.optString("body")), apkAsset(it)) }
-                    .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
+                newest(list, BuildConfig.VERSION_NAME)
             }
         }.getOrNull()
         prefs.edit().putLong("checked_at", now)
@@ -48,6 +45,16 @@ object UpdateChecker {
             .putString("notes", release?.notes).putString("apk", release?.apkUrl).apply()
         pending(prefs)
     }
+
+    /**
+     * The newest of GitHub's [releases] that a build of [version] takes. Betas and releases are two
+     * apps: each one is offered its own channel only. The Hangul builds are one app published both
+     * ways (pre-releases first, then releases), so they take either.
+     */
+    internal fun newest(releases: List<JSONObject>, version: String): Release? =
+        releases.filter { !it.optBoolean("draft") && (hangulChannel(version) || !betaChannel(version) || it.optBoolean("prerelease")) }
+            .map { Release(it.getString("tag_name").removePrefix("v"), it.getString("html_url"), cleanNotes(it.optString("body")), apkAsset(it)) }
+            .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
 
     /** The latest release known, if newer than this build and not dismissed. */
     private fun pending(prefs: android.content.SharedPreferences): Release? {
@@ -92,6 +99,8 @@ object UpdateChecker {
 
     /** This build is a beta ("2.0.0-beta.1"). */
     internal fun betaChannel(version: String) = version.contains("-beta") || version.contains("-hangul.")
+    /** A Hangul build ("2.0.1-hangul.9"): it reads the release list as betas do, and takes its releases too. */
+    internal fun hangulChannel(version: String) = version.contains("-hangul.")
     val isBeta get() = betaChannel(BuildConfig.VERSION_NAME)
 
     /**

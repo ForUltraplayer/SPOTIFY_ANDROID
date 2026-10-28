@@ -4,8 +4,8 @@
   "applicationId": "app.myspoti.hangul",
   "upstream": "kota-zo/myspoti",
   "upstreamCommit": "d99d09db66a79b22643b7b87b30b00e4b8b232ce",
-  "deviceValidation": "pending",
-  "channel": "beta",
+  "deviceValidation": "passed",
+  "channel": "stable",
   "updateRepository": "ForUltraplayer/SPOTIFY_ANDROID",
   "upstreamTag": "v2.0.2-beta.4"
 }
