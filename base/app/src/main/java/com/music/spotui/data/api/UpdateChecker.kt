@@ -22,28 +22,47 @@ object UpdateChecker {
     private const val INTERVAL_MS = 3 * 3_600_000L
     private val http by lazy { OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).addInterceptor(com.music.spotui.data.DataSaver.interceptor).build() }
 
-    suspend fun check(context: Context): Release? = withContext(Dispatchers.IO) {
+    /** The launch check: at most every 3 hours, and a failed request only leaves the last answer. */
+    suspend fun check(context: Context): Release? = check(context, manual = false)
+
+    /** The Settings button: asks now, offers a dismissed release again, and throws when GitHub can't be read. */
+    suspend fun checkNow(context: Context): Release? = check(context, manual = true)
+
+    private suspend fun check(context: Context, manual: Boolean): Release? = withContext(Dispatchers.IO) {
         val repo = BuildConfig.UPDATE_REPO
         if (repo.isBlank()) return@withContext null
         val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
-        if (now - prefs.getLong("checked_at", 0L) < INTERVAL_MS) return@withContext pending(prefs)
-        val release = runCatching {
-            // Stable builds follow "latest", which never includes pre-releases. A beta build
-            // also takes the newer betas, then the release they lead to.
-            val url = if (isBeta) "https://api.github.com/repos/$repo/releases?per_page=10" else "https://api.github.com/repos/$repo/releases/latest"
-            val request = Request.Builder().url(url).header("Accept", "application/vnd.github+json").build()
-            http.newCall(request).execute().use { r ->
-                if (!r.isSuccessful) return@runCatching null
-                val text = r.body.string()
-                val list = if (isBeta) org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.getJSONObject(it) } } else listOf(JSONObject(text))
-                newest(list, BuildConfig.VERSION_NAME)
-            }
-        }.getOrNull()
+        check(prefs, System.currentTimeMillis(), manual) { fetch(repo) }
+    }
+
+    /**
+     * [fetch] returns null when the list was read and has nothing for this build, and throws when
+     * it could not be read. Only a read list is saved and counts as a check: a failure must not
+     * erase a known update or hold off the next try for 3 hours.
+     */
+    internal fun check(prefs: android.content.SharedPreferences, now: Long, manual: Boolean, fetch: () -> Release?): Release? {
+        if (!manual && now - prefs.getLong("checked_at", 0L) < INTERVAL_MS) return pending(prefs)
+        val release = try { fetch() } catch (error: Exception) {
+            if (manual || error is kotlinx.coroutines.CancellationException) throw error
+            return pending(prefs)
+        }
         prefs.edit().putLong("checked_at", now)
             .putString("version", release?.version).putString("url", release?.pageUrl)
             .putString("notes", release?.notes).putString("apk", release?.apkUrl).apply()
-        pending(prefs)
+        return pending(prefs, includeDismissed = manual)
+    }
+
+    private fun fetch(repo: String): Release? {
+        // Stable builds follow "latest", which never includes pre-releases. A beta build
+        // also takes the newer betas, then the release they lead to.
+        val url = if (isBeta) "https://api.github.com/repos/$repo/releases?per_page=10" else "https://api.github.com/repos/$repo/releases/latest"
+        val request = Request.Builder().url(url).header("Accept", "application/vnd.github+json").build()
+        return http.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw java.io.IOException("GitHub releases HTTP ${r.code}")
+            val text = r.body.string()
+            val list = if (isBeta) org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.getJSONObject(it) } } else listOf(JSONObject(text))
+            newest(list, BuildConfig.VERSION_NAME)
+        }
     }
 
     /**
@@ -56,11 +75,11 @@ object UpdateChecker {
             .map { Release(it.getString("tag_name").removePrefix("v"), it.getString("html_url"), cleanNotes(it.optString("body")), apkAsset(it)) }
             .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
 
-    /** The latest release known, if newer than this build and not dismissed. */
-    private fun pending(prefs: android.content.SharedPreferences): Release? {
+    /** The latest release known, if newer than this build and not dismissed (unless [includeDismissed]). */
+    private fun pending(prefs: android.content.SharedPreferences, includeDismissed: Boolean = false): Release? {
         val version = prefs.getString("version", null) ?: return null
         val url = prefs.getString("url", null) ?: return null
-        if (prefs.getString("dismissed", null) == version) return null
+        if (!includeDismissed && prefs.getString("dismissed", null) == version) return null
         return Release(version, url, prefs.getString("notes", null).orEmpty(), prefs.getString("apk", null).orEmpty()).takeIf { isNewer(version, BuildConfig.VERSION_NAME) }
     }
 

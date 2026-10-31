@@ -48,6 +48,29 @@ final class HangulReadingEngine {
 
     interface Fetcher { String get(String url) throws IOException; }
 
+    /** The same request would fail the same way again: retrying it only costs requests. */
+    static final class NonRetryable extends IOException {
+        NonRetryable(String message) { super(message); }
+    }
+
+    /** A page answered with a status other than 200 (redirects are followed). */
+    static final class HttpStatus extends IOException {
+        final int status;
+        HttpStatus(int status) { super("문서 조회 HTTP " + status); this.status = status; }
+    }
+
+    /**
+     * A failure that may pass on the next try: network errors, timeouts, server errors and rate
+     * limits. A missing document (404) or a rejected page is the same next time. 403 stays
+     * retryable, as before, since the sites also answer a passing block with it.
+     */
+    static boolean retryable(IOException error) {
+        if (error instanceof NonRetryable) return false;
+        if (!(error instanceof HttpStatus)) return true;
+        int status = ((HttpStatus) error).status;
+        return status >= 500 || status == 403 || status == 408 || status == 429;
+    }
+
     static final class Page {
         final List<String> lines;
         final List<String> links;
@@ -99,11 +122,11 @@ final class HangulReadingEngine {
                     || (uri.getPort() != -1 && uri.getPort() != 443)
                     || !(host.equals("namu.wiki") || host.endsWith(".tistory.com")
                     || (host.equals("haneum.site") && uri.getPath().matches("/songs(?:/[^/]+)?")))) {
-                throw new IOException("한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요.");
+                throw new NonRetryable("한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요.");
             }
             return new URI(uri.getScheme(), uri.getAuthority(), uri.getPath(), uri.getQuery(), null).toASCIIString();
         } catch (IllegalArgumentException | java.net.URISyntaxException e) {
-            throw new IOException("문서 주소를 확인해 주세요.");
+            throw new NonRetryable("문서 주소를 확인해 주세요.");
         }
     }
 
@@ -122,28 +145,28 @@ final class HangulReadingEngine {
                 int status = connection.getResponseCode();
                 if (status >= 300 && status < 400) {
                     String location = connection.getHeaderField("Location");
-                    if (location == null) throw new IOException("문서 이동 주소 없음");
+                    if (location == null) throw new NonRetryable("문서 이동 주소 없음");
                     url = checkedUrl(URI.create(url).resolve(location).toString());
                     continue;
                 }
-                if (status != 200) throw new IOException("문서 조회 HTTP " + status);
+                if (status != 200) throw new HttpStatus(status);
                 String type = connection.getContentType();
                 if (type == null || !(type.startsWith("text/html") || type.startsWith("application/xhtml+xml")))
-                    throw new IOException("HTML 문서가 아닙니다.");
+                    throw new NonRetryable("HTML 문서가 아닙니다.");
                 try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                     byte[] buffer = new byte[8192];
                     int count;
                     while ((count = in.read(buffer)) != -1) {
                         if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
                         remainingTimeout();
-                        if (out.size() + count > 3_000_000) throw new IOException("문서 크기 제한 초과");
+                        if (out.size() + count > 3_000_000) throw new NonRetryable("문서 크기 제한 초과");
                         out.write(buffer, 0, count);
                     }
                     return out.toString("UTF-8");
                 }
             } finally { connection.disconnect(); }
         }
-        throw new IOException("문서 이동 횟수 초과");
+        throw new NonRetryable("문서 이동 횟수 초과");
     }
 
     private static int remainingTimeout() throws IOException {
@@ -439,8 +462,29 @@ final class HangulReadingEngine {
     }
 
     Result resolve(String title, String artist, List<String> originals, String sourceUrl, String learnedUrl, Fetcher fetcher, long remainingMillis) throws IOException {
+        return resolve(title, artist, originals, sourceUrl, learnedUrl, fetcher, remainingMillis, line -> { });
+    }
+
+    /**
+     * Where a page stands, for the diagnostic [log]: site and kind of page, never the address,
+     * whose path and query carry the song title or a lyric line.
+     */
+    static String route(String url) {
+        String host = url.startsWith("https://haneum.site/") ? "haneum" : url.startsWith("https://namu.wiki/") ? "namu" : "other";
+        if (url.startsWith("https://haneum.site/songs?") || url.startsWith("https://namu.wiki/Search?")) return host + " search";
+        return host + (url.startsWith("https://haneum.site/songs/") ? " song" : " page");
+    }
+
+    /** A failed request for the [log]: the status or the exception's kind, without its message. */
+    static String outcome(IOException error) {
+        String kind = error instanceof HttpStatus ? "HTTP " + ((HttpStatus) error).status : error.getClass().getSimpleName();
+        return kind + (retryable(error) ? "" : " (final)");
+    }
+
+    /** [log] gets one line per page and the end of the search, without titles, lyrics or addresses. */
+    Result resolve(String title, String artist, List<String> originals, String sourceUrl, String learnedUrl, Fetcher fetcher, long remainingMillis, java.util.function.Consumer<String> log) throws IOException {
         if (title.length() > 300 || artist.length() > 500 || String.join("\n", originals).length() > 40000)
-            throw new IOException("곡 정보 또는 가사 길이 제한 초과");
+            throw new NonRetryable("곡 정보 또는 가사 길이 제한 초과");
         List<String> titles = titles(title, artist);
         ArrayDeque<String> pending = new ArrayDeque<>();
         boolean manual = sourceUrl != null && !sourceUrl.trim().isEmpty();
@@ -467,6 +511,9 @@ final class HangulReadingEngine {
         long deadline = System.nanoTime() + Math.min(32_000L, remainingMillis) * 1_000_000L;
         requestDeadline.set(deadline);
         int search = 0;
+        // The last failure that may pass on a retry; null when every answer was final.
+        IOException passing = null;
+        Result best = null;
         try {
         while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted() && visited.size() < 20) {
             if (pending.isEmpty()) {
@@ -482,8 +529,12 @@ final class HangulReadingEngine {
                         pending.add((haneum ? "https://haneum.site" : "https://namu.wiki") + link);
                         if (++count >= (haneum ? 4 : 5)) break;
                     }
+                    log.accept("#" + visited.size() + " " + route(url) + " (" + query[1] + "): " + count + " results");
                 }
-                catch (IOException ignored) { }
+                catch (IOException error) {
+                    if (retryable(error)) passing = error;
+                    log.accept("#" + visited.size() + " " + route(url) + " (" + query[1] + "): " + outcome(error));
+                }
                 continue;
             }
             String url = pending.removeFirst(); if (!visited.add(url)) continue;
@@ -493,7 +544,9 @@ final class HangulReadingEngine {
                 if (System.nanoTime() >= deadline) throw new IOException("조회 시간 초과");
                 Page page = parse(markup); Result result = match(originals, page, url);
                 if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
+                log.accept("#" + visited.size() + " " + route(url) + ": match " + result.matched + "/" + result.total + (result.valid() ? ", accepted" : ""));
                 if (result.valid()) return result;
+                if (best == null || result.matched * best.total > best.matched * result.total) best = result;
                 Set<String> names = new HashSet<>();
                 for (String candidate : titles) names.add(normalize(candidate));
                 names.add(normalize(page.title.replaceFirst("\\s*[-–]\\s*나무위키\\s*$", "").split("\\(", 2)[0]));
@@ -507,10 +560,22 @@ final class HangulReadingEngine {
                         if (pending.size() < 12) pending.addFirst("https://namu.wiki"+link);
                     }
                 }
-            } catch (IOException ignored) { }
+            } catch (IOException error) {
+                if (retryable(error)) passing = error;
+                log.accept("#" + visited.size() + " " + route(url) + ": " + outcome(error));
+            }
         }
         } finally { requestDeadline.remove(); }
-        throw new IOException("원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.");
+        String missing = "원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.";
+        // Stopped by the clock or a cancel with pages left: a retry can see what this scan did not.
+        // The 20-page cap is not such a stop, since the same scan visits the same 20 pages.
+        boolean left = (!manual && search < searches.size()) || pending.stream().anyMatch(url -> !visited.contains(url));
+        boolean cut = left && (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted());
+        log.accept("no match in " + visited.size() + " pages" + (best == null ? "" : ", best " + best.matched + "/" + best.total)
+                + (cut ? ", stopped by the clock" : visited.size() >= 20 && left ? ", page limit" : "")
+                + (passing != null || cut ? ", retryable" : ", final"));
+        if (passing != null || cut) throw new IOException(missing, passing);
+        throw new NonRetryable(missing);
     }
 
     List<String> completeAutomatically(List<String> originals, List<String> authored) {

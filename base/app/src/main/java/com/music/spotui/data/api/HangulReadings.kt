@@ -3,6 +3,7 @@
 package com.music.spotui.data.api
 
 import android.content.Context
+import android.util.Log
 import com.music.spotui.data.entity.Lyrics
 import com.music.spotui.di.Graph
 import org.json.JSONArray
@@ -19,6 +20,8 @@ object HangulReadings {
     private val resolutionLock = ReentrantLock()
     private val failures = ReadingFailureCache()
     private const val LIFETIME = 30L * 86400 * 1000
+    /** Diagnostic lines (BetaLogs collects this tag): steps and outcomes, never titles, lyrics or addresses. */
+    private const val TAG = "HangulReadings"
     private fun prefs() = Graph.app.getSharedPreferences("hangul_readings", Context.MODE_PRIVATE)
     fun enabled(): Boolean = prefs().getBoolean("enabled", true)
     fun setEnabled(value: Boolean) { prefs().edit().putBoolean("enabled", value).apply() }
@@ -76,15 +79,24 @@ object HangulReadings {
                 require(rows.length() == texts.size)
                 Result(List(rows.length()) { rows.getString(it) }, data.getString("source"), data.getInt("matched"), data.getInt("total"))
             }.getOrNull()
-            if (saved != null) return complete(texts, saved)
+            if (saved != null) {
+                Log.d(TAG, "saved readings, match ${saved.matched}/${saved.total}")
+                return complete(texts, saved)
+            }
         }
         var searched = false
         try {
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
-            if (!failures.allow(key, retryAttempt, force))
-                throw IOException("일치하는 기존 한글 발음 자료가 없습니다. 가사 메뉴에서 자료 주소를 지정해 주세요.")
+            if (!failures.allow(key, retryAttempt, force)) {
+                val message = "일치하는 기존 한글 발음 자료가 없습니다. 가사 메뉴에서 자료 주소를 지정해 주세요."
+                val exhausted = failures.exhausted(key)
+                Log.d(TAG, "attempt $retryAttempt skipped: recent miss" + if (exhausted) ", no retries left" else "")
+                throw if (exhausted) HangulReadingEngine.NonRetryable(message) else IOException(message)
+            }
             searched = true
-            val found = engine.resolve(track.title, track.artist, texts, url, learnedSource(aliasKey), HangulReadingEngine::fetch, remainingMs)
+            val learned = learnedSource(aliasKey)
+            Log.d(TAG, "attempt $retryAttempt: ${texts.size} lines, source " + when { url.isNotBlank() -> "set for the song"; learned.isNotBlank() -> "learned"; else -> "searched" } + ", ${remainingMs / 1000} s left")
+            val found = engine.resolve(track.title, track.artist, texts, url, learned, HangulReadingEngine::fetch, remainingMs) { Log.d(TAG, it) }
             check(found.valid() && found.readings.size == texts.size)
             val result = Result(found.readings, found.source, found.matched, found.total)
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
@@ -98,14 +110,21 @@ object HangulReadings {
                 rememberSource(aliasKey, result.source)
             }
             failures.clear(key)
+            Log.d(TAG, "found on ${HangulReadingEngine.route(result.source)}, match ${result.matched}/${result.total}")
             return complete(texts, result)
         } catch (error: Exception) {
             if (error is InterruptedException || error is CancellationException || Thread.currentThread().isInterrupted) throw error
             if (error !is IOException) throw error
-            if (searched) failures.failed(key)
+            if (searched) {
+                failures.failed(key, definite = error is HangulReadingEngine.NonRetryable)
+                Log.d(TAG, "attempt $retryAttempt failed: ${HangulReadingEngine.outcome(error)}" + (error.cause?.let { ", last cause ${it.javaClass.simpleName}" } ?: ""))
+            }
             if (!automaticEnabled()) throw error
             val empty = Result(texts.map { if (HangulReadingEngine.japanese(it)) HangulReadingEngine.MISSING else it }, "", 0, texts.count(HangulReadingEngine::japanese))
-            return complete(texts, empty).also { if (it.generated == 0) throw error }
+            return complete(texts, empty).also {
+                Log.d(TAG, "automatic readings for ${it.generated} lines")
+                if (it.generated == 0) throw error
+            }
         }
     }
 }

@@ -2,6 +2,13 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.0.1-hangul.10
+
+- Settings, Check for updates: asks GitHub right away, shows a release you dismissed before, and says so when the check fails instead of "up to date"
+- A failed launch check no longer hides a known update or waits 3 hours to try again
+- Hangul pronunciation lookups stop retrying when the search finished and found nothing; network errors and timeouts still retry
+- Hangul lookup steps go to the diagnostic log (no titles, lyrics or addresses)
+
 ## 2.0.1-hangul.9
 
 - Automatic Hangul readings follow authored lyric conventions (long vowels dropped, っ as ㅅ, ん as ㄴ)

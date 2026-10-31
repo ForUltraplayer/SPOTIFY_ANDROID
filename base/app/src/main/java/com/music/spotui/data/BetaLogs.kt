@@ -35,7 +35,7 @@ object BetaLogs {
     private val TAGS = listOf(
         "Myspoti", "MspPlayer", "Api", "player", "Offline", "OfflineLists", "Extensions",
         "DashFlacRemux", "SpotifySync", "LyricsApi", "LyricTranslate", "MusicVideo",
-        "ScreenCache", "AppUpdater",
+        "ScreenCache", "AppUpdater", "HangulReadings",
     )
 
     /** Lines that only repeat what the page or the player already said. */

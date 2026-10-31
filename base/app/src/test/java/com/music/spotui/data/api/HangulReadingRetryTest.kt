@@ -103,6 +103,45 @@ class HangulReadingRetryTest {
         assertTrue(failures.allow("other source", 0, false))
     }
 
+    @Test fun aMissThatWouldRepeatIsNotRetried() = runBlocking {
+        var requests = 0
+        try {
+            HangulReadingRetry.resolve(pause = { fail("A definite miss must not wait") }) { _, _ ->
+                requests++; throw HangulReadingEngine.NonRetryable("no source matches")
+            }
+            fail("Must report the miss")
+        } catch (_: HangulReadingEngine.NonRetryable) { }
+        assertEquals(1, requests)
+    }
+
+    @Test fun definiteMissBlocksEveryAttemptUntilExpiryOrForce() {
+        var clock = 0L
+        val failures = ReadingFailureCache { clock }
+        assertTrue(failures.allow("song", 0, false))
+        failures.failed("song", definite = true)
+        for (attempt in 0..3) assertFalse(failures.allow("song", attempt, false))
+        assertTrue(failures.exhausted("song"))
+        assertTrue(failures.allow("song", 0, true))
+        failures.failed("song", definite = true)
+        clock = 600_001
+        assertFalse(failures.exhausted("song"))
+        assertTrue(failures.allow("song", 0, false))
+    }
+
+    @Test fun transientMissKeepsItsRetryBudgetAcrossReopening() {
+        val failures = ReadingFailureCache { 100L }
+        assertTrue(failures.allow("song", 0, false))
+        failures.failed("song")
+        // Song changed after the first miss: reopening continues with the next attempts.
+        assertFalse(failures.exhausted("song"))
+        for (attempt in 1..3) {
+            assertTrue(failures.allow("song", attempt, false))
+            failures.failed("song")
+        }
+        // All four spent: a reopen reports at once instead of pausing through blocked attempts.
+        assertTrue(failures.exhausted("song"))
+    }
+
     @Test fun failureCacheCanRecoverAndExpireWithoutLosingSuccessfulReadings() {
         var clock = 0L
         val failures = ReadingFailureCache { clock }

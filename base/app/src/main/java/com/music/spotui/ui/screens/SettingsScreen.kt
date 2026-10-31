@@ -476,11 +476,22 @@ private fun CheckUpdateRow() {
             if (checking) return@clickable
             checking = true
             scope.launch {
-                val found = runCatching { com.music.spotui.data.api.UpdateChecker.check(ctx) }.getOrNull()
-                checking = false
+                // A failed request is not "up to date": say so instead.
+                var failed = false
+                val found = try {
+                    com.music.spotui.data.api.UpdateChecker.checkNow(ctx)
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    android.util.Log.w("AppUpdater", "update check failed: ${error.javaClass.simpleName}")
+                    failed = true
+                    null
+                } finally {
+                    checking = false
+                }
                 // The card is the app's one update UI: fill it, it shows itself.
                 if (found != null) com.music.spotui.updateRelease.value = found
-                else android.widget.Toast.makeText(ctx, ctx.getString(R.string.settings_update_check_latest), android.widget.Toast.LENGTH_SHORT).show()
+                else android.widget.Toast.makeText(ctx, ctx.getString(if (failed) R.string.settings_update_check_failed else R.string.settings_update_check_latest), android.widget.Toast.LENGTH_SHORT).show()
             }
         }.padding(horizontal = 20.dp, vertical = 10.dp),
     ) {

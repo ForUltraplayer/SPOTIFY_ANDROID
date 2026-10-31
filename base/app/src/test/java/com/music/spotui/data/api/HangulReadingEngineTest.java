@@ -61,6 +61,99 @@ public class HangulReadingEngineTest {
         assertTrue(result.valid()); assertTrue(result.source.endsWith("한글곡(VOCALOID)"));
     }
 
+    private IOException miss(HangulReadingEngine.Fetcher fetcher, long remainingMillis) {
+        try {
+            engine.resolve("Fixture", "Artist", LINES, "", "", fetcher, remainingMillis);
+        } catch (IOException e) { return e; }
+        throw new AssertionError("Must not find a source");
+    }
+
+    @Test public void searchThatRanToTheEndIsADefiniteMiss() {
+        // Guessed documents are missing and the searches list nothing: the same scan would end the same way.
+        IOException error = miss(url -> {
+            if (url.startsWith("https://namu.wiki/w/")) throw new HangulReadingEngine.HttpStatus(404);
+            return "<p>検索結果なし</p>";
+        }, 32_000);
+        assertTrue(error instanceof HangulReadingEngine.NonRetryable);
+        // Pages that answer but do not match are a miss as well.
+        error = miss(url -> "<p>別の曲</p><a href='/songs/other'>x</a>", 32_000);
+        assertTrue(error instanceof HangulReadingEngine.NonRetryable);
+    }
+
+    @Test public void searchCutShortByTheNetworkIsRetried() {
+        final java.net.SocketTimeoutException timeout = new java.net.SocketTimeoutException("read timed out");
+        IOException error = miss(url -> {
+            if (url.startsWith("https://haneum.site/songs?")) throw timeout;
+            if (url.startsWith("https://namu.wiki/w/")) throw new HangulReadingEngine.HttpStatus(404);
+            return "<p>検索結果なし</p>";
+        }, 32_000);
+        assertFalse(error instanceof HangulReadingEngine.NonRetryable);
+        assertSame(timeout, error.getCause());
+        // A server error or a rate limit can pass as well.
+        for (int status : new int[]{429, 503}) {
+            error = miss(url -> { throw new HangulReadingEngine.HttpStatus(status); }, 32_000);
+            assertFalse(error instanceof HangulReadingEngine.NonRetryable);
+        }
+    }
+
+    @Test public void searchCutShortByTheDeadlineIsRetried() {
+        // Every answer is final (404s, a search that answers), but the clock runs out with
+        // songs still to read: a retry can read them.
+        final int[] searches = {0};
+        IOException error = miss(url -> {
+            if (url.startsWith("https://namu.wiki/w/")) throw new HangulReadingEngine.HttpStatus(404);
+            searches[0]++;
+            try { Thread.sleep(400); } catch (InterruptedException e) { throw new AssertionError(e); }
+            return "<a href='/songs/a'>a</a><a href='/songs/b'>b</a>";
+        }, 200);
+        assertEquals(1, searches[0]);
+        assertFalse(error instanceof HangulReadingEngine.NonRetryable);
+        assertNull(error.getCause());
+    }
+
+    @Test public void searchStoppedByThePageLimitIsNotRepeated() {
+        // Every page links to further same-name documents: the 20-page cap ends the scan,
+        // and a retry would visit the same 20 pages.
+        final int[] calls = {0};
+        IOException error = miss(url -> {
+            calls[0]++;
+            StringBuilder links = new StringBuilder("<p>別の曲</p>");
+            for (int i = 0; i < 30; i++) links.append("<a href='/w/Fixture(").append(i).append(")'>x</a>");
+            return links.toString();
+        }, 32_000);
+        assertEquals(20, calls[0]);
+        assertTrue(error instanceof HangulReadingEngine.NonRetryable);
+    }
+
+    @Test public void diagnosticLinesGiveStatusAndMatchWithoutSongDetails() {
+        List<String> log = new java.util.ArrayList<>();
+        try {
+            engine.resolve("秘密の歌", "Artist", LINES, "", "", url -> {
+                if (url.startsWith("https://haneum.site/songs?")) throw new java.net.SocketTimeoutException("haneum.site/songs?q=秘密の歌");
+                if (url.endsWith("(曲)")) return HTML.replace("君の声", "別の声").replace("夢の中", "別の中");
+                if (url.startsWith("https://namu.wiki/w/")) throw new HangulReadingEngine.HttpStatus(404);
+                return "<a href='/w/秘密の歌(曲)'>x</a>";
+            }, 32_000, log::add);
+            fail("Must not find a source");
+        } catch (IOException e) { assertFalse(e instanceof HangulReadingEngine.NonRetryable); }
+        String text = String.join("\n", log);
+        assertTrue(text, text.contains("haneum search (haneum): SocketTimeoutException"));
+        assertTrue(text, text.contains("namu page: HTTP 404 (final)"));
+        assertTrue(text, text.contains("namu page: match 3/5"));
+        assertTrue(text, text.contains("no match in "));
+        assertTrue(text, text.contains("best 3/5"));
+        assertTrue(text, text.endsWith(", retryable"));
+        for (String secret : new String[]{"秘密", "http", "namu.wiki", "%", "青い空", "아오이"}) assertFalse(secret, text.contains(secret));
+    }
+
+    @Test public void tooLongLyricsAreNotRetried() {
+        List<String> huge = Collections.nCopies(5, new String(new char[9000]).replace('\0', 'あ'));
+        try {
+            engine.resolve("Fixture", "Artist", huge, "", url -> { throw new AssertionError("No request"); });
+            fail("Must refuse");
+        } catch (IOException e) { assertTrue(e instanceof HangulReadingEngine.NonRetryable); }
+    }
+
     @Test public void revalidatesLearnedAliasBeforeReturningIt() throws Exception {
         final int[] calls = {0};
         HangulReadingEngine.Result result = engine.resolve("Fixture", "Artist", LINES, "", "https://namu.wiki/w/Alias", url -> {

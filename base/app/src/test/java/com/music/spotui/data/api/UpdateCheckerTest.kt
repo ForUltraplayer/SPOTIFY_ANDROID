@@ -77,4 +77,65 @@ class UpdateCheckerTest {
         release.getJSONArray("assets").remove(1)
         assertEquals("", UpdateChecker.apkAsset(release))
     }
+
+    // A version every test build is older than, so pending() offers it.
+    private val known = UpdateChecker.Release("99.0.0", "https://x/99", "notes", "https://x/99.apk")
+    private val later = UpdateChecker.Release("99.1.0", "https://x/99.1", "", "https://x/99.1.apk")
+    private val hour = 3_600_000L
+    // Well after "never checked" (0).
+    private val start = 100 * hour
+    private fun checkedAt(release: UpdateChecker.Release?, at: Long) = MemoryPreferences().also {
+        UpdateChecker.check(it, at, manual = false) { release }
+    }
+
+    @Test fun launchCheckWaitsThreeHoursButTheManualOneAsksAtOnce() {
+        val prefs = checkedAt(known, start)
+        var requests = 0
+        assertEquals(known, UpdateChecker.check(prefs, start + 3 * hour - 1, manual = false) { requests++; later })
+        assertEquals(0, requests)
+        // A release published since the last check is found by the button.
+        assertEquals(later, UpdateChecker.check(prefs, start + 3 * hour - 1, manual = true) { requests++; later })
+        assertEquals(1, requests)
+        // The manual answer counts as a check: the launch waits 3 hours from it.
+        assertEquals(later, UpdateChecker.check(prefs, start + 6 * hour - 2, manual = false) { requests++; known })
+        assertEquals(1, requests)
+        assertEquals(known, UpdateChecker.check(prefs, start + 6 * hour - 1, manual = false) { requests++; known })
+        assertEquals(2, requests)
+    }
+
+    @Test fun failedCheckKeepsTheKnownReleaseAndTriesAgainNextLaunch() {
+        val prefs = checkedAt(known, start)
+        val saved = prefs.values.toMap()
+        var requests = 0
+        assertEquals(known, UpdateChecker.check(prefs, start + 4 * hour, manual = false) { requests++; throw java.io.IOException("HTTP 403") })
+        assertEquals(saved, prefs.values)
+        // Not counted as a check: the next launch asks again instead of waiting 3 hours.
+        assertEquals(known, UpdateChecker.check(prefs, start + 4 * hour + 1, manual = false) { requests++; known })
+        assertEquals(2, requests)
+    }
+
+    @Test fun failedManualCheckIsReportedNotTakenForUpToDate() {
+        val prefs = checkedAt(known, start)
+        val saved = prefs.values.toMap()
+        try {
+            UpdateChecker.check(prefs, start + hour, manual = true) { throw org.json.JSONException("truncated") }
+            org.junit.Assert.fail("A failed manual check must not look like \"up to date\"")
+        } catch (_: org.json.JSONException) { }
+        assertEquals(saved, prefs.values)
+    }
+
+    @Test fun successfulCheckWithNothingNewerClearsTheOldOffer() {
+        val prefs = checkedAt(known, start)
+        assertNull(UpdateChecker.check(prefs, start + 4 * hour, manual = false) { null })
+        assertNull(UpdateChecker.check(prefs, start + 4 * hour + 1, manual = false) { known })
+    }
+
+    @Test fun manualCheckOffersADismissedReleaseAgain() {
+        val prefs = checkedAt(known, start)
+        prefs.edit().putString("dismissed", known.version).apply()
+        assertNull(UpdateChecker.check(prefs, start + hour, manual = false) { known })
+        assertEquals(known, UpdateChecker.check(prefs, start + hour, manual = true) { known })
+        // The dismissal stays for the launch prompt.
+        assertNull(UpdateChecker.check(prefs, start + hour + 1, manual = false) { known })
+    }
 }

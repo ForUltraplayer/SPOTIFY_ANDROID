@@ -27,7 +27,8 @@ internal object HangulReadingRetry {
                 return@withTimeoutOrNull request(attempt, remaining)
             } catch (error: IOException) {
                 currentCoroutineContext().ensureActive()
-                if (attempt == MAX_RETRIES || deadline - now() <= DELAY_MS) throw error
+                // A finished search that found nothing would only find nothing again.
+                if (error is HangulReadingEngine.NonRetryable || attempt == MAX_RETRIES || deadline - now() <= DELAY_MS) throw error
                 pause(DELAY_MS)
             }
         }
@@ -50,8 +51,15 @@ internal class ReadingFailureCache(private val now: () -> Long = System::current
         return true
     }
 
-    fun failed(key: String) {
-        entries[key] = Entry(now() + 600_000, entries[key]?.retry ?: 0)
+    /** No attempt of [key] may search again until it expires or is forced: report at once. */
+    fun exhausted(key: String): Boolean {
+        val entry = entries[key] ?: return false
+        return entry.expires > now() && entry.retry >= HangulReadingRetry.MAX_RETRIES
+    }
+
+    /** A [definite] miss spends the whole retry budget: the same search would end the same way. */
+    fun failed(key: String, definite: Boolean = false) {
+        entries[key] = Entry(now() + 600_000, if (definite) HangulReadingRetry.MAX_RETRIES else entries[key]?.retry ?: 0)
         if (entries.size > 100) entries.remove(entries.keys.first())
     }
 

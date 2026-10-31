@@ -4,17 +4,17 @@
 
 안드로이드 Spotify 앱 [Myspoti](https://github.com/kota-zo/myspoti)에 일본어 노래의 한글 발음 표시를 추가한 버전입니다. 한음, 나무위키에 올라와 있는 한글 발음을 가져와 가사와 줄 단위로 맞춥니다. PC나 별도 서버 없이 앱 하나로 동작합니다.
 
-현재 2.0.1-hangul.9 정식 버전입니다.
+현재 2.0.1-hangul.10 정식 버전입니다.
 
 > 개인이 취미로 만든 비공식 프로젝트입니다. 유지보수와 업데이트를 보장하지 않으니 [면책](#면책) 내용을 먼저 읽어 주세요.
 
-**[⬇ APK 다운로드 (v2.0.1-hangul.9)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.9)**
+**[⬇ APK 다운로드 (v2.0.1-hangul.10)](https://github.com/ForUltraplayer/SPOTIFY_ANDROID/releases/tag/v2.0.1-hangul.10)**
 
 PC 버전: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
 
 ## 설치
 
-1. `Myspoti-Hangul-2.0.1-hangul.9.apk`를 받아서 엽니다. 안드로이드가 물어보면 앱 설치를 허용합니다.
+1. `Myspoti-Hangul-2.0.1-hangul.10.apk`를 받아서 엽니다. 안드로이드가 물어보면 앱 설치를 허용합니다.
 2. **Log in with Spotify**로 로그인합니다.
 3. 곡을 재생하고 가사 화면을 열면 일본어 줄 아래에 한글 발음이 나옵니다.
 
@@ -23,9 +23,9 @@ Android 10 이상, 무료 Spotify 계정도 됩니다. 원본 Myspoti와는 별�
 ## 업데이트
 
 - **hangul.9 이후**: 앱이 새 버전을 확인해서 업데이트를 안내합니다.
-- **hangul.5 이하**: 이번 한 번만 hangul.9 APK를 받아서 기존 앱 위에 그대로 설치합니다. 앱을 지울 필요 없습니다. 다음부터는 앱이 알려 줍니다.
+- **hangul.5 이하**: 이번 한 번만 hangul.10 APK를 받아서 기존 앱 위에 그대로 설치합니다. 앱을 지울 필요 없습니다. 다음부터는 앱이 알려 줍니다.
 
-hangul.5까지의 앱은 시험판 릴리스만 확인하기 때문에 정식으로 나온 hangul.9를 안내하지 못합니다.
+hangul.5까지의 앱은 시험판 릴리스만 확인하기 때문에 정식으로 나온 hangul.9 이후 버전을 안내하지 못합니다.
 
 ## 로그인
 

@@ -256,6 +256,7 @@
     <string name="settings_check_update_detail">Looks for a newer version and offers to install it</string>
     <string name="settings_update_checking">Checking…</string>
     <string name="settings_update_check_latest">Myspoti is up to date</string>
+    <string name="settings_update_check_failed">Couldn\'t check for updates. Check your connection and try again.</string>
     <!-- A25: stop the queue, keep the songs already downloaded. -->
     <string name="downloads_stop_all_title">Stop all downloads</string>
     <string name="downloads_stop_all_detail">Cancels what is left; songs already downloaded are kept</string>
