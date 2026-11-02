@@ -54,6 +54,13 @@ data class InstalledExtension(
     val pendingUpdate: PendingUpdate? = null,
     /** The version the user answered "Keep current" to: not offered again, a newer one is. */
     val declinedVersionCode: Int = 0,
+    /** The package ("Not now") declined, for a code-only update that keeps the same version code. */
+    val declinedSha: String? = null,
+    /** The package of a harmless update first seen at [seenAt]: auto-applied once a day has passed ([UpdateGate.DELAY_MS]). */
+    val seenSha: String? = null,
+    val seenAt: Long = 0,
+    /** Why updates from its repository are refused (the host's ids changed: re-registered or transferred), shown as a warning. */
+    val updateBlocked: String? = null,
     /** When its source was last checked for an update (at most once a day, apart from the button). */
     val lastCheck: Long = 0,
     /** Its repository answered 404: it keeps running from the copy on the phone, marked "source gone". */
@@ -65,6 +72,9 @@ data class InstalledExtension(
 /** A version kept on disk to revert to, or waiting in staging. */
 @Serializable
 data class KeptVersion(val version: String, val versionCode: Int, val sha256: String, val origin: Origin? = null)
+
+/** Spotify's place in the audio sources' order: the extensions after it are not asked. */
+const val SPOTIFY_SOURCE = "spotify"
 
 /** A newer version that asks something the user has not accepted; the old one keeps running. */
 @Serializable
@@ -94,6 +104,17 @@ data class Registry(
     fun <T> byPriority(area: String, items: List<T>, id: (T) -> String): List<T> {
         val order = priority[area].orEmpty()
         return items.sortedBy { order.indexOf(id(it)).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+    }
+
+    /**
+     * [items] in the order the source [action] (an [app.myspoti.extensions.Mode.ORDERED] action key)
+     * asks them: the user's order for it, else the one made active when sources were exclusive
+     * first, then [area]'s order.
+     */
+    fun <T> bySourceOrder(action: String, area: String, items: List<T>, id: (T) -> String): List<T> {
+        val first = active[action]
+        val seeded = byPriority(area, items, id).sortedBy { if (id(it) == first) 0 else 1 }
+        return byPriority(action, seeded, id)
     }
 
     /**
@@ -300,9 +321,14 @@ class FailureCounter(private val limit: Int = 3) {
     @Synchronized fun reset(id: String) { inARow.remove(id) }
 }
 
+/**
+ * Replaces [file] whole (see [com.music.spotui.data.writeTextSafely]); the old file is never deleted to
+ * make room. A write that fails throws, as before; a move that fails keeps the old file and is only logged.
+ */
 internal fun writeAtomically(file: File, text: String) {
-    file.parentFile?.mkdirs()
-    val tmp = File(file.parentFile, file.name + ".tmp")
-    tmp.writeText(text)
-    if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+    try {
+        com.music.spotui.data.writeTextSafely(file, text, sync = false)
+    } catch (e: com.music.spotui.data.NotReplacedException) {
+        runCatching { app.myspoti.host.android.Logbook.log("ext: ${e.message}, the old copy kept") }
+    }
 }

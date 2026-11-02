@@ -20,4 +20,5 @@
     <string name="account_page_title">Spotify-Konto</string>
     <string name="account_page_detail">Abo, Datenschutz und Geräte, auf spotify.com</string>
     <string name="player_source_downloaded">Heruntergeladen</string>
+    <string name="extension_change_write">Darf jetzt auch an Spotify senden: %1$s</string>
 </resources>

@@ -15,7 +15,11 @@ import app.myspoti.host.android.MyspotiRuntime
 import app.myspoti.host.android.NowPlayingInfo
 import app.myspoti.host.android.PlaybackService
 import com.music.spotui.data.entity.SongsModel
+import com.music.spotui.data.local.LocalFileMatch.isDeviceFile
+import com.music.spotui.data.local.LocalFileMatch.isUnmatchedLocal
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
@@ -42,14 +46,35 @@ object SongPlayer {
     private const val REMOTE_REFRESH_MS = 3_000L
     /** How often the state is read again while this phone plays (the page pushes its changes). */
     private const val LOCAL_REFRESH_MS = 15_000L
+    /** Nothing to read (this phone is idle): the refresh loop sleeps this long, or until a state or a Connect device wakes it. */
+    private const val IDLE_WAKE_MS = 60_000L
     /** A song this far past its end with no new state from the page: the state is read at once. */
     private const val SONG_END_GRACE_MS = 1_500L
     /** A transport command that has not answered by then is given up (the next one runs). */
     private const val TRANSPORT_TIMEOUT_MS = 15_000L
+    /**
+     * A transport command still running this long when a newer one comes is stuck (a dead
+     * connection, a page that does not answer): it is given up at once rather than holding the
+     * newer one for the rest of [TRANSPORT_TIMEOUT_MS]. A skip normally answers well within it.
+     */
+    private const val TRANSPORT_STUCK_MS = 3_000L
+    /**
+     * The longest a skip is shown ahead of the page: its burst gap, its turn behind a stuck command
+     * and its own timeout. Once it is answered, the page has [SKIP_ANSWERED_MS] (see [skipDone]).
+     */
+    private const val SKIP_PENDING_MAX_MS = TRANSPORT_TIMEOUT_MS + 5_000L
+    /**
+     * An answered skip whose song has not come by then: the old song is heard again (the engine
+     * brings its sound back 2.5 s after the skip, SpotifyPlayer.FADE_BACK_MAX_MS), so the screen
+     * shows it again too. Reported: the next song's cover on screen, the old song playing on.
+     */
+    private const val SKIP_ANSWERED_MS = 3_000L
     /** How long a play has to show up in the page's state before it is sent again. */
     private const val PLAY_CHECK_MS = 4_000L
     /** A resume of an episode that the page did not take is asked for again after that. */
     private const val EPISODE_RESUME_CHECK_MS = 2_500L
+    /** A timed sleep timer lowers the volume over its last seconds. */
+    private const val SLEEP_FADE_MS = 15_000L
     /** "Next" taps closer than this are sent as one jump. */
     private const val SKIP_BURST_MS = 350L
     /** Skip commands are at least this far apart; taps in between add up (see [next]). */
@@ -58,8 +83,24 @@ object SongPlayer {
     private const val AD_SHOW_AFTER_MS = 2_000L
     /** After a local file starts, engine states this recent still predate the pause. */
     private const val LOCAL_GRACE_MS = 2500L
+    /** An answered command's state reaches the app within this (see [reconcile]). */
+    private const val COMMAND_SETTLE_MS = 1_500L
+    /** A hold's end is checked this long after it, so the hold is over by then (see [reconcile]). */
+    private const val RECONCILE_MARGIN_MS = 100L
+    /** The page's state is read again that long at most before the screen is put right. */
+    private const val RECONCILE_READ_MS = 3_000L
+    /** A seek is sent within this, or given up for this try (see [seekTo]). */
+    private const val SEEK_SEND_MS = 5_000L
+    /** How long a seek has to show up in the page's state before it is sent again. */
+    private const val SEEK_CHECK_MS = 3_000L
+    /** The longest a seek holds the clock against the page (both tries and their sends). */
+    private const val SEEK_HOLD_MS = 2 * (SEEK_SEND_MS + SEEK_CHECK_MS)
+    /** A page position this close to a seek's target (or past it by the time played) is the seek. */
+    private const val SEEK_NEAR_MS = 2_000L
     private const val TAG = "MspPlayer"
     private const val LIKED_CONTEXT = "spotify:collection:tracks"
+    /** A picked song from this row on is also sent by its place in the list (see [rowIndex]). */
+    private const val INDEXED_ROW_FROM = 100
 
     private val api: MyspotiApi get() = MyspotiRuntime.api
     private val scope get() = MyspotiRuntime.scope
@@ -79,6 +120,8 @@ object SongPlayer {
     @Volatile private var durationMs = 0L
     @Volatile private var positionMs = 0L
     @Volatile private var positionAt = 0L
+    /** The page says it plays, but nothing is heard (see [onSoundStalled]): the clock waits. */
+    @Volatile private var soundStalled = false
     @Volatile var currentTrackId: String = ""
         private set
     @Volatile var currentContextUri: String = ""
@@ -95,8 +138,54 @@ object SongPlayer {
     @Volatile private var wantPlayingUntil = 0L
     @Volatile private var wantPausedUntil = 0L
 
-    private fun intendPlaying() { wantPlayingUntil = SystemClock.elapsedRealtime() + 4000; wantPausedUntil = 0 }
-    private fun intendPaused() { wantPausedUntil = SystemClock.elapsedRealtime() + 1500; wantPlayingUntil = 0 }
+    private fun intendPlaying() { wantPlayingUntil = SystemClock.elapsedRealtime() + 4000; wantPausedUntil = 0; reconcileAfter(intentEnded, 4000) }
+    private fun intendPaused() { wantPausedUntil = SystemClock.elapsedRealtime() + 1500; wantPlayingUntil = 0; reconcileAfter(intentEnded, 1500) }
+
+    /**
+     * Puts the screen back on what the page last said once a hold is over (a play or pause
+     * wanted, a song shown before it plays). The page pushes changes only, and a state read again
+     * that did not change is no news either: a play the page never took left the clock counting
+     * over silence, and a skip that never landed left the next song on screen while the old one
+     * played on (reported).
+     */
+    private fun reconcile() {
+        // A command still on its way: its own end puts the screen right (see [transport]).
+        fun leftAlone() = !acceptsSessionUpdates() || LocalPlayer.active.value || transportsInFlight.get() > 0
+        if (leftAlone()) return
+        scope.launch {
+            // Read again first: the page's last push can be lost on the way (its events buffer
+            // drops the oldest when its main thread stalls), and the screen must not go back to
+            // "paused" over a song that plays.
+            kotlinx.coroutines.withTimeoutOrNull(RECONCILE_READ_MS) { runCatching { MyspotiRuntime.spotify.player.refresh() } }
+            if (leftAlone()) return@launch
+            val s = api.player.state.value
+            if (s != null) { applyState(s); return@launch }
+            // The page never reported anything (it did not load): nothing plays, whatever was tapped.
+            if (playing) {
+                playing = false
+                bufferingState.value = false
+                boundState?.updatePlayingState(false)
+                pushNotification(null, boundState?.likeState?.value ?: false)
+            }
+        }
+    }
+    private val intentEnded = Runnable { reconcile() }
+    private val pendingEnded = Runnable { reconcile() }
+    private val commandSettled = Runnable { reconcile() }
+    private fun reconcileAfter(check: Runnable, ms: Long) {
+        main.removeCallbacks(check)
+        main.postDelayed(check, ms.coerceAtLeast(0L) + RECONCILE_MARGIN_MS)
+    }
+
+    /**
+     * Not heard yet: the page buffers, its sound stands still, or a play is wanted that the page
+     * has not started. The clock waits and the screens show the song loading.
+     */
+    private fun waiting(s: PlayerState) = s.isBuffering || soundStalled || (playing && s.isPaused)
+
+    /** Myspoti itself asked the engine to play lately (a pick, a play, a skip): not another device's doing. */
+    fun engineIntended(): Boolean =
+        SystemClock.elapsedRealtime() < wantPlayingUntil || pendingTrackId != null || resumeWhenReady
 
     private fun resolvePlaying(paused: Boolean): Boolean {
         val now = SystemClock.elapsedRealtime()
@@ -119,7 +208,7 @@ object SongPlayer {
     @Volatile var currentQuality: String = ""
 
     /** Queue items of the local player (downloads, Local Files). */
-    private const val LOCAL = "local"
+    const val LOCAL = "local"
 
     /** Spotify's real queue. */
     data class QueueItem(val song: SongsModel, val uri: String, val uid: String, val provider: String)
@@ -159,6 +248,7 @@ object SongPlayer {
         restoreLastTrack(state)
         restoreRepeat(state)
         scope.launch { api.player.state.collect { s -> if (acceptsSessionUpdates()) applyState(s) } }
+        ConnectMirror.attach()
         // Another device plays (the phone as a remote): the state is read again every few seconds
         // so the notification, the mini player and the slider keep up. Reported: the notification
         // stopped refreshing in the background — this loop waited for _activeDevice, which only a
@@ -167,9 +257,17 @@ object SongPlayer {
         // AwakeWebView), so reading the whole state and queue every 3 s only kept both processes
         // awake, screen off. It is read every LOCAL_REFRESH_MS as a safety net, and at once when
         // the song should have ended without the page saying what came next.
+        // With nothing playing and no Connect device, the loop below only found it had nothing to do,
+        // every 3 s, waking the main thread: it sleeps then, and a pushed state or a Connect device
+        // wakes it (the long timeout is only a net against a missed wake).
+        scope.launch { androidx.compose.runtime.snapshotFlow { _activeDevice.value }.collect { refreshWake.trySend(Unit) } }
         scope.launch {
             var lastRead = 0L
             while (true) {
+                if (_activeDevice.value == null && !PlaybackService.isRunning && !playing && !isBuffering) {
+                    kotlinx.coroutines.withTimeoutOrNull(IDLE_WAKE_MS) { refreshWake.receive() }
+                    continue
+                }
                 kotlinx.coroutines.delay(REMOTE_REFRESH_MS)
                 val remote = _activeDevice.value != null
                 if (!remote && !PlaybackService.isRunning) continue
@@ -182,6 +280,7 @@ object SongPlayer {
             }
         }
         scope.launch { api.player.queue.collect { q -> if (acceptsSessionUpdates()) applyQueue(q) } }
+        scope.launch { MyspotiRuntime.spotify.player.stalled.collect { on -> onSoundStalled(on) } }
         // Smart shuffle plays a mixed order as the list and leaves Spotify's own shuffle off, so
         // turning it off sends no shuffle command at all (the button finds shuffle already off):
         // the list's own order comes back here.
@@ -221,6 +320,16 @@ object SongPlayer {
                 android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.play_refused_all, android.widget.Toast.LENGTH_LONG).show()
             }
         }
+        scope.launch {
+            MyspotiRuntime.spotify.player.skipChained.collect {
+                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.songs_skipped_by_spotify, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+        scope.launch {
+            MyspotiRuntime.spotify.player.licencesRefused.collect {
+                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.licences_refused_by_spotify, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         // Said once the page has asked its WebView: a device that cannot decrypt Spotify's streams
         // plays nothing (no sound, 0:00), and nothing else in the app says why.
         scope.launch {
@@ -243,20 +352,33 @@ object SongPlayer {
     private object Controls : app.myspoti.host.android.PlaybackControls {
         override fun play() = SongPlayer.play(by = "media session")
         override fun pause() = SongPlayer.pause(by = "media session")
-        override fun next() = SongPlayer.next()
-        override fun previous() = SongPlayer.previous()
+        override fun next() = SongPlayer.next(by = "media session")
+        override fun previous() = SongPlayer.previous(by = "media session")
         override fun seekTo(ms: Long) = SongPlayer.seekTo(ms)
         override fun setLiked(liked: Boolean) = SongPlayer.setLiked(liked)
         override fun playFromMediaId(mediaId: String) = AutoBrowser.play(mediaId)
         override fun playFromSearch(query: String) { scope.launch { AutoBrowser.playFromSearch(query) } }
         override fun setRemoteVolume(volume: Int) = SongPlayer.setRemoteVolume(volume)
         override fun setShuffle(on: Boolean) = SongPlayer.setShuffle(on)
+        override val isEpisode: Boolean get() = SongPlayer.isEpisode
+        override fun skipBy(deltaMs: Long) {
+            // Past the end of the episode a +15 s is the normal end: on to the next item.
+            val duration = getDuration()
+            if (deltaMs > 0 && duration > 0 && getCurrentPosition() + deltaMs >= duration) SongPlayer.next(by = "media session")
+            else SongPlayer.skipBy(deltaMs)
+        }
     }
 
     // ── Last track: shown at launch (mini player) before the Web Player reports ──
 
     private fun lastTrackPrefs() = Graph.app.getSharedPreferences("myspoti_last_track", Context.MODE_PRIVATE)
     private var savedLast = ""
+    // Who played the saved session and when it was saved: Spotify's state at launch is older than a
+    // local-player (extension / download) session saved after it, and must not replace it.
+    private var savedSource = com.music.spotui.data.preferences.LastSession.SOURCE_SPOTIFY
+    private var savedAtMs = 0L
+    /** A local-player session was put back paused at launch: play restarts it there, not through Spotify. */
+    private var restoredLocal = false
     @Volatile private var resumeWhenReady = false
 
     private fun restoreLastTrack(state: CurrentSongState) {
@@ -267,6 +389,9 @@ object SongPlayer {
         if (uri.isBlank() || title.isBlank()) return
         val id = trackIdOf(uri)
         currentTrackId = id
+        savedSource = p.getString("source", null) ?: com.music.spotui.data.preferences.LastSession.SOURCE_SPOTIFY
+        savedAtMs = p.getLong("savedAt", 0L)
+        restoredLocal = savedSource == com.music.spotui.data.preferences.LastSession.SOURCE_LOCAL
         durationMs = p.getLong("duration", 0L)
         positionMs = p.getLong("position", 0L)
         positionAt = SystemClock.elapsedRealtime()
@@ -282,14 +407,29 @@ object SongPlayer {
             album = p.getString("album", "").orEmpty(),
         )
         state.likeState.value = p.getBoolean("liked", false)
+        if (restoredLocal) {
+            val rest = com.music.spotui.data.preferences.LastSession.decodeQueue(p.getString("queue", null))
+            if (rest.isNotEmpty()) {
+                _queue.value = EngineQueue(
+                    current = rest.first(),
+                    nextUp = rest.drop(1).map { QueueItem(it, SPOTIFY_TRACK_PREFIX + it.spotifyTrackId, "", "") },
+                )
+            }
+        }
     }
 
     /** Saved on track change and on play/pause (not on every state). */
-    private fun saveLastTrack(song: SongsModel, uri: String, liked: Boolean) {
-        val key = "$uri|$playing|$liked"
+    private fun saveLastTrack(
+        song: SongsModel, uri: String, liked: Boolean,
+        source: String = com.music.spotui.data.preferences.LastSession.SOURCE_SPOTIFY, queue: List<SongsModel>? = null,
+    ) {
+        val key = "$uri|$playing|$liked|$source"
         if (uri.isBlank() || key == savedLast) return
         savedLast = key
+        savedSource = source; savedAtMs = System.currentTimeMillis(); restoredLocal = false
         lastTrackPrefs().edit()
+            .putString("source", source).putLong("savedAt", savedAtMs)
+            .putString("queue", queue?.let(com.music.spotui.data.preferences.LastSession::encodeQueue).orEmpty())
             .putString("uri", uri).putString("title", song.title).putString("singer", song.singer)
             .putString("album", song.album).putString("cover", song.coverUri)
             .putLong("duration", durationMs).putLong("position", getCurrentPosition())
@@ -303,19 +443,27 @@ object SongPlayer {
     /** Call on the main thread before navigating to logout. */
     fun clearSession() {
         main.removeCallbacksAndMessages(null)
+        // A play, pause or skip still waiting (a slow page, a page still loading) belongs to the
+        // session that ends: it is dropped, not sent once the next account's page is ready.
+        sessionGen.incrementAndGet()
+        transportGen.incrementAndGet()
+        runningTransport?.cancel()
         pendingTrackId = null
         pendingItemUri = null
         pendingUntil = 0L
         intentUri = ""; intentUntil = 0L
         wantPlayingUntil = 0L; wantPausedUntil = 0L
+        // Its own end puts nothing back on screen: the seq it ends with is no longer the last.
+        seekSeq++; seekJob?.cancel(); seekUntil = 0L; seekUri = ""
         stateSeen = false
         playing = false; bufferingState.value = false; adState.value = false; durationMs = 0L; positionMs = 0L
         currentTrackId = ""; currentContextUri = ""
-        contextRegistry.clear(); contextNames.clear(); library.clear()
+        contextRegistry.clear(); contextRows.clear(); contextNames.clear(); library.clear()
         synchronized(wantedSaved) { wantedSaved.clear() }
         _queue.value = EngineQueue(); apiQueue = null; _nowPlaying.value = NowPlaying()
         lastTrackPrefs().edit().clear().apply(); savedLast = ""; resumeWhenReady = false
-        _activeDevice.value = null; _sleepEndsAt.value = null; sleepTrackId = null; spotifyFallbackId = null
+        savedSource = com.music.spotui.data.preferences.LastSession.SOURCE_SPOTIFY; savedAtMs = 0L; restoredLocal = false
+        _activeDevice.value = null; _sleepEndsAt.value = null; sleepFade?.cancel(); main.removeCallbacks(sleepFadeRunnable); sleepTrackId = null; spotifyFallbackId = null
         _video.value = VideoState(); videoFullscreen.value = false
         boundState?.let { state ->
             state.updateQueue(emptyList())
@@ -329,7 +477,7 @@ object SongPlayer {
     private fun songIdFor(trackId: String, fallback: String) =
         (if (trackId.isNotBlank()) "track:$trackId" else "uri:$fallback").hashCode() and 0x7fffffff
 
-    private fun songOf(n: app.myspoti.api.NowPlaying): SongsModel {
+    internal fun songOf(n: app.myspoti.api.NowPlaying): SongsModel {
         val id = trackIdOf(n.uri)
         val artists = n.artists.joinToString(", ") { it.name }
         return SongsModel(
@@ -346,6 +494,25 @@ object SongPlayer {
         )
     }
 
+    /**
+     * The page says it plays but its sound stands still (a slow network), or plays again. The page's
+     * own clock goes on over the silence (reported: "the time was counting, the song not playing"):
+     * the screen's clock stops where it is and goes on from there once the sound does.
+     */
+    private fun onSoundStalled(on: Boolean) {
+        if (on == soundStalled) return
+        // Read before the flag changes: the running clock as it stands, or the held one.
+        positionMs = getCurrentPosition()
+        positionAt = SystemClock.elapsedRealtime()
+        soundStalled = on
+        // A song shown before the page plays it is waiting already (see [markPending]).
+        if (LocalPlayer.active.value || pendingTrackId != null) return
+        val s = api.player.state.value ?: return
+        bufferingState.value = waiting(s)
+        pushNotification(null, boundState?.likeState?.value ?: false)
+        com.music.spotui.video.MusicVideoController.onAudioBuffering(isBuffering, currentTrackId)
+    }
+
     /** An ad break starts or ends: the notification, the widget and the screens follow (T4). */
     private fun onAdPlaying(on: Boolean) {
         if (adState.value == on) return
@@ -353,8 +520,12 @@ object SongPlayer {
         pushNotification(null, boundState?.likeState?.value ?: false)
     }
 
+    /** Wakes the refresh loop of [attachEngine] when it sleeps: a state was pushed, or a Connect device took over. */
+    private val refreshWake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+
     /** Notification, lock screen, Bluetooth and Android Auto. */
     private fun pushNotification(song: SongsModel?, liked: Boolean) {
+        refreshWake.trySend(Unit)
         val st = boundState
         // T4: during an ad break the page reports no track (the song before it would sit there,
         // buffering), so the notification and the widget say an ad is on instead of that song.
@@ -374,12 +545,53 @@ object SongPlayer {
             buffering = isBuffering && !ad,
             liked = !ad && liked,
             shuffle = st?.shuffle?.value == true,
+            episode = !ad && isEpisode,
         ))
         com.music.spotui.widget.NowPlayingWidget.show(Graph.app,
             title = title,
             artist = artist,
             coverUrl = cover,
             playing = isPlaying() && !ad)
+    }
+
+    /** The hidden songs ("Not interested") skipped in a row; one met twice means the list holds nothing else. */
+    private val hiddenSkipped = mutableSetOf<String>()
+    /** The hidden song the user asked for by hand: it plays, it is not skipped. */
+    private var playedByHand = ""
+
+    /**
+     * A hidden song the player moved on to by itself (the list, the radio, the queue, a skip) is
+     * skipped. Songs picked by hand play; a run of skips ends at the first song met twice, or at
+     * [HIDDEN_SKIPS_MAX], and that song then plays.
+     */
+    private fun skipHidden(id: String, uri: String) {
+        val byHand = uri == playedByHand
+        if (!byHand) playedByHand = ""
+        if (byHand || !com.music.spotui.data.preferences.HiddenSongs.isHidden(id)) { hiddenSkipped.clear(); return }
+        if (!hiddenSkipped.add(id) || hiddenSkipped.size > HIDDEN_SKIPS_MAX) {
+            app.myspoti.host.android.Logbook.log("hidden: only hidden songs left, $id plays")
+            hiddenSkipped.clear(); playedByHand = uri
+            return
+        }
+        app.myspoti.host.android.Logbook.log("hidden: $id skipped (not interested)")
+        main.post { if (_nowPlaying.value.uri == uri && !LocalPlayer.active.value) next(by = "hidden song") }
+    }
+
+    private const val HIDDEN_SKIPS_MAX = 30
+
+    /**
+     * "Not interested": the song is kept in a list on this phone (nothing goes to Spotify), taken
+     * out of the queue, and skipped if it plays now. From then on lists skip it ([skipHidden]).
+     */
+    fun hideSong(song: SongsModel) {
+        val id = song.spotifyTrackId
+        if (id.isBlank()) return
+        com.music.spotui.data.preferences.HiddenSongs.hide(Graph.app, song)
+        Haptics.confirm()
+        _queue.value.let { it.queued + it.nextUp }.filter { it.provider != LOCAL && it.uri == SPOTIFY_TRACK_PREFIX + id }.forEach(::removeFromQueue)
+        LocalPlayer.upcoming().filter { LocalPlayer.spotifyIdOf(it.second) == id }.map { it.first }.sortedDescending().forEach(LocalPlayer::remove)
+        val playingNow = if (LocalPlayer.active.value) LocalPlayer.current()?.let(LocalPlayer::spotifyIdOf) == id else trackIdOf(_nowPlaying.value.uri) == id
+        if (playingNow) next(by = "not interested")
     }
 
     /** The autoplay item already paused on, so it is paused once, not on every state. */
@@ -389,6 +601,8 @@ object SongPlayer {
         if (s == null) return
         stateSeen = true
         if (LocalPlayer.active.value && engineWhileLocal(s)) return
+        // Spotify's server still shows the song played before the local-player session saved at exit.
+        if (com.music.spotui.data.preferences.LastSession.engineStateIsStale(savedSource, savedAtMs, s.timestampMs, s.isPaused)) return
         if (resumeWhenReady) {
             resumeWhenReady = false
             // The Web Player restored the last session paused: play what was tapped.
@@ -411,18 +625,34 @@ object SongPlayer {
         val wasPlaying = playing
         val wasBuffering = isBuffering
         val predicted = getCurrentPosition()
-        bufferingState.value = s.isBuffering
         playing = resolvePlaying(s.isPaused)
+        bufferingState.value = waiting(s)
         SpeakerKeepAlive.set(playing && _activeDevice.value == null)
+        val lengthBefore = durationMs
         durationMs = item?.durationMs ?: 0L
         val reported = s.positionAt(System.currentTimeMillis())
+        // A seek on its way: the page's old position does not take the clock back (see [seekTo]).
+        if (seekHeld(uri) && seekLanded(s)) seekUntil = 0L
+        val seeking = seekHeld(uri)
         // Keep the running clock when the player only nudges it (< 1 s).
-        if (!(wasPlaying && playing && !wasBuffering && !isBuffering && kotlin.math.abs(reported - predicted) < 1000)) {
+        if (!seeking && !(wasPlaying && playing && !wasBuffering && !isBuffering && kotlin.math.abs(reported - predicted) < 1000)) {
             positionMs = reported
             positionAt = SystemClock.elapsedRealtime()
         }
         val leftId = trackIdOf(_nowPlaying.value.uri)
         val trackChanged = uri != _nowPlaying.value.uri
+        // Repeat once on a Spotify song: the page's repeat-track loops for good. The page seen
+        // starting the song again is its one replay: repeat goes off there, and that replay ends
+        // into the next song. Another song under repeat-track (a skip, a pick) cancels it.
+        if (item != null && s.repeat == Repeat.TRACK && _repeatMode.value == LocalRepeat.ONCE) {
+            if (LocalRepeat.pageRestarted(!trackChanged, predicted, lengthBefore, reported)) {
+                app.myspoti.host.android.Logbook.log("repeat once: ${item.name} replayed, back to off")
+                setRepeatMode(LocalRepeat.OFF)
+            } else if (trackChanged && _nowPlaying.value.uri.isNotBlank() && !seeking) {
+                app.myspoti.host.android.Logbook.log("repeat once: cancelled (${item.name} plays now), back to off")
+                setRepeatMode(LocalRepeat.OFF)
+            }
+        }
         // Autoplay off: stop once, when the player moves on to a track it picked itself.
         // Tracks only: this is the music setting (similar songs). An episode the page rolls on
         // to after the previous one belongs to the show, not to that recommendation autoplay —
@@ -432,6 +662,7 @@ object SongPlayer {
             autoplayHandledUri = uri
             if (!s.isPaused) pauseSilently()
         }
+        if (item != null && trackChanged && playing && !adState.value && uri.startsWith(SPOTIFY_TRACK_PREFIX)) skipHidden(id, uri)
         currentContextUri = s.contextUri.orEmpty()
         if (item != null) { checkEndOfTrackTimer(id); currentTrackId = id }
         _nowPlaying.value = NowPlaying(
@@ -444,14 +675,33 @@ object SongPlayer {
             prev = s.previous?.let(::songOf),
             next = s.next?.let(::songOf),
         )
+        // Started or moved on without Myspoti asking (another device, a transfer back here): the
+        // Connect mirror sends it back through the extensions. After this state's own follow-ups.
+        val moved = trackChanged || (!wasPlaying && playing)
+        if (moved || ConnectMirror.waitsBack) {
+            val intended = engineIntended()
+            main.post { if (!LocalPlayer.active.value && !routing) ConnectMirror.onEngine(s, moved, intended) }
+        }
         val state = boundState ?: return
         val holding = SystemClock.elapsedRealtime() < shuffleWantedUntil
         if (holding && s.shuffle == shuffleWanted) shuffleWantedUntil = 0L
-        if (!holding || s.shuffle == shuffleWanted) state.shuffle.value = MixedPlayback.shuffleShown(s.contextUri.orEmpty()) ?: s.shuffle
+        // Myspoti's shuffle plays the list in its own order with Spotify's off: shown on.
+        val trusted = !holding || s.shuffle == shuffleWanted
+        val dealt = AppShuffle.onPage(s.contextUri.orEmpty(), uri, s.shuffle, trusted)
+        // A mixed list shuffles itself (MixedPlayback) with the engine's off: its own state is shown.
+        if (trusted) state.shuffle.value = MixedPlayback.shuffleShown(s.contextUri.orEmpty()) ?: (s.shuffle || dealt)
         // The page reports a speed other than 1 only for episodes: music stays at 1.
         _speed.value = s.speed.takeIf { it > 0.0 } ?: 1.0
-        _repeatMode.value = s.repeat.ordinal
-        state.repeat.value = s.repeat != Repeat.OFF
+        // A song from an extension keeps its own repeat: the muted Spotify copy that counts it
+        // reports repeat off and turned the button back off right after a tap (reported: loop
+        // button does nothing). A tap on a Spotify song is held until the page shows it.
+        val repeatHeld = SystemClock.elapsedRealtime() < repeatWantedUntil
+        if (repeatHeld && s.repeat.ordinal == repeatWanted) repeatWantedUntil = 0L
+        if (!LocalPlayer.active.value && (!repeatHeld || s.repeat.ordinal == repeatWanted)) {
+            // Repeat once is the page's repeat-track too: the page reporting it does not turn once into for good.
+            if (!(s.repeat == Repeat.TRACK && _repeatMode.value == LocalRepeat.ONCE)) _repeatMode.value = s.repeat.ordinal
+            state.repeat.value = s.repeat != Repeat.OFF
+        }
         if (item == null) {
             state.updatePlayingState(playing)
             pushNotification(null, state.likeState.value)
@@ -472,6 +722,9 @@ object SongPlayer {
         pushNotification(song, liked)
         saveLastTrack(song, uri, liked)
         trackListen(uri, song, com.music.spotui.data.local.ListenHistory.Source.SPOTIFY, playing)
+        // A song never asked about (the one restored at launch is not a change): its state is asked
+        // once, not read as "not liked" until the next song. A failed ask is not repeated by every state.
+        if (!trackChanged && library[uri] == null) refreshCurrentLiked(fromState = true)
         if (trackChanged) {
             refreshCurrentLiked()
             refreshDevice()
@@ -483,35 +736,92 @@ object SongPlayer {
         }
         val mv = com.music.spotui.video.MusicVideoController
         mv.onAudioBuffering(isBuffering, song.spotifyTrackId)
+        // Clips are shown by the Classic player only: under the Immersive look no clip is looked up.
+        val clipsShown = com.music.spotui.data.preferences.LookPref.look == com.music.spotui.data.preferences.Look.CLASSIC
         // Clip lookup only where it can pay off: video wanted, or the player screen
         // is up (toggle then is instant). Looking up every track by default cost
         // searches and full-audio alignment downloads for users who never watch.
-        if (!isBuffering && playing && mv.inForeground && (mv.wantVideo || mv.hasPlayerScreen) && song.spotifyTrackId.isNotBlank())
+        if (clipsShown && !isBuffering && playing && mv.inForeground && (mv.wantVideo || mv.hasPlayerScreen) && song.spotifyTrackId.isNotBlank())
             com.music.spotui.video.MusicVideoController.prepare(song.spotifyTrackId, song.title, song.singer, durationMs)
-        if (!isBuffering && playing && mv.inForeground && app.myspoti.power.EnergySettings.state.value.policy.allowBackgroundLookups) {
+        val lookups = app.myspoti.power.EnergySettings.state.value.policy.allowBackgroundLookups
+        // Lyrics are warmed in the background too (the next song's are there when it starts), but not on a metered network.
+        if (!isBuffering && playing && lookups && (mv.inForeground || !com.music.spotui.data.DataSaver.metered)) {
             com.music.spotui.data.api.LyricsApi.prefetch(lyricsTrack(song))
             _nowPlaying.value.next?.let { com.music.spotui.data.api.LyricsApi.prefetch(lyricsTrack(it)) }
+        }
+        if (!isBuffering && playing && mv.inForeground && lookups) {
             // The next song's clip is looked up now, so its button is there when it starts. The
             // controller itself stays off under the data saver; a Spotify limit holds it too, as
             // it holds every other request. Only for someone who has the player open or wants
             // the clip: a lookup downloads ~145 s of audio, too much data and battery to spend on
             // every song for a user who never looks at the player.
-            if ((mv.wantVideo || mv.hasPlayerScreen) && !MyspotiRuntime.host.licenseLimited()) _nowPlaying.value.next?.takeIf { it.spotifyTrackId.isNotBlank() && it.durationMs > 0 }?.let {
+            if (clipsShown && (mv.wantVideo || mv.hasPlayerScreen) && !MyspotiRuntime.host.licenseLimited()) _nowPlaying.value.next?.takeIf { it.spotifyTrackId.isNotBlank() && it.durationMs > 0 }?.let {
                 // Without the song's length the match could not be checked, so nothing is cached for it.
                 mv.prefetch(it.spotifyTrackId, it.title, it.singer, it.durationMs.toLong())
             }
         }
     }
 
-    private fun refreshCurrentLiked() {
+    /** Songs whose saved state is being asked for by [refreshCurrentLiked] (one check in flight per song). */
+    private val likeChecking = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** When a check of each song got no answer (even after its retry): states do not start another for a while. */
+    private val likeCheckFailedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** The last line [refreshCurrentLiked] logged, so the same answer for the same song is logged once. */
+    @Volatile private var lastLikeLog = ""
+
+    /**
+     * Asks Spotify whether the song shown is liked (a state it confirmed less than [SAVED_FRESH_MS]
+     * ago is not asked for again). [fromState]: called because the page state shows a song with no
+     * answer yet, so a song whose check just failed waits [LIKE_RETRY_AFTER_MS] before the next one.
+     * An answer that never comes leaves the heart as it is: no "not liked" is written for it.
+     */
+    private fun refreshCurrentLiked(fromState: Boolean = false) {
         val uri = currentLikeUri().takeIf { it.startsWith(SPOTIFY_TRACK_PREFIX) || it.startsWith("spotify:episode:") } ?: return
+        if (fromState && SystemClock.elapsedRealtime() - (likeCheckFailedAt[uri] ?: -LIKE_RETRY_AFTER_MS) < LIKE_RETRY_AFTER_MS) return
+        if (!likeChecking.add(uri)) return
         scope.launch {
-            // Through the shared, cached request path: a state Spotify confirmed less than
-            // [SAVED_FRESH_MS] ago is not asked for again (its row asked for it already).
-            libraryContains(listOf(uri))
-            library[uri]?.let { onLibraryItem(uri, it) }
+            try {
+                // Through the shared, cached request path: a state Spotify confirmed less than
+                // [SAVED_FRESH_MS] ago is not asked for again (its row asked for it already).
+                var check = checkLibrary(listOf(uri))
+                if (check.failed) {
+                    // The page was not ready, or the request was lost: once more, for this song only.
+                    kotlinx.coroutines.delay(LIKE_RETRY_MS)
+                    if (currentLikeUri() == uri) check = checkLibrary(listOf(uri))
+                }
+                val answer = when {
+                    check.failed -> "failed, from Spotify, song $uri, reason ${savedError.ifBlank { "no answer" }}"
+                    uri in check.asked -> "${if (uri in check.saved) "liked" else "not liked"}, from Spotify, song $uri"
+                    else -> "${if (uri in check.saved) "liked" else "not liked"}, from memory, song $uri"
+                }
+                val line = "liked check: answer $answer"
+                if (line != lastLikeLog) { lastLikeLog = line; app.myspoti.host.android.Logbook.log(line) }
+                if (check.failed) { likeCheckFailedAt[uri] = SystemClock.elapsedRealtime(); return@launch }
+                likeCheckFailedAt.remove(uri)
+                if (uri in check.asked) onLibraryItem(uri, uri in check.saved)
+            } finally {
+                likeChecking.remove(uri)
+            }
         }
     }
+
+    /** The app is on screen again, or a player opens: the song shown is asked for if its state is old (see [SAVED_FRESH_MS]). */
+    fun refreshLikedIfStale() = refreshCurrentLiked()
+
+    /** Back from the local player: the page is heard again if a mirror (an extension's, or the Connect mirror) had muted it. */
+    fun unmuteMirror() {
+        com.music.spotui.extensions.Extensions.mirrorReset("the local player stopped")
+        // The Connect mirror unmutes the page itself, after pausing the song it mirrored.
+        if (!ConnectMirror.stop("the local player stopped")) unmuteMirrorNow()
+    }
+
+    /** The page heard again, unless the Connect mirror holds it (an extension's mirror ending must not unmute it then). */
+    fun unmuteMirrorNow() { if (api.player.localMute && !ConnectMirror.running) command { api.player.setLocalMute(false) } }
+
+    /** The local player's state for the mirror guard: playing, track uri, duration. */
+    fun localSnapshot3(): Triple<Boolean, String?, Long> =
+        Triple(LocalPlayer.active.value && playing, _nowPlaying.value.uri.takeIf { LocalPlayer.active.value }, durationMs)
+    fun localSnapshot(): Pair<Boolean, String?> = localSnapshot3().let { it.first to it.second }
 
     /** Back from the local player: the Spotify queue again. */
     fun restoreEngineQueue() = main.post { _queue.value = EngineQueue(); applyQueue(apiQueue) }
@@ -546,6 +856,7 @@ object SongPlayer {
             listenSong?.let { s ->
                 com.music.spotui.data.local.ListenHistory.record(com.music.spotui.data.local.ListenHistory.Listen(
                     System.currentTimeMillis(), listenKey, s.title, s.singer, s.album, s.coverUri, listenPlayedMs, listenSource,
+                    com.music.spotui.data.local.ListenHistory.artistsOf(s.singer, s.artistIds),
                 ))
             }
             listenKey = key; listenSong = song; listenSource = source; listenPlayedMs = 0
@@ -557,14 +868,17 @@ object SongPlayer {
     // ── Commands ──
 
     /** Runs an API call off the caller, logging failures instead of crashing the UI. */
-    private fun command(block: suspend () -> Unit) {
+    private fun command(onFailure: (Throwable) -> Unit = {}, block: suspend () -> Unit) {
         scope.launch {
-            runCatching { block() }.onFailure { Log.w(TAG, "command failed: ${it.message}") }
+            runCatching { block() }.onFailure { Log.w(TAG, "command failed: ${it.message}"); onFailure(it) }
         }
     }
 
     private val transportLock = kotlinx.coroutines.sync.Mutex()
     private val transportGen = java.util.concurrent.atomic.AtomicInteger()
+
+    /** Moved by [clearSession]: a transport started for an account that signed out is never sent. */
+    private val sessionGen = java.util.concurrent.atomic.AtomicInteger()
 
     /**
      * Play, pause, skip: sent one at a time and only the newest one counts. Taps sent all
@@ -582,35 +896,94 @@ object SongPlayer {
      * then is pulled back as before; with another device known to be active, the check still
      * comes first, since the pull-back has to happen before the command.
      */
-    private fun transport(pullBack: Boolean = true, waitReady: Boolean = true, checkAfter: Boolean = false, block: suspend (isLatest: () -> Boolean) -> Unit) {
+    /**
+     * [done]: told once, on the main thread, whether the command was answered (true) or not
+     * (failed, timed out, dropped for a newer one or for a page that never loaded).
+     */
+    private fun transport(
+        pullBack: Boolean = true,
+        waitReady: Boolean = true,
+        checkAfter: Boolean = false,
+        done: ((ok: Boolean) -> Unit)? = null,
+        block: suspend (isLatest: () -> Boolean) -> Unit,
+    ) {
         val gen = transportGen.incrementAndGet()
+        val session = sessionGen.get()
+        runningTransport?.let { job ->
+            val held = SystemClock.elapsedRealtime() - runningSince
+            if (job.isActive && held >= TRANSPORT_STUCK_MS) {
+                Log.w(TAG, "transport stuck for $held ms: given up for the newer one")
+                job.cancel()
+            }
+        }
         scope.launch {
-            transportLock.withLock {
-                if (gen != transportGen.get()) return@withLock
-                // A tap while the page loads (cold start, a reload): sent once it is there,
-                // instead of failing at once with "not ready".
-                if (waitReady && !api.ready.value && kotlinx.coroutines.withTimeoutOrNull(READY_WAIT_MS) { api.ready.first { it } } == null) {
-                    Log.w(TAG, "transport dropped: the player page is not ready")
-                    return@withLock
+            val self = coroutineContext[kotlinx.coroutines.Job]
+            var told = false
+            fun tell(ok: Boolean) {
+                if (told) return
+                told = true
+                done?.invoke(ok)
+            }
+            var answered = false
+            // Counted from inside: a coroutine cancelled before it starts never runs its finally.
+            transportsInFlight.incrementAndGet()
+            try {
+                transportLock.withLock {
+                    if (gen != transportGen.get()) return@withLock
+                    runningTransport = self
+                    runningSince = SystemClock.elapsedRealtime()
+                    // A tap while the page loads (cold start, a reload): sent once it is there,
+                    // instead of failing at once with "not ready".
+                    if (waitReady && !api.ready.value && kotlinx.coroutines.withTimeoutOrNull(READY_WAIT_MS) { api.ready.first { it } } == null) {
+                        Log.w(TAG, "transport dropped: the player page is not ready")
+                        return@withLock
+                    }
+                    if (gen != transportGen.get()) return@withLock
+                    // A Connect mirror just ended: the page is heard again before this command reaches it.
+                    ConnectMirror.awaitEnded()
+                    val checkLater = pullBack && checkAfter && _activeDevice.value == null
+                    if (pullBack && !checkLater && api.ready.value) takeBackPlayback()
+                    // Both may wait (a mirror's end, a device check): the session may have ended meanwhile.
+                    if (session != sessionGen.get()) return@withLock
+                    // A cancellation of the caller is never swallowed (it must unwind); only the
+                    // transport's own timeout and a real failure are logged here.
+                    try {
+                        kotlinx.coroutines.withTimeout(TRANSPORT_TIMEOUT_MS) { block { gen == transportGen.get() } }
+                        answered = true
+                        tell(true)
+                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                        Log.w(TAG, "transport timed out after ${TRANSPORT_TIMEOUT_MS} ms")
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "transport failed: ${e.message}")
+                    }
+                    if (checkLater && gen == transportGen.get() && api.ready.value) takeBackPlayback()
                 }
-                if (gen != transportGen.get()) return@withLock
-                val checkLater = pullBack && checkAfter && _activeDevice.value == null
-                if (pullBack && !checkLater && api.ready.value) takeBackPlayback()
-                // A cancellation of the caller is never swallowed (it must unwind); only the
-                // transport's own timeout and a real failure are logged here.
-                try {
-                    kotlinx.coroutines.withTimeout(TRANSPORT_TIMEOUT_MS) { block { gen == transportGen.get() } }
-                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                    Log.w(TAG, "transport timed out after ${TRANSPORT_TIMEOUT_MS} ms")
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "transport failed: ${e.message}")
+            } finally {
+                // A newer transport may hold the lock already: only this one's own mark is cleared.
+                if (runningTransport === self) runningTransport = null
+                tell(false)
+                transportsInFlight.decrementAndGet()
+                // An answered play or pause: the page gets a moment to say so before the screen
+                // is put back on what it says (a slow network answers late, its state later).
+                // One that failed is put right then too, whatever was wanted.
+                if (answered) {
+                    val until = SystemClock.elapsedRealtime() + COMMAND_SETTLE_MS
+                    if (wantPlayingUntil != 0L) wantPlayingUntil = maxOf(wantPlayingUntil, until)
+                    if (wantPausedUntil != 0L) wantPausedUntil = maxOf(wantPausedUntil, until)
                 }
-                if (checkLater && gen == transportGen.get() && api.ready.value) takeBackPlayback()
+                reconcileAfter(commandSettled, COMMAND_SETTLE_MS)
             }
         }
     }
+
+    /** Transports started and not over yet: [reconcile] leaves the screen to them meanwhile. */
+    private val transportsInFlight = java.util.concurrent.atomic.AtomicInteger()
+
+    /** The transport holding [transportLock], and since when (see [TRANSPORT_STUCK_MS]). */
+    @Volatile private var runningTransport: kotlinx.coroutines.Job? = null
+    @Volatile private var runningSince = 0L
 
     /**
      * Plays [itemUri], then checks that the page really moved to it; a play the page lost
@@ -630,6 +1003,27 @@ object SongPlayer {
     /** Remember the Spotify context the given play keys belong to. */
     fun registerContext(urls: List<String>, contextUri: String) {
         urls.forEach { contextRegistry[it] = contextUri }
+        contextRows[contextUri] = urls
+    }
+
+    /**
+     * Each list's play keys in its own order, as last registered: where a picked song sits in it
+     * (see [rowIndex]). The app's rows map one to one onto the list's items, in Spotify's order.
+     */
+    private val contextRows = ConcurrentHashMap<String, List<String>>()
+
+    /**
+     * The place of [song] in the list [ctx], sent with its uri as the official player sends a row's
+     * index with its uri. Reported (900+ songs, Liked Songs): a song picked far down a big list
+     * started another song. The uri alone is looked up in the list's first pages only (lists of a
+     * hundred songs played the song picked); the index says where it is. Only past that first
+     * stretch, so the plays that worked go out exactly as before. A given [order] is played as one
+     * page of those songs (see player-bridge.js), where the uri is always found: no index then.
+     */
+    private fun rowIndex(song: String, ctx: String, order: List<String>?): Int? {
+        if (order != null) return null
+        val at = contextRows[ctx]?.indexOf(song) ?: return null
+        return at.takeIf { it >= INDEXED_ROW_FROM }
     }
 
     // Names of the lists playback started from, as the app's own pages name them. Spotify's
@@ -649,13 +1043,20 @@ object SongPlayer {
     /** Liked Songs plays as its own context: Spotify maps it to the account's liked list. */
     fun registerLikedSongs(urls: List<String>) = registerContext(urls, LIKED_CONTEXT)
 
-    private fun markPending(trackId: String, itemUri: String? = trackId.takeIf { it.isNotBlank() }?.let { SPOTIFY_TRACK_PREFIX + it }) {
+    /** [holdMs]: how long states of another song are ignored, at most, while this one comes. */
+    private fun markPending(
+        trackId: String,
+        itemUri: String? = trackId.takeIf { it.isNotBlank() }?.let { SPOTIFY_TRACK_PREFIX + it },
+        holdMs: Long = PENDING_MS,
+    ) {
+        pendingSkip = 0
         pendingItemUri = itemUri
         bufferingState.value = true
         itemUri?.let { boundState?.likeState?.value = library[it] ?: false }
         intendPlaying()
         pendingTrackId = trackId
-        pendingUntil = SystemClock.elapsedRealtime() + PENDING_MS
+        pendingUntil = SystemClock.elapsedRealtime() + holdMs
+        reconcileAfter(pendingEnded, holdMs)
         playing = true
         positionMs = 0
         positionAt = SystemClock.elapsedRealtime()
@@ -671,11 +1072,13 @@ object SongPlayer {
      * audio-source extensions: asked first when one is on ([askExtensions]), they play it in the
      * local player with the rest as the queue; a miss plays on Spotify as before. Without
      * [songs], the song is looked up on Spotify (a link, Recents, an extension's block).
+     * [alone]: no list at all, not even the one that registered the track (a search hit), so
+     * Spotify goes on with its own autoplay of related songs instead of, say, Liked Songs.
      * [engineShuffleOff]: the engine's shuffle goes off first, [order] being shuffled already (MixedPlayback).
      */
     fun playSong(
         song: String, context: Context? = null, contextUri: String? = null, order: List<String>? = null, positionMs: Long? = null,
-        songs: List<SongsModel>? = null, askExtensions: Boolean = true, engineShuffleOff: Boolean = false,
+        songs: List<SongsModel>? = null, askExtensions: Boolean = true, alone: Boolean = false, engineShuffleOff: Boolean = false,
     ) {
         // Data saver on mobile data: Spotify can't stream, only downloads and Local Files play.
         if (com.music.spotui.data.DataSaver.active) {
@@ -686,9 +1089,9 @@ object SongPlayer {
         }
         val routedId = if (song.startsWith("episode:")) null else spotifyTrackIdForPlayback(song)
         if (askExtensions && com.music.spotui.extensions.AudioRoute.asks(routedId, com.music.spotui.extensions.Extensions.hasAudioSource())) {
-            val ctx = (contextUri ?: contextRegistry[song]).orEmpty()
+            val ctx = if (alone) "" else (contextUri ?: contextRegistry[song]).orEmpty()
             val shuffle = isShuffleOn()
-            playThroughExtensions(routedId!!, songs?.firstOrNull { it.spotifyTrackId == routedId }, knownContextName(ctx), { playSong(song, context, contextUri, order, positionMs, askExtensions = false) }) { isLatest, shown ->
+            playThroughExtensions(routedId!!, songs?.firstOrNull { it.spotifyTrackId == routedId }, knownContextName(ctx), { playSong(song, context, contextUri, order, positionMs, askExtensions = false, alone = alone) }) { isLatest, shown ->
                 com.music.spotui.extensions.ExtensionAudio.route(routedId, songs, knownContextName(ctx), shuffle, ctx, isLatest, shown, positionMs ?: 0L)
             }
             return
@@ -702,20 +1105,24 @@ object SongPlayer {
         val episodeId = song.removePrefix("episode:").takeIf { song.startsWith("episode:") }
         val trackId = episodeId ?: spotifyTrackIdForPlayback(song) ?: return
         val itemUri = if (episodeId != null) "spotify:episode:$episodeId" else SPOTIFY_TRACK_PREFIX + trackId
-        val ctx = contextUri ?: contextRegistry[song]
+        val ctx = if (alone) null else contextUri ?: contextRegistry[song]
         // What a smart shuffle ending brings back: the order of the last play that was not one.
         if (ctx != null) {
             val sent = order?.takeIf { ctx == contextUri }
             playedOrder = ctx to sent
-            if (com.music.spotui.ui.screens.SmartShuffle.on.value != ctx) { plainOrder = ctx to sent; smartPlayed = null }
+            if (com.music.spotui.ui.screens.SmartShuffle.on.value != ctx) { plainOrder = ctx to AppShuffle.unshuffled(ctx, sent); smartPlayed = null }
             else if (sent != null) smartPlayed = ctx
         }
+        playedByHand = itemUri
         markPending(if (episodeId != null) "" else trackId, itemUri)
         transport { isLatest ->
             playChecked(itemUri, isLatest) {
                 Log.d(TAG, "playing $itemUri in ${ctx ?: "no context"}: ${queueTag()}")
                 if (engineShuffleOff && api.player.state.value?.shuffle == true) api.player.setShuffle(false)
-                if (ctx != null) api.player.play(ctx, trackUri = itemUri, positionMs = positionMs, order = order?.takeIf { ctx == contextUri })
+                if (ctx != null) {
+                    val sent = order?.takeIf { ctx == contextUri }
+                    api.player.play(ctx, trackUri = itemUri, index = rowIndex(song, ctx, sent), positionMs = positionMs, order = sent)
+                }
                 else api.player.play(itemUri)
             }
         }
@@ -773,10 +1180,13 @@ object SongPlayer {
      * plays it from [positionMs], in the list it came from, and goes on with that list (as a miss
      * at the pick does). False: it cannot (no Spotify id, data saver), the caller skips it.
      */
-    fun playUnavailableOnSpotify(t: com.music.spotui.data.local.LocalTrack, positionMs: Long): Boolean {
+    fun playUnavailableOnSpotify(t: com.music.spotui.data.local.LocalTrack, positionMs: Long): Boolean =
+        playLocalOnSpotify(t, positionMs, "not available from extensions")
+
+    private fun playLocalOnSpotify(t: com.music.spotui.data.local.LocalTrack, positionMs: Long, why: String): Boolean {
         val id = streamedTrackId(t)
         if (id.isBlank() || com.music.spotui.data.DataSaver.active) return false
-        app.myspoti.host.android.Logbook.log("local: ${t.title} not available from extensions, Spotify plays it")
+        app.myspoti.host.android.Logbook.log("local: ${t.title} $why, Spotify plays it")
         spotifyPlayed.add(id)
         spotifyFallbackId = id
         // The local queue after it, for the extensions to go on with once Spotify has played it.
@@ -784,6 +1194,119 @@ object SongPlayer {
         playSong(buildSpotifyPlayQuery(id, t.title, t.artist), contextUri = LocalPlayer.contextUri.ifBlank { null },
             positionMs = positionMs.takeIf { it > 0 }, askExtensions = false)
         return true
+    }
+
+    /** What picking an audio source in the quality sheet did to the song playing ([switchSource]). */
+    enum class SourceSwitch {
+        /** The song plays from it, from where it was (or already did). */
+        PLAYING,
+        /** It does not have the song (or cannot answer now): the song goes on where it played, the order is the one before. */
+        MISSING,
+        /** The song goes on as it plays (its download, another device, a cast, the song changed): the songs after it come from it. */
+        NEXT_SONG,
+    }
+
+    /**
+     * The audio source [id] (an extension, or [com.music.spotui.extensions.SPOTIFY_SOURCE]) picked
+     * in the quality sheet: first of the order for this session (Extensions.setSessionSource, never
+     * saved) and the song playing plays from it, from where it is. An extension is asked for the
+     * song alone first, nothing stopping meanwhile: without it ([SourceSwitch.MISSING]) the song
+     * goes on and the order stays as it was. Spotify picked while an extension streams: Spotify
+     * plays the song from there, in its list. Picked while paused, the song stays paused: put on
+     * the new source where it was, it starts at the user's next play ([putPausedOnExtension],
+     * [spotifyDue]). [done] on the main thread.
+     */
+    fun switchSource(id: String, done: (SourceSwitch) -> Unit) {
+        val ext = com.music.spotui.extensions.Extensions
+        spotifyDue = null
+        val local = LocalPlayer.active.value
+        val t = if (local) LocalPlayer.current() else null
+        val streamed = t?.let(::streamedTrackId).orEmpty()
+        val trackId = if (local) streamed else trackIdOf(_nowPlaying.value.uri)
+        val elsewhere = _activeDevice.value != null || routing || com.music.spotui.data.DataSaver.active || com.music.spotui.cast.CastPlayback.active
+        if (id == com.music.spotui.extensions.SPOTIFY_SOURCE) {
+            ext.setSessionSource(id)
+            done(when {
+                !local -> SourceSwitch.PLAYING
+                t == null || streamed.isBlank() || elsewhere -> SourceSwitch.NEXT_SONG
+                // Paused: it stays paused where it is, the user's next play plays it on Spotify from there.
+                !LocalPlayer.playWhenReady() -> {
+                    spotifyDue = streamed
+                    app.myspoti.host.android.Logbook.log("local: ${t.title} paused, Spotify plays it at the next play")
+                    SourceSwitch.PLAYING
+                }
+                playLocalOnSpotify(t, LocalPlayer.position(), "picked in the player") -> SourceSwitch.PLAYING
+                else -> SourceSwitch.NEXT_SONG
+            })
+            return
+        }
+        if (local && streamed.isNotBlank() && com.music.spotui.extensions.ExtensionAudio.providerOf(streamed) == id) { ext.setSessionSource(id); done(SourceSwitch.PLAYING); return }
+        val song = when {
+            trackId.isBlank() || elsewhere -> null
+            t != null -> localSong(t)
+            else -> _queue.value.current?.takeIf { it.spotifyTrackId == trackId }
+        }
+        if (song == null) { ext.setSessionSource(id); done(SourceSwitch.NEXT_SONG); return }
+        app.myspoti.host.android.Logbook.log("audio: ${song.title} asked to $id, picked in the player")
+        scope.launch {
+            val stream = runCatching {
+                ext.audioFrom(id, ext.trackInfo(trackId, song.title, song.singer, song.album, song.durationMs.toLong(), song.coverUri))
+            }.getOrNull()
+            main.post {
+                if (stream == null) { done(SourceSwitch.MISSING); return@post }
+                ext.setSessionSource(id)
+                // Another song meanwhile: it plays as it was asked; the songs after it follow the new order.
+                val nowLocal = LocalPlayer.active.value
+                val nowId = if (nowLocal) LocalPlayer.current()?.let(::streamedTrackId).orEmpty() else trackIdOf(_nowPlaying.value.uri)
+                if (nowId != trackId || routing) { done(SourceSwitch.NEXT_SONG); return@post }
+                com.music.spotui.extensions.ExtensionAudio.use(trackId, stream)
+                if (nowLocal) { done(if (LocalPlayer.reopen()) SourceSwitch.PLAYING else SourceSwitch.NEXT_SONG); return@post }
+                // Spotify played it: the extension plays it from there, the engine's queue after it, as a resume does.
+                val np = _nowPlaying.value
+                val q = _queue.value
+                val songs = (listOfNotNull(q.current) + (q.queued + q.nextUp).map { it.song }).takeIf { l -> l.any { it.spotifyTrackId == trackId } }
+                if (!isPlaying()) { putPausedOnExtension(trackId, songs ?: listOf(song), done); return@post }
+                playSong(np.uri, contextUri = np.contextUri.ifBlank { null }, positionMs = getCurrentPosition(), songs = songs)
+                done(SourceSwitch.PLAYING)
+            }
+        }
+    }
+
+    /**
+     * An extension picked in the player while Spotify had the song [trackId] paused, its answer kept
+     * (ExtensionAudio.use): the local player takes it from where Spotify was, with [songs] as its
+     * queue (as ExtensionAudio.playList does), paused; nothing plays until the user's play (the page
+     * stays paused, the Connect mirror starts only with it). At once, on the main thread: the
+     * sources changing next keep the answer of the song the local player is on.
+     */
+    private fun putPausedOnExtension(trackId: String, songs: List<SongsModel>, done: (SourceSwitch) -> Unit) {
+        if (_activeDevice.value != null) { done(SourceSwitch.NEXT_SONG); return }
+        val np = _nowPlaying.value
+        val picked = songs.first { it.spotifyTrackId == trackId }
+        val ctx = np.contextUri.ifBlank { contextRegistry[np.uri].orEmpty() }
+        val at = getCurrentPosition()
+        app.myspoti.host.android.Logbook.log("audio: ${picked.title} paused, put on the extension at $at ms, still paused")
+        val (list, index) = com.music.spotui.extensions.AudioRoute.queue(songs, picked)
+        LocalPlayer.play(list.map(com.music.spotui.extensions.ExtensionAudio::localTrack), index, shuffle = isShuffleOn(), context = knownContextName(ctx),
+            contextUri = ctx, startMs = at, continues = true, paused = true)
+        done(SourceSwitch.PLAYING)
+    }
+
+    /**
+     * The song an extension streams that Spotify was picked for while it was paused (see
+     * [switchSource]): the user's next play plays it on Spotify from where it is, the local player
+     * stays on it paused until then. Null: none.
+     */
+    private var spotifyDue: String? = null
+
+    /** The user's play on the song [spotifyDue] names: Spotify plays it from where it is. False: the local player resumes as usual. */
+    private fun playDueOnSpotify(): Boolean {
+        val due = spotifyDue.also { spotifyDue = null } ?: return false
+        val t = LocalPlayer.current() ?: return false
+        val first = com.music.spotui.extensions.Extensions.sourceLine(app.myspoti.extensions.Action.AUDIO_SOURCE).firstOrNull()
+        if (!com.music.spotui.extensions.SessionSource.spotifyDue(due, streamedTrackId(t), first)) return false
+        if (_activeDevice.value != null || routing || com.music.spotui.cast.CastPlayback.active) return false
+        return playLocalOnSpotify(t, LocalPlayer.position(), "picked in the player while paused")
     }
 
     /**
@@ -802,6 +1325,29 @@ object SongPlayer {
 
     /** How long before its end the last song is played by Spotify, so its autoplay goes on at once. */
     private const val END_LEAD_MS = 1_000L
+
+    /**
+     * The audio-source extensions changed (one installed, turned on, updated or removed, or the
+     * order of the sources): [added] gives audio now and did not, [any]: one gives audio. The songs
+     * they had nothing for this session are asked again; the answers kept for the songs to come are
+     * dropped (asked again in the new order). The local queue asks again for its next song, and the
+     * song it stopped on for want of a source; with a new source while Spotify plays, the song after
+     * the one playing goes to the extensions (as after a fallback), asked ahead. On the main thread.
+     */
+    fun audioSourcesChanged(added: List<String>, any: Boolean) {
+        spotifyPlayed.clear()
+        if (!any) return
+        val local = LocalPlayer.active.value
+        // The song playing, or the one being asked (a source picked for it in the player), keeps its answer.
+        com.music.spotui.extensions.ExtensionAudio.forgetAllBut(if (local) LocalPlayer.current()?.let(LocalPlayer::spotifyIdOf) else routingState.value)
+        if (local) { LocalPlayer.sourcesChanged(); return }
+        if (added.isEmpty() || _activeDevice.value != null || routing || com.music.spotui.data.DataSaver.active) return
+        val id = trackIdOf(_nowPlaying.value.uri).ifBlank { return }
+        spotifyFallbackId = id
+        val next = _queue.value.let { it.queued + it.nextUp }.map { it.song }.firstOrNull { it.spotifyTrackId.isNotBlank() && it.spotifyTrackId != id }
+        app.myspoti.host.android.Logbook.log("audio: ${added.joinToString()} gives audio now: the song after $id goes to the extensions${next?.let { ", ${it.title} asked ahead" } ?: ""}")
+        if (next != null) scope.launch { runCatching { com.music.spotui.extensions.ExtensionAudio.warm(listOf(next)) } }
+    }
 
     /** The songs the extensions had nothing for this session: a resume of one goes straight to Spotify. */
     private val spotifyPlayed = java.util.Collections.synchronizedSet(HashSet<String>())
@@ -878,6 +1424,34 @@ object SongPlayer {
         return true
     }
 
+    /**
+     * A song picked on another device while the Connect mirror played: asked to the extensions as a
+     * pick here is, from where the page is, with the page's queue after it; Spotify plays it when they
+     * have nothing. An episode is Spotify's own and already plays there: it is only heard again.
+     */
+    fun followRemotePlay(item: app.myspoti.api.NowPlaying, contextUri: String?, positionMs: Long) {
+        if (!item.uri.startsWith(SPOTIFY_TRACK_PREFIX)) {
+            ConnectMirror.stop("${item.uri} picked on another device", pausePage = false)
+            LocalPlayer.stop()
+            return
+        }
+        val after = apiQueue?.let { it.queued + it.nextUp }.orEmpty().filter { it.uri.startsWith(SPOTIFY_TRACK_PREFIX) && it.uri != item.uri }
+        playSong(item.uri, contextUri = contextUri?.ifBlank { null }, positionMs = positionMs.takeIf { it > 0 },
+            songs = listOf(songOf(item)) + after.map(::songOf))
+    }
+
+    /**
+     * Playback came back to this phone (a transfer from another device, or picked here) after the
+     * Connect mirror had handed it away: Spotify plays it here now, heard; the song goes back to the
+     * extensions from where it is, as a resume does.
+     */
+    fun backThroughExtensions() {
+        if (LocalPlayer.active.value || routing || !com.music.spotui.data.preferences.ConnectMirrorPref.on) return
+        if (api.player.state.value?.isPaused != false) return
+        _activeDevice.value = null
+        if (resumeThroughExtensions()) app.myspoti.host.android.Logbook.log("mirror: playback back on this phone, the extensions play it again")
+    }
+
     /** The song being resolved, as if it played (paused, loading): screens, notification, lyrics. */
     private fun showRouted(song: SongsModel) {
         val uri = SPOTIFY_TRACK_PREFIX + song.spotifyTrackId
@@ -903,11 +1477,17 @@ object SongPlayer {
     fun play(by: String = "user") {
         app.myspoti.host.android.Logbook.log("play asked by $by")
         if (routing) return // the song asked for starts by itself
-        if (LocalPlayer.active.value) { Haptics.click(); LocalPlayer.resume(); return }
+        if (LocalPlayer.active.value) { Haptics.click(); if (!playDueOnSpotify()) LocalPlayer.resume(); return }
+        if (resumeRestoredLocal()) { Haptics.click(); return }
         if (resumeThroughExtensions()) { Haptics.click(); return }
         // Smart shuffle was turned off while paused: the list's order comes back as it plays on.
         plainOrderDue?.let { if (restorePlainOrder(it)) return }
+        // Myspoti's shuffle turned on or off while paused: the song goes on in the list's new order.
+        if (AppShuffle.resume()) { Haptics.click(); return }
         Haptics.click(); intendPlaying(); playing = true; positionAt = SystemClock.elapsedRealtime()
+        // Loading until the page plays: the clock ran from the tap before, over silence when the
+        // resume came late or never (reported on a slow network).
+        if (api.player.state.value?.isPaused != false) bufferingState.value = true
         // Tapped on the restored mini player while the Web Player is still loading.
         if (!stateSeen) resumeWhenReady = true
         val uri = _nowPlaying.value.uri
@@ -934,18 +1514,29 @@ object SongPlayer {
         Haptics.click(); cancelBurst(); pauseSilently()
     }
 
-    private fun pauseSilently() {
+    /** [send] false: the engine has paused already (the sleep timer's fade). */
+    private fun pauseSilently(send: Boolean = true) {
         if (LocalPlayer.active.value) { LocalPlayer.pause(); return }
         intendPaused()
         positionMs = getCurrentPosition(); positionAt = SystemClock.elapsedRealtime(); playing = false
-        transport(pullBack = false) { api.player.pause() }
+        if (send) transport(pullBack = false) { api.player.pause() }
     }
 
     fun stop() = pause()
-    fun next() {
+
+    /**
+     * Next, from any control: the player, the mini player, the notification, headphones, the car,
+     * the widget. The song it lands on is shown at once ([showSkipTarget]) and stays shown until the
+     * page plays it or the skip fails. Only the in-app buttons showed it before, for [PENDING_MS] at
+     * most: on a slow network the skip took longer and the screen went back to the old song
+     * (reported: "Next does not move").
+     */
+    fun next(by: String = "user") {
         Log.d(TAG, "next tapped")
+        app.myspoti.host.android.Logbook.log("next asked by $by")
         Haptics.click()
         if (LocalPlayer.active.value) { LocalPlayer.next(); return }
+        cancelRepeatOnce("next")
         // A mixed list whose next row is on the phone: it plays now, Spotify waits.
         if (MixedPlayback.next()) return
         com.music.spotui.extensions.Extensions.skipAsked("forward")
@@ -974,7 +1565,26 @@ object SongPlayer {
             burstTaps = 1
             pendingSkips = 0
             skipSentAt = now
-            transport(waitReady = !stateSeen) { api.player.next() }
+            // The next song starts at 0: a previous tapped before Spotify reports must not read
+            // the old song's position and restart instead of going back.
+            positionMs = 0L
+            positionAt = now
+            val shown = showSkipTarget()
+            // Reported: one skip went two songs on. A song that ends while the skip waits its turn
+            // (the device check, a command still running, a slow page) is left by the page on its
+            // own, and the skip then left the next song too. The skip is for the song it was
+            // tapped on: gone already, it is not sent.
+            val tappedOn = api.player.state.value?.item?.uri
+            // The device check after the skip, as for a resume: before it, a slow network held
+            // every skip for the device list's round trip (up to DEVICES_WAIT_MS).
+            transport(waitReady = !stateSeen, checkAfter = true, done = { ok -> skipDone(shown, ok) }) {
+                val now = api.player.state.value?.item?.uri
+                if (tappedOn != null && now != null && now != tappedOn) {
+                    app.myspoti.host.android.Logbook.log("next not sent: the song it was tapped on had already ended")
+                    return@transport
+                }
+                api.player.next()
+            }
             return
         }
         burstAt = now
@@ -986,8 +1596,61 @@ object SongPlayer {
         }
         burstTaps++
         pendingSkips++
+        showSkipTarget()
         main.removeCallbacks(sendSkips)
         main.postDelayed(sendSkips, maxOf(SKIP_BURST_MS, MIN_SKIP_GAP_MS - sinceSent))
+    }
+
+    /** Hands out the tokens of [showSkipTarget]; 0 is never one. */
+    private var skipShownSeq = 0
+    /** The skip whose song is pending on screen; 0 when the pending song is not a skip's (a pick). */
+    private var pendingSkip = 0
+
+    /**
+     * Shows the song the taps so far land on, before the page plays it: the song after the one
+     * playing at the first tap, or [burstTaps] songs after it. -> the token [skipDone] is told
+     * with, 0 when the target is unknown (the page's own states then show where it lands).
+     */
+    private fun showSkipTarget(): Int {
+        val token = ++skipShownSeq
+        // Reported (beta.9): each fast tap showed `nowPlaying.next` — the same second song every
+        // time, held as pending, so the screen stayed on it for seconds while the page went on to
+        // the fifth. A burst shows the song its taps add up to.
+        val n = if (burstTaps <= 1) _nowPlaying.value.next
+            else burstUpcoming.getOrNull(burstTaps - 1)?.let(::songOf)
+        if (n == null) {
+            pendingTrackId = null
+            pendingItemUri = null
+            pendingSkip = 0
+            return 0
+        }
+        markPending(n.spotifyTrackId, holdMs = SKIP_PENDING_MAX_MS)
+        pendingSkip = token
+        boundState?.updateSongState(n.coverUri, n.title, n.singer, true, n.id, 0, n.album)
+        durationMs = n.durationMs.toLong()
+        pushNotification(n, false)
+        return token
+    }
+
+    /**
+     * The skip shown as [token] was answered ([ok]): the page now has [SKIP_ANSWERED_MS] to report the
+     * song. Not answered (failed, timed out, dropped): the screen goes back at once to what the
+     * page really plays, instead of showing a song nothing is going to play. A newer skip or a
+     * pick shown since owns the screen, and is left alone.
+     */
+    private fun skipDone(token: Int, ok: Boolean) {
+        if (token == 0 || token != pendingSkip || pendingTrackId == null) return
+        if (ok) {
+            val now = SystemClock.elapsedRealtime()
+            pendingUntil = minOf(pendingUntil, now + SKIP_ANSWERED_MS)
+            reconcileAfter(pendingEnded, pendingUntil - now)
+            return
+        }
+        Log.w(TAG, "skip not taken by the page: the screen shows what it plays")
+        pendingSkip = 0
+        pendingTrackId = null
+        pendingItemUri = null
+        applyState(api.player.state.value)
     }
 
     /** When the last skip command left (see [next]). */
@@ -1004,7 +1667,11 @@ object SongPlayer {
         skipSentAt = SystemClock.elapsedRealtime()
         // The song [burstTaps] after the one playing at the first tap.
         val target = burstUpcoming.getOrNull(burstTaps - 1)
-        transport(waitReady = !stateSeen) { if (target == null) api.player.next() else api.player.skipTo(target) }
+        app.myspoti.host.android.Logbook.log("next taps merged: $burstTaps skips${if (target != null) " in one jump to ${target.name}" else ", sent as a plain next"}")
+        val shown = pendingSkip
+        transport(waitReady = !stateSeen, checkAfter = true, done = { ok -> skipDone(shown, ok) }) {
+            if (target == null) api.player.next() else api.player.skipTo(target)
+        }
         if (target != null) {
             burstTarget = target
             burstContext = _nowPlaying.value.contextUri
@@ -1040,6 +1707,7 @@ object SongPlayer {
         if (tap != tapSeq || SystemClock.elapsedRealtime() - burstAt < BURST_VERIFY_MS || !playing) return@Runnable
         if (lastPageUri == t.uri || burstContext.isBlank()) return@Runnable
         Log.d(TAG, "skips landed on $lastPageUri, not ${t.name}: playing it (${queueTag()})")
+        app.myspoti.host.android.Logbook.log("skips landed on another song than ${t.name}: it is played by name")
         // In the order it was played in (a sorted list, a smart shuffle), and a song the user
         // queued is not in the list: asking for it there would restart the list.
         if (t.provider == "queue") return@Runnable
@@ -1069,9 +1737,11 @@ object SongPlayer {
         return "shuffle=${api.player.state.value?.shuffle} next=[$up]"
     }
 
-    fun previous() {
+    fun previous(by: String = "user") {
+        app.myspoti.host.android.Logbook.log("previous asked by $by")
         Haptics.click()
         if (LocalPlayer.active.value) { LocalPlayer.previous(); return }
+        cancelRepeatOnce("previous")
         // A mixed list whose row before is on the phone: it plays now (the engine would skip it).
         if (MixedPlayback.previous()) return
         if (getCurrentPosition() <= 3_000) com.music.spotui.extensions.Extensions.skipAsked("backward")
@@ -1095,7 +1765,11 @@ object SongPlayer {
         }
         cancelBurst()
         skipSentAt = SystemClock.elapsedRealtime()
-        transport(waitReady = !stateSeen) { api.player.previous() }
+        // Either way the song now starts at 0 (a restart or the one before): without this the old
+        // position stays until Spotify reports, and a quick second previous would restart again.
+        positionMs = 0L
+        positionAt = SystemClock.elapsedRealtime()
+        transport(waitReady = !stateSeen, checkAfter = true) { api.player.previous() }
     }
 
     /** Tracks shufflePlay plays without a context: the first one, plus up to 49 queued. */
@@ -1104,6 +1778,7 @@ object SongPlayer {
     private const val PULL_BACK_SETTLE_MS = 600L
     private const val PULL_BACK_WAIT_MS = 6_000L
     private const val DEVICES_WAIT_MS = 2_000L
+    private const val DISCOVERY_WAIT_MS = 800L
 
     /**
      * How long the device list read by [takeBackPlayback] is trusted. Long enough that a burst of
@@ -1190,6 +1865,12 @@ object SongPlayer {
         Haptics.toggle(on)
         if (MixedPlayback.setShuffle(on)) return
         if (LocalPlayer.active.value) { LocalPlayer.setShuffle(on); return }
+        if (AppShuffle.toggle(on)) return
+        setPageShuffle(on)
+    }
+
+    /** Spotify's own shuffle, set on the page (Myspoti's, [AppShuffle], keeps it off). */
+    internal fun setPageShuffle(on: Boolean) {
         shuffleWanted = on
         shuffleWantedUntil = SystemClock.elapsedRealtime() + SHUFFLE_HOLD_MS
         command { api.player.setShuffle(on) }
@@ -1199,22 +1880,27 @@ object SongPlayer {
     // before it took the tap flipped the button back, and the two screens then disagreed; the
     // value asked for holds until the page reports it (or for SHUFFLE_HOLD_MS).
     @Volatile private var shuffleWanted = false
+    /** The repeat mode last tapped, held against the page's older reports like [shuffleWanted]. */
+    @Volatile private var repeatWanted = 0
+    @Volatile private var repeatWantedUntil = 0L
     @Volatile private var shuffleWantedUntil = 0L
     private const val SHUFFLE_HOLD_MS = 2_500L
 
-    /** 0 = off, 1 = context, 2 = track. */
+    /** 0 = off, 1 = context, 2 = track for good, 3 = track once (see [LocalRepeat]). */
     private val _repeatMode = mutableStateOf(0)
     val repeatMode: State<Int> get() = _repeatMode
 
     fun setRepeat(on: Boolean) = setRepeatMode(if (on) 1 else 0)
 
     fun setRepeatMode(mode: Int) {
-        if (LocalPlayer.active.value) { _repeatMode.value = mode; LocalPlayer.setRepeatMode(mode); return }
+        if (LocalPlayer.active.value) { _repeatMode.value = mode; boundState?.repeat?.value = mode != 0; LocalPlayer.setRepeatMode(mode); lastTrackPrefs().edit().putInt("repeat", mode.coerceIn(0, 3)).apply(); return }
         Haptics.toggle(mode != 0)
         _repeatMode.value = mode
+        repeatWanted = LocalRepeat.pageMode(mode)
+        repeatWantedUntil = SystemClock.elapsedRealtime() + SHUFFLE_HOLD_MS
         boundState?.repeat?.value = mode != 0
-        lastTrackPrefs().edit().putInt("repeat", mode.coerceIn(0, 2)).apply()
-        command { api.player.setRepeat(Repeat.entries[mode.coerceIn(0, 2)]) }
+        lastTrackPrefs().edit().putInt("repeat", mode.coerceIn(0, 3)).apply()
+        command { api.player.setRepeat(Repeat.entries[LocalRepeat.pageMode(mode)]) }
     }
 
     /**
@@ -1225,13 +1911,21 @@ object SongPlayer {
     private fun restoreRepeat(state: CurrentSongState) {
         val p = lastTrackPrefs()
         if (!p.contains("repeat")) return
-        val mode = p.getInt("repeat", 0).coerceIn(0, 2)
+        val mode = p.getInt("repeat", 0).coerceIn(0, 3)
         _repeatMode.value = mode
         state.repeat.value = mode != 0
-        MyspotiRuntime.spotify.player.restoreRepeat(Repeat.entries[mode])
+        MyspotiRuntime.spotify.player.restoreRepeat(Repeat.entries[LocalRepeat.pageMode(mode)])
     }
 
-    fun cycleRepeat() = setRepeatMode((_repeatMode.value + 1) % 3)
+    /** Off, the queue, the song for good, the song once, off. */
+    fun cycleRepeat() = setRepeatMode((_repeatMode.value + 1) % 4)
+
+    /** A manual move on a Spotify song cancels repeat once: it was for the song left. */
+    private fun cancelRepeatOnce(why: String) {
+        if (_repeatMode.value != LocalRepeat.ONCE) return
+        app.myspoti.host.android.Logbook.log("repeat once: cancelled ($why), back to off")
+        setRepeatMode(LocalRepeat.OFF)
+    }
 
     /** Podcast playback speed (Spotify refuses it on music). */
     fun setSpeed(speed: Double) {
@@ -1282,10 +1976,13 @@ object SongPlayer {
     /** Save / remove the current track in Liked Songs. */
     fun setLiked(on: Boolean) {
         // A file of the device is not in the Spotify library; a stream or a download is.
-        if (LocalPlayer.active.value && !routing && localSpotifyUri(LocalPlayer.current()) == null) return
+        if (LocalPlayer.active.value && !routing && localSpotifyUri(LocalPlayer.current()) == null) {
+            app.myspoti.host.android.Logbook.log("library: like not sent, the local song has no Spotify id (${LocalPlayer.current()?.uri?.scheme})")
+            return
+        }
         Haptics.toggle(on)
         val uri = currentLikeUri().ifBlank { if (currentTrackId.isNotBlank()) SPOTIFY_TRACK_PREFIX + currentTrackId else "" }
-        if (uri.isBlank()) { boundState?.likeState?.value = on; return }
+        if (uri.isBlank()) { boundState?.likeState?.value = on; app.myspoti.host.android.Logbook.log("library: like not sent, no song id"); return }
         setSaved(uri, on)
     }
 
@@ -1297,6 +1994,12 @@ object SongPlayer {
     /** Confirmed by Spotify less than that long ago: not asked for again (see [libraryContains]). */
     private const val SAVED_FRESH_MS = 60_000L
 
+    /** A check of the song shown that got no answer is made once more after this long. */
+    private const val LIKE_RETRY_MS = 2_500L
+
+    /** After a check that failed twice, page states do not start another before this long. */
+    private const val LIKE_RETRY_AFTER_MS = 30_000L
+
     /** When Spotify (or the user's own tap) last settled each uri. */
     private val savedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
@@ -1304,6 +2007,8 @@ object SongPlayer {
     private val savedFlights =
         java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<List<Boolean>?>>()
     private val savedFlightLock = kotlinx.coroutines.sync.Mutex()
+    /** Why the last request for saved states got no answer (logged by [refreshCurrentLiked]). */
+    @Volatile private var savedError = ""
 
     // The user's last like/unlike wins briefly over states that were already in flight.
     @Volatile private var intentUri = ""
@@ -1337,50 +2042,91 @@ object SongPlayer {
 
     /** Make sure [uri]'s saved state ends up in [library]. */
     fun requestSaved(uri: String) {
-        if (uri.isBlank() || library.containsKey(uri)) return
+        // An entry older than [SAVED_FRESH_MS] is asked again (it may have changed in another app); [libraryContains] skips the fresh ones.
+        if (uri.isBlank() || (library.containsKey(uri) && SystemClock.elapsedRealtime() - (savedAt[uri] ?: 0L) < SAVED_FRESH_MS)) return
         if (wantedSaved.add(uri)) { main.removeCallbacks(flushSaved); main.postDelayed(flushSaved, 32) }
     }
 
-    /** Swipe to the next track: show it right away, then skip. */
-    fun swipeNext() {
-        if (LocalPlayer.active.value) { next(); return }
-        next()
-        // The song this tap lands on, the one [next]'s burst will skip to. Reported (beta.9): each
-        // fast tap showed `nowPlaying.next` — the same second song every time, held as pending,
-        // so the screen stayed on it for seconds while the page went on to the fifth.
-        val n = if (burstTaps <= 1) _nowPlaying.value.next
-            else burstUpcoming.getOrNull(burstTaps - 1)?.let(::songOf)
-        if (n == null) {
-            // Unknown target: the page's own states show where it lands.
-            pendingTrackId = null
-            pendingItemUri = null
-            return
-        }
-        markPending(n.spotifyTrackId)
-        boundState?.updateSongState(n.coverUri, n.title, n.singer, true, n.id, 0, n.album)
-        durationMs = n.durationMs.toLong()
-        pushNotification(n, false)
+    /** The in-app swipe and button: [next], which shows the song it lands on at once. */
+    fun swipeNext() = next()
+
+    /**
+     * A seek the page has not shown yet: the song, the position asked for, when it was asked and
+     * until when it holds. States of that song from before the seek (the old position) do not move
+     * the clock back meanwhile. Reported: the bar dragged to a new place jumped back, the song
+     * playing on from where it was — a state still on the old position, taken over the seek.
+     */
+    @Volatile private var seekUri = ""
+    @Volatile private var seekTarget = 0L
+    @Volatile private var seekAt = 0L
+    @Volatile private var seekUntil = 0L
+    private var seekJob: kotlinx.coroutines.Job? = null
+    private var seekSeq = 0
+    private val seekEnded = Runnable { reconcile() }
+
+    /** [s] is the song a seek was asked on, somewhere it can have got to since. */
+    private fun seekLanded(s: PlayerState): Boolean {
+        if (s.item?.uri != seekUri) return false
+        val at = s.positionAt(System.currentTimeMillis())
+        val played = SystemClock.elapsedRealtime() - seekAt
+        return at >= seekTarget - SEEK_NEAR_MS && at <= seekTarget + played + SEEK_NEAR_MS
     }
+
+    private fun seekHeld(uri: String) = uri == seekUri && SystemClock.elapsedRealtime() < seekUntil
 
     fun seekTo(ms: Long) {
         if (LocalPlayer.active.value) { LocalPlayer.seekTo(ms); return }
         cancelBurst()
+        val now = SystemClock.elapsedRealtime()
         positionMs = ms
-        positionAt = SystemClock.elapsedRealtime()
-        command { api.player.seek(ms) }
+        positionAt = now
+        seekUri = _nowPlaying.value.uri
+        seekTarget = ms
+        seekAt = now
+        seekUntil = now + SEEK_HOLD_MS
+        reconcileAfter(seekEnded, SEEK_HOLD_MS)
+        // The newest seek only: a drag that ends while the last one is still on its way replaces it.
+        val seq = ++seekSeq
+        seekJob?.cancel()
+        seekJob = scope.launch {
+            try {
+                // Sent once more when the page does not show it (busy, a slow network); after that
+                // the page's word stands, wherever it is.
+                repeat(2) { attempt ->
+                    runCatching { kotlinx.coroutines.withTimeoutOrNull(SEEK_SEND_MS) { api.player.seek(ms) } }
+                        .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; Log.w(TAG, "seek failed: ${it.message}") }
+                    val landed = kotlinx.coroutines.withTimeoutOrNull(SEEK_CHECK_MS) {
+                        api.player.state.first { it != null && (it.item?.uri != seekUri || seekLanded(it)) }
+                    }
+                    if (landed != null) return@launch
+                    Log.w(TAG, "seek to $ms not taken by the page${if (attempt == 0) ": sent again" else ""}")
+                }
+            } finally {
+                if (seq == seekSeq) {
+                    seekUntil = 0L
+                    main.removeCallbacks(seekEnded)
+                    main.post { reconcile() }
+                }
+            }
+        }
     }
 
+    /** What [checkLibrary] found: [saved] of the uris asked about, [asked] the ones that went to Spotify, [failed] when that got no answer. */
+    private class LibraryCheck(val saved: Set<String>, val asked: Set<String>, val failed: Boolean)
+
     /** Which of [uris] are saved in the user's library (Liked Songs / saved albums…). */
-    suspend fun libraryContains(uris: List<String>): Set<String> {
-        if (uris.isEmpty()) return emptySet()
+    suspend fun libraryContains(uris: List<String>): Set<String> = checkLibrary(uris).saved
+
+    private suspend fun checkLibrary(uris: List<String>): LibraryCheck {
+        if (uris.isEmpty()) return LibraryCheck(emptySet(), emptySet(), false)
         val now = SystemClock.elapsedRealtime()
         // A page prefetch and the page opening ask for the same list within a second, and the
         // rows of a list ask again for what the list just confirmed: only what is unknown (or
         // old enough to have changed elsewhere) goes to Spotify.
         val (known, unknown) = uris.partition { library.containsKey(it) && now - (savedAt[it] ?: 0L) < SAVED_FRESH_MS }
         val out = known.filterTo(mutableSetOf()) { library[it] == true }
-        if (unknown.isEmpty()) return out
-        val flags = savedFlags(unknown) ?: return out
+        if (unknown.isEmpty()) return LibraryCheck(out, emptySet(), false)
+        val flags = savedFlags(unknown) ?: return LibraryCheck(out, emptySet(), true)
         val saved = unknown.filterIndexed { i, _ -> flags.getOrNull(i) == true }.toSet()
         main.post {
             for (u in unknown) {
@@ -1389,7 +2135,7 @@ object SongPlayer {
                 savedAt[u] = now
             }
         }
-        return out + saved
+        return LibraryCheck(out + saved, unknown.toSet(), false)
     }
 
     /** [uris] in one request; two callers asking the same list share that one request. */
@@ -1402,6 +2148,7 @@ object SongPlayer {
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    savedError = e.message ?: e.javaClass.simpleName
                     null
                 }
             }.also { d ->
@@ -1443,15 +2190,20 @@ object SongPlayer {
         // No connection: the change stays on screen and is sent when the network is back.
         if (!com.music.spotui.data.offline.OfflineStore.isOnline(Graph.app)) {
             com.music.spotui.data.LibraryOutbox.put(uri, on)
+            app.myspoti.host.android.Logbook.log("library: $uri ${if (on) "saved" else "removed"} kept for later (offline${if (com.music.spotui.data.DataSaver.active) ", data saver" else ""})")
+            // Sent as soon as Spotify answers (put asks for it), not only when Android reports a
+            // network coming up: a network already there (or the data saver turned off) never reports one.
             return
         }
         scope.launch {
             // One write at a time; a refused one is undone on screen if no newer tap replaced it.
             libraryLock.withLock {
                 runCatching { writeLibrary(uri, on) }.onSuccess {
+                    app.myspoti.host.android.Logbook.log("library: $uri ${if (on) "saved" else "removed"} on Spotify")
                     if (track) likedChanges.value++
                 }.onFailure {
                     Log.w(TAG, "library change failed: ${it.message}")
+                    app.myspoti.host.android.Logbook.log("library: $uri change failed: ${it.javaClass.simpleName} ${it.message}")
                     // The connection went while it was sent: kept for later, like an offline tap.
                     if (it is java.io.IOException && !com.music.spotui.data.offline.OfflineStore.isOnline(Graph.app)) {
                         com.music.spotui.data.LibraryOutbox.put(uri, on)
@@ -1479,18 +2231,27 @@ object SongPlayer {
     }
 
     /** The library changes made offline ([com.music.spotui.data.LibraryOutbox]), sent once Spotify is reachable. */
-    fun startLibraryOutbox(context: Context) = com.music.spotui.data.LibraryOutbox.init(context,
-        sender = { uri, on -> libraryLock.withLock { writeLibrary(uri, on) }; if (uri.startsWith(SPOTIFY_TRACK_PREFIX)) likedChanges.value++ },
-        onAvailable = { scope.launch { kotlinx.coroutines.delay(3_000); flushLibraryOutbox() } },
-    ).also { scope.launch { flushLibraryOutbox() } }
-
-    private suspend fun flushLibraryOutbox() {
-        if (com.music.spotui.data.LibraryOutbox.waiting == 0) return
-        // The engine is started after the app's graph: wait for it, then for Spotify to answer.
-        while (!MyspotiRuntime.isStarted) kotlinx.coroutines.delay(1_000)
-        api.ready.first { it }
-        com.music.spotui.data.LibraryOutbox.flush()
+    fun startLibraryOutbox(context: Context) {
+        com.music.spotui.data.LibraryOutbox.init(context, scope,
+            sender = { uri, on -> libraryLock.withLock { writeLibrary(uri, on) }; if (uri.startsWith(SPOTIFY_TRACK_PREFIX)) likedChanges.value++ },
+            // The engine is started after the app's graph: wait for it, then for Spotify to answer,
+            // then for the session's account (unknown after a session lost: it may be another one).
+            ready = { awaitEngine(); api.ready.first { it }; com.music.spotui.data.api.ProfileCache.awaitId(context, ACCOUNT_WAIT_MS) },
+            account = { com.music.spotui.data.api.ProfileCache.id },
+            onAvailable = { scope.launch { kotlinx.coroutines.delay(3_000); com.music.spotui.data.LibraryOutbox.request() } },
+        )
+        // The Web Player ready again (a reload, a new sign-in): what waits is sent (nothing is asked when nothing waits),
+        // once the session's account is read: after a session lost, what waits for it is told from what is not its own.
+        scope.launch {
+            awaitEngine()
+            api.ready.collect { if (it) { com.music.spotui.data.api.ProfileCache.awaitId(context, ACCOUNT_WAIT_MS); com.music.spotui.data.LibraryOutbox.request() } }
+        }
     }
+
+    private suspend fun awaitEngine() { while (!MyspotiRuntime.isStarted) kotlinx.coroutines.delay(1_000) }
+
+    /** The library changes kept for later wait that long for the account's id (see ProfileCache.awaitId). */
+    private const val ACCOUNT_WAIT_MS = 10_000L
 
     // ── Music video: Spotify's own clips are not played by this engine; the YouTube
     // clips (MusicVideoController) are. These keep the player screen's contract. ──
@@ -1524,17 +2285,23 @@ object SongPlayer {
             runCatching { api.devices.refresh() }
             val active = api.devices.devices.value.firstOrNull { it.active }
             _activeDevice.value = active?.takeIf { !it.local }?.let { ConnectDevice(it.id, it.name, it.type, false, true) }
-            active?.volume?.let { if (SystemClock.elapsedRealtime() > volumeHoldUntil) remoteVolume = (it * 100).toInt().coerceIn(0, 100) }
+            // A negative volume is a device with a fixed one (Web Player: disable_volume): not 0 %.
+            active?.volume?.takeIf { it >= 0 }?.let { if (SystemClock.elapsedRealtime() > volumeHoldUntil) _remoteVolume.intValue = (it * 100).toInt().coerceIn(0, 100) }
             PlaybackService.setPlaybackDevice(_activeDevice.value != null, remoteVolume)
         }
     }
 
     /** Devices of the account, this phone first. */
     suspend fun devices(): List<ConnectDevice> {
+        // What the Web Player's own picker does when it opens: it asks Spotify to look for devices
+        // again. The answer is not known (no device test yet); bounded, and a page without it is fine.
+        kotlinx.coroutines.withTimeoutOrNull(DISCOVERY_WAIT_MS) { runCatching { MyspotiRuntime.spotify.raw.service("ConnectDiscoveryAPI", "startActiveDiscovery") } }
         runCatching { api.devices.refresh() }
         val list = api.devices.devices.value.map { ConnectDevice(it.id, it.name, it.type, it.local, it.active) }
             .sortedWith(compareByDescending<ConnectDevice> { it.isSelf }.thenBy { it.name })
         _activeDevice.value = list.firstOrNull { it.isActive && !it.isSelf }
+        // Kinds only (no names or ids): a report that says "no speaker" shows whether Spotify listed one.
+        app.myspoti.host.android.Logbook.log("connect: picker lists ${list.size} devices (${list.joinToString { it.type.lowercase() }})")
         return list
     }
 
@@ -1584,6 +2351,7 @@ object SongPlayer {
         // command. A new page claims playback for itself at the first command.
         if (pulled == null) {
             Log.w(TAG, "pull here hangs: player page reloaded")
+            app.myspoti.host.android.Logbook.log("pull here hangs (no answer in ${PULL_BACK_WAIT_MS / 1000} s): player page reloaded")
             MyspotiRuntime.spotify.player.reloadPage()
         }
         _activeDevice.value = null
@@ -1617,40 +2385,78 @@ object SongPlayer {
             val at = LocalPlayer.position()
             val wasPlaying = LocalPlayer.isPlaying()
             Log.i(TAG, "local song to ${device.name}: $track in $context at $at ms")
+            ConnectMirror.leaving(device.name)
             LocalPlayer.stop()
-            command {
+            command(onFailure = { transferFailed(device) }) {
                 api.devices.transfer(device.id)
                 api.player.play(context, trackUri = track.takeIf { it != context }, positionMs = at)
                 if (!wasPlaying) api.player.pause()
             }
             return
         }
-        command { if (device.isSelf) api.devices.pullHere() else api.devices.transfer(device.id) }
+        command(onFailure = { transferFailed(device) }) { if (device.isSelf) api.devices.pullHere() else api.devices.transfer(device.id) }
     }
 
-    /** Volume (0..100) of the device that plays, as last reported. */
-    @Volatile var remoteVolume = 100
-        private set
+    /**
+     * A transfer Spotify did not take (no such device any more, a speaker that went to sleep, a
+     * refusal): the picker had already shown the device as playing, and the app went on driving a
+     * device that plays nothing. Back on this phone, and the person is told.
+     */
+    private fun transferFailed(device: ConnectDevice) {
+        if (device.isSelf || chosenRemote != device.id) return
+        chosenRemote = null
+        _activeDevice.value = null
+        main.post {
+            android.widget.Toast.makeText(Graph.app, Graph.app.getString(app.myspoti.engine.R.string.cast_failed, device.name), android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Volume (0..100) of the device that plays, as last reported. State: the player's volume bar follows it. */
+    private val _remoteVolume = androidx.compose.runtime.mutableIntStateOf(100)
+    val remoteVolume: Int get() = _remoteVolume.intValue
     @Volatile private var volumeHoldUntil = 0L
 
-    /** Set the volume of the device that plays (volume keys, system slider). */
+    /**
+     * The newest volume asked for, sent one at a time by [volumeSender]. A drag on the player's
+     * volume bar asks for dozens of levels a second: sent each in its own command they could
+     * reach the device out of order and leave it on an older level.
+     */
+    private val volumeToSend = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
+    private val volumeSender by lazy {
+        scope.launch {
+            volumeToSend.collect { v ->
+                if (v != null) runCatching { api.player.setVolume(v / 100.0) }.onFailure { Log.w(TAG, "volume failed: ${it.message}") }
+            }
+        }
+    }
+
+    /** Set the volume of the device that plays (volume keys, system slider, the player's volume bar). */
     fun setRemoteVolume(volume: Int) {
-        remoteVolume = volume.coerceIn(0, 100)
+        _remoteVolume.intValue = volume.coerceIn(0, 100)
         volumeHoldUntil = SystemClock.elapsedRealtime() + 1500
-        command { api.player.setVolume(remoteVolume / 100.0) }
+        volumeSender
+        volumeToSend.value = remoteVolume
         PlaybackService.setPlaybackDevice(_activeDevice.value != null, remoteVolume)
     }
 
     // ── Sleep timer ──
     private val _sleepEndsAt = mutableStateOf<Long?>(null)   // elapsedRealtime, or -1 = end of track
     val sleepEndsAt: State<Long?> get() = _sleepEndsAt
-    private val sleepRunnable = Runnable { _sleepEndsAt.value = null; pauseSilently() }
+    private val sleepRunnable = Runnable {
+        _sleepEndsAt.value = null
+        // The fade ends in the pause itself.
+        if (sleepFade?.isActive != true) pauseSilently()
+    }
+    private val sleepFadeRunnable = Runnable { startSleepFade() }
+    private var sleepFade: kotlinx.coroutines.Job? = null
     private var sleepTrackId: String? = null
 
     /** [minutes] null = off, 0 = at the end of the current track. */
     fun setSleepTimer(minutes: Int?) {
         main.removeCallbacks(sleepRunnable)
+        main.removeCallbacks(sleepFadeRunnable)
         main.removeCallbacks(endOfTrackWatch)
+        sleepFade?.cancel(); sleepFade = null   // a fade under way ends with the volume back, the song going on
         sleepTrackId = null
         when {
             minutes == null -> _sleepEndsAt.value = null
@@ -1663,7 +2469,47 @@ object SongPlayer {
             else -> {
                 _sleepEndsAt.value = SystemClock.elapsedRealtime() + minutes * 60_000L
                 main.postDelayed(sleepRunnable, minutes * 60_000L)
+                main.postDelayed(sleepFadeRunnable, (minutes * 60_000L - SLEEP_FADE_MS).coerceAtLeast(0L))
             }
+        }
+    }
+
+    /**
+     * The last [SLEEP_FADE_MS] of a timed sleep timer: the volume goes down along the ear's curve
+     * and the song is paused at the end of the timer, the volume back for the next play. Spotify
+     * songs use the pause's own ramp ([app.myspoti.api.Player.pauseSlowly]), the others the player's volume.
+     */
+    private fun startSleepFade() {
+        if (!isPlaying()) return
+        sleepFade?.cancel()
+        sleepFade = scope.launch {
+            if (LocalPlayer.active.value) {
+                fadeLocalOut(SLEEP_FADE_MS)
+                return@launch
+            }
+            runCatching { api.player.pauseSlowly(SLEEP_FADE_MS) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            if (playing) { _sleepEndsAt.value = null; pauseSilently(send = false) }
+        }
+    }
+
+    private suspend fun fadeLocalOut(ms: Long) {
+        val cast = com.music.spotui.cast.CastPlayback.active
+        val base = if (cast) com.music.spotui.cast.CastPlayback.volume.floatValue else 1f
+        fun set(gain: Float) = if (cast) com.music.spotui.cast.CastPlayback.setVolume(base * gain) else LocalPlayer.setGain(gain)
+        val startedAt = SystemClock.elapsedRealtime()
+        try {
+            while (true) {
+                if (!isPlaying()) return   // paused meanwhile: only the volume to put back
+                val t = ((SystemClock.elapsedRealtime() - startedAt).toFloat() / ms).coerceIn(0f, 1f)
+                if (t >= 1f) break
+                set(Math.pow(10.0, -2.0 * t).toFloat())   // 1 down to -40 dB
+                kotlinx.coroutines.delay(if (cast) 1_000L else 250L)
+            }
+            _sleepEndsAt.value = null
+            pauseSilently()
+            kotlinx.coroutines.delay(300)   // the tail of the buffer is not heard at the old level
+        } finally {
+            withContext(kotlinx.coroutines.NonCancellable) { set(1f) }
         }
     }
 
@@ -1746,9 +2592,61 @@ object SongPlayer {
         }
     }
 
+    /** Songs per call of Spotify's queue: a whole playlist in one call is a long wait for the page. */
+    private const val QUEUE_BATCH = 100
+
+    /**
+     * "Play next" / "Add to queue" for a whole list, in the list's order; [done] is told how many
+     * songs joined a queue (on the main thread). Every song goes where its single-song action
+     * would send it: while the local player plays, a device file, a download or an extension's song
+     * joins the local queue and the others Spotify's; otherwise Spotify's queue takes everything it
+     * can stream (tracks and episodes). A device file cannot be streamed by Spotify: it is left
+     * out then, as a Spotify local file nothing matched and a greyed song are. The two queues
+     * are separate, so a mixed list is split between them, each part in order.
+     */
+    fun queueSongs(songs: List<SongsModel>, next: Boolean, done: (Int) -> Unit) {
+        Haptics.confirm()
+        scope.launch {
+            val local = LocalPlayer.active.value
+            val rows = songs.filter { it.playable && !it.isUnmatchedLocal }
+            val files = if (local && rows.any { it.isDeviceFile })
+                runCatching { com.music.spotui.data.local.LocalMusic.tracks(Graph.app) }.getOrDefault(emptyList()).associateBy { com.music.spotui.data.local.LocalFileMatch.key(it) }
+            else emptyMap()
+            val toLocal = ArrayList<com.music.spotui.data.local.LocalTrack>()
+            val toSpotify = ArrayList<String>()
+            for (s in rows) {
+                val uri = when {
+                    s.isDeviceFile -> { if (local) files[s.url]?.let { toLocal += it }; continue }
+                    s.url.startsWith("episode:") -> "spotify:episode:" + s.url.removePrefix("episode:")
+                    s.spotifyTrackId.isNotBlank() -> SPOTIFY_TRACK_PREFIX + s.spotifyTrackId
+                    else -> continue
+                }
+                val own = if (local && !s.url.startsWith("episode:")) com.music.spotui.extensions.ExtensionAudio.queueTrack(s) else null
+                if (own != null) toLocal += own else toSpotify += uri
+            }
+            if (toLocal.isNotEmpty()) withContext(Dispatchers.Main) { LocalPlayer.enqueueAll(toLocal, next) }
+            if (toSpotify.isNotEmpty()) {
+                val batches = toSpotify.chunked(QUEUE_BATCH)
+                queueCommand {
+                    if (!next) batches.forEach { api.player.addToQueue(it) }
+                    // Each batch goes in front of the one sent before it, so the last is sent first;
+                    // Spotify's queue is shown again between two (playNext reads its first row).
+                    else batches.asReversed().forEachIndexed { i, batch ->
+                        val before = api.player.queue.value
+                        api.player.playNext(batch)
+                        if (i < batches.lastIndex) awaitQueue { it !== before }
+                    }
+                }
+            }
+            val count = toLocal.size + toSpotify.size
+            withContext(Dispatchers.Main) { done(count) }
+        }
+    }
+
     fun skipTo(item: QueueItem) {
         if (item.provider == LOCAL) { item.uid.toIntOrNull()?.let(LocalPlayer::skipTo); return }
         cancelBurst()
+        playedByHand = item.uri
         val id = trackIdOf(item.uri)
         if (id.isNotBlank()) markPending(id)
         boundState?.updateSongState(item.song.coverUri, item.song.title, item.song.singer, true, item.song.id, 0, item.song.album)
@@ -1765,11 +2663,20 @@ object SongPlayer {
         command { api.player.clearQueue() }
     }
 
-    /** Move [item] just before / after [target] (same section of the queue). */
+    /**
+     * The local player's list index of a queue row, found now: the row's own uid is the index it had
+     * when the queue was reported, and a row shown in a just-dragged order carries an older one.
+     */
+    private fun localIndex(item: QueueItem): Int? {
+        val up = LocalPlayer.upcoming().filter { "local:${it.second.id}" == item.uri }
+        return (up.firstOrNull { it.first.toString() == item.uid } ?: up.firstOrNull())?.first
+    }
+
+    /** Move [item] just before / after [target]; a Spotify row stays in its section (see [moveIntoQueue]), a local one goes into [target]'s. */
     fun reorder(item: QueueItem, target: QueueItem, after: Boolean) {
         if (item.provider == LOCAL) {
-            val from = item.uid.toIntOrNull() ?: return
-            val t = target.uid.toIntOrNull() ?: return
+            val from = localIndex(item) ?: return
+            val t = localIndex(target) ?: return
             LocalPlayer.moveBeside(from, t, after)
             return
         }
@@ -1792,7 +2699,11 @@ object SongPlayer {
      * other (both at once left it in both places), then placed where it was dropped.
      */
     fun moveIntoQueue(item: QueueItem, target: QueueItem?, after: Boolean) {
-        if (item.provider == LOCAL) { item.uid.toIntOrNull()?.let { LocalPlayer.moveIntoQueue(it, target?.uid?.toIntOrNull(), after) }; return }
+        if (item.provider == LOCAL) {
+            val from = localIndex(item) ?: return
+            LocalPlayer.moveIntoQueue(from, target?.let { localIndex(it) ?: return }, after)
+            return
+        }
         queueCommand {
             val a = apiItem(item) ?: return@queueCommand
             val first = apiQueue?.queued?.firstOrNull()
@@ -1829,6 +2740,33 @@ object SongPlayer {
         return if (durationMs > 0) now.coerceAtMost(durationMs) else now
     }
 
+    /**
+     * Whether [getCurrentPosition] moves on now. Not only paused: a song that is to play but is
+     * loading (its start, a seek into what is not loaded yet, a stream that does not keep up)
+     * stands still too, for seconds with an extension's stream; the lyrics hold meanwhile.
+     */
+    fun positionMoving(): Boolean =
+        if (LocalPlayer.active.value && !routing) LocalPlayer.isPlaying() else playing && !isBuffering
+
+    /**
+     * A tap on a synced lyric line, for the diagnostic: where it jumps, which player plays (and
+     * whether its source can seek), then where the song is 300 ms and 2 s later.
+     */
+    fun logLyricJump(targetMs: Long) {
+        val log = app.myspoti.host.android.Logbook::log
+        val player = when {
+            routing -> "spotify, an extension being asked"
+            LocalPlayer.active.value -> "local, ${LocalPlayer.describe()}"
+            _activeDevice.value != null -> "spotify connect"
+            else -> "spotify"
+        }
+        log("lyrics: tap on the line at $targetMs ms, from ${getCurrentPosition()} ms ($player)")
+        for (afterMs in longArrayOf(300L, 2_000L)) main.postDelayed({
+            log("lyrics: $afterMs ms after the tap to $targetMs ms: at ${getCurrentPosition()} ms" +
+                if (positionMoving()) "" else if (isPlaying() || LocalPlayer.active.value && LocalPlayer.playWhenReady()) ", loading" else ", paused")
+        }, afterMs)
+    }
+
     /** A local file starts: Spotify pauses (wherever it plays). */
     fun pauseEngineForLocal() {
         // A song the extensions were asked for has its answer, or other files play: older answers play nothing.
@@ -1837,7 +2775,8 @@ object SongPlayer {
         // What the page reported last (the screens may already show the song asked for).
         engineUriBeforeLocal = lastPageUri
         engineRepaused = false
-        if (playing) command { api.player.pause() }
+        // The Connect mirror's page goes on to the new song itself (or is paused by it if that one is not mirrored).
+        if (playing && !ConnectMirror.running) command { api.player.pause() }
         playing = false
         // The local player keeps the output open itself; the engine's states, which
         // would close the silent stream, are ignored while it plays.
@@ -1853,10 +2792,16 @@ object SongPlayer {
      * The engine reports playing while a local file plays. Two streams must never play
      * at once: a pause that did not take (the engine was not ready) is sent once more;
      * anything else is Spotify taking over (a Connect "play on this phone", a resume from
-     * another device), and the local player yields. True when the state is to be ignored.
+     * another device), and the local player yields; with the Connect mirror on, the local player
+     * follows those commands instead (see [ConnectMirror]). True when the state is to be ignored.
      */
     private fun engineWhileLocal(s: PlayerState): Boolean {
+        // The Connect mirror's page: its states are another device's commands for the local player
+        // to follow, or the echo of the mirror's own; never a takeover.
+        if (ConnectMirror.running) { ConnectMirror.onWeb(s); return true }
         if (s.isPaused) return true
+        // An extension mirrors its own song in the page, muted: that is not the engine taking over.
+        if (api.player.localMute) return true
         // The page's last states from before the pause reached it.
         if (SystemClock.elapsedRealtime() - localStartedAt < LOCAL_GRACE_MS) return true
         if (s.item?.uri == engineUriBeforeLocal && !engineRepaused) {
@@ -1879,6 +2824,8 @@ object SongPlayer {
             // A download keeps its Spotify id too (likes, menu): only a file of the device has none.
             currentTrackId = trackId.ifBlank { localSpotifyUri(t)?.let(::trackIdOf).orEmpty() }
             playing = isPlaying; positionMs = pos; positionAt = SystemClock.elapsedRealtime(); durationMs = dur
+            // Played on here (another device's resume through the Connect mirror): Spotify no longer waits for a play.
+            if (isPlaying) spotifyDue = null
             bufferingState.value = false
             // A song an extension streams keeps its Spotify uri: its lyrics, Canvas and artists load as for Spotify.
             val uri = if (trackId.isNotBlank()) SPOTIFY_TRACK_PREFIX + trackId else "local:${t.id}"
@@ -1899,10 +2846,34 @@ object SongPlayer {
             }
             pushNotification(song.copy(coverUri = cover), liked)
             if (songChanged) refreshCurrentLiked()
+            com.music.spotui.extensions.Extensions.mirrorTick(isPlaying, uri)
+            ConnectMirror.onLocal(t, isPlaying, pos, dur)
             val source = if (t.uri.scheme == "file") com.music.spotui.data.local.ListenHistory.Source.DOWNLOAD
                 else com.music.spotui.data.local.ListenHistory.Source.LOCAL
             trackListen("local:${t.id}", song, source, isPlaying)
+            // An extension's stream or a download (it has a Spotify id): kept to come back to at launch.
+            if (likeUri != null) {
+                val rest = LocalPlayer.upcoming().map { localSong(it.second) }.filter { it.spotifyTrackId.isNotBlank() }
+                saveLastTrack(song.copy(coverUri = cover), likeUri, liked, com.music.spotui.data.preferences.LastSession.SOURCE_LOCAL, listOf(song) + rest)
+            }
         }
+    }
+
+    /**
+     * Play on a session put back at launch: a download plays from its file, a song an extension
+     * streamed is asked again (its saved stream address may have expired) by [resumeThroughExtensions].
+     */
+    private fun resumeRestoredLocal(): Boolean {
+        if (!restoredLocal) return false
+        restoredLocal = false
+        val q = _queue.value
+        val songs = listOfNotNull(q.current) + q.nextUp.map { it.song }
+        val store = com.music.spotui.data.offline.OfflineStore
+        val downloads = store.list().associateBy { it.trackId }
+        if (songs.firstOrNull()?.spotifyTrackId?.let(downloads::containsKey) != true) return false
+        val list = songs.mapNotNull { downloads[it.spotifyTrackId] }.map(store::toLocalTrack)
+        LocalPlayer.play(list, 0, startMs = getCurrentPosition(), context = null)
+        return true
     }
 
     /** The Spotify uri of what the local player plays: a song an extension streams or a download; null for a file of the device. */
@@ -1953,6 +2924,24 @@ object SongPlayer {
     /** True while a crossfade is fading this song out, or the next one in (see [SpotifyPlayer]). */
     fun isCrossfadeActive(): Boolean =
         MyspotiRuntime.isStarted && MyspotiRuntime.spotify.player.isCrossfading()
+
+    /** The song a real crossfade fades out, as the screens showed it when the fade began. */
+    data class FadingSong(val title: String, val artist: String, val coverUri: String, val durationMs: Long)
+
+    private val fadingOutState = mutableStateOf<FadingSong?>(null)
+    /**
+     * Set while the local player's crossfade overlaps two songs (none for Spotify's own fades,
+     * which do not overlap): the players blend this one into the current song.
+     */
+    val fadingOut: State<FadingSong?> get() = fadingOutState
+
+    /** [LocalPlayer]'s fade starts (just after its switch to the next song) or ends. */
+    fun onLocalFade(on: Boolean) {
+        // The new song's state is posted: what the screens hold is still the song going out.
+        fadingOutState.value = if (!on) null else boundState?.let {
+            FadingSong(it.title.value, it.singer.value, it.coverUri.value, durationMs)
+        }
+    }
     fun release() {}
 
     // ── Play-key helpers (url = "spotify:track:<id>|<search text>") ──

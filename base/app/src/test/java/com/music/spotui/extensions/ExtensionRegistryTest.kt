@@ -243,6 +243,27 @@ class ExtensionRegistryTest {
         assertEquals(r, r.move("lyrics", ids, "zz", 1))
     }
 
+    @Test fun eachSourceHasItsOwnOrderStartingFromTheOneActiveBefore() {
+        val ids = listOf("tidal", "qobuz", "deezer")
+        // Sources were exclusive: the one the user had made active is asked first.
+        var r = Registry(active = mapOf("audio.source" to "deezer"))
+        assertEquals(listOf("deezer", "tidal", "qobuz"), r.bySourceOrder("audio.source", "audio", ids) { it })
+        assertEquals(ids, r.bySourceOrder("download.source", "audio", ids) { it })
+        // Moving one in the audio order leaves the download order alone.
+        r = r.move("audio.source", r.bySourceOrder("audio.source", "audio", ids) { it }, "qobuz", -2)
+        assertEquals(listOf("qobuz", "deezer", "tidal"), r.bySourceOrder("audio.source", "audio", ids) { it })
+        assertEquals(ids, r.bySourceOrder("download.source", "audio", ids) { it })
+        // A source installed later is asked last.
+        assertEquals(listOf("qobuz", "deezer", "tidal", "new"), r.bySourceOrder("audio.source", "audio", ids + "new") { it })
+        // Spotify is last until moved; moved first, it stays first and a new source goes after it.
+        val line = ids + SPOTIFY_SOURCE
+        r = Registry()
+        assertEquals(line, r.bySourceOrder("audio.source", "audio", line) { it })
+        r = r.move("audio.source", line, SPOTIFY_SOURCE, -3)
+        assertEquals(listOf(SPOTIFY_SOURCE) + ids, r.bySourceOrder("audio.source", "audio", line) { it })
+        assertEquals(listOf(SPOTIFY_SOURCE) + ids + "new", r.bySourceOrder("audio.source", "audio", ids + "new" + SPOTIFY_SOURCE) { it })
+    }
+
     @Test fun priorityIsKeptOnDiskAndForgetsAnUninstalledExtension() {
         val m = manifest()
         val a = installed(m, base).copy(id = "a.b.a")

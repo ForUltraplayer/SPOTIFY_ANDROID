@@ -103,6 +103,13 @@ object ExtensionAuth {
     fun cancel(extensionId: String) = synchronized(this) { if (open.value?.extensionId == extensionId) open.value = null }
 
     /** The web view profile of [extensionId]: its own cookies and storage. */
+    /** Deletes the extension's sign-in profile (cookies and storage); best effort, on the main thread. */
+    fun forget(extensionId: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            runCatching { ProfileStore.getInstance().deleteProfile(profile(extensionId)) }
+        }
+    }
+
     fun profile(extensionId: String) = "ext-auth-" + extensionId.replace(Regex("[^A-Za-z0-9._-]"), "_")
 }
 

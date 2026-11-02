@@ -1,5 +1,6 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.components.wideClickable
 import com.music.spotui.ui.theme.headerTint
 import com.music.spotui.ui.theme.AppText
 
@@ -35,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +75,9 @@ import com.music.spotui.ui.components.episodeMinutes
 import com.music.spotui.ui.components.pressable
 import com.music.spotui.ui.components.spotifyUri
 import com.music.spotui.ui.navigation.episodeRoute
+import com.music.spotui.data.preferences.EpisodeFilter
+import com.music.spotui.ui.components.EpisodeProgressBar
+import com.music.spotui.ui.components.episodeFilterLabel
 import com.music.spotui.ui.theme.AppAccent
 import com.music.spotui.ui.theme.AppBackground
 import com.music.spotui.ui.viewmodel.ShowViewModel
@@ -106,7 +111,10 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
         vm.updateSongState(song.coverUri, song.title, song.singer, true, song.id, index, song.album)
     }
 
-    val rows = remember(items, oldestFirst) { if (oldestFirst) items.reversed() else items }
+    val filter = vm.filter.value
+    val rows by remember(items, oldestFirst, filter) {
+        derivedStateOf { filter.apply(if (oldestFirst) items.reversed() else items) { vm.isFinished(it) } }
+    }
 
     menuSong?.let { sel ->
         EpisodeOptionsSheet(
@@ -151,42 +159,60 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                     TabLabel(stringResource(R.string.show_tab_about), selected = tab == 1, modifier = Modifier.weight(1f)) { tab = 1 }
                 }
             }
-            if (tab == 0 && rows.isNotEmpty()) {
+            if (tab == 0 && items.isNotEmpty()) {
                 item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { oldestFirst = !oldestFirst }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     ) {
-                        Icon(Icons.Default.Tune, contentDescription = null, tint = AppText.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { oldestFirst = !oldestFirst }
+                                .padding(vertical = 12.dp),
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = AppText.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = stringResource(
+                                    when {
+                                        audiobook && oldestFirst -> R.string.show_sort_chapters_oldest
+                                        audiobook -> R.string.show_sort_chapters_newest
+                                        oldestFirst -> R.string.show_sort_oldest
+                                        else -> R.string.show_sort_newest
+                                    },
+                                ),
+                                color = AppText.copy(alpha = 0.8f),
+                                fontSize = 13.sp,
+                            )
+                        }
                         Text(
-                            text = stringResource(
-                                when {
-                                    audiobook && oldestFirst -> R.string.show_sort_chapters_oldest
-                                    audiobook -> R.string.show_sort_chapters_newest
-                                    oldestFirst -> R.string.show_sort_oldest
-                                    else -> R.string.show_sort_newest
-                                },
-                            ),
-                            color = AppText.copy(alpha = 0.8f),
+                            text = stringResource(episodeFilterLabel(filter)),
+                            color = if (filter == EpisodeFilter.ALL) AppText.copy(alpha = 0.8f) else AppAccent,
                             fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { vm.setFilter(showId, filter.next()) }
+                                .padding(horizontal = 10.dp, vertical = 12.dp),
                         )
                     }
                 }
             }
             if (pageState is Response.Loading && page == null) item { Loader() }
             if (pageState is Response.Error && items.isEmpty()) item {
+                com.music.spotui.ui.components.ErrorRetry(stringResource(R.string.page_load_failed)) { vm.loadShow(showId) }
+            }
+            if (tab == 1) item { About(show) }
+            if (tab == 0 && items.isNotEmpty() && rows.isEmpty()) item {
                 Text(
-                    (pageState as Response.Error).error,
-                    color = AppText.copy(alpha = 0.7f),
+                    stringResource(R.string.show_filter_all_played),
+                    color = AppText.copy(alpha = 0.6f),
                     fontSize = 14.sp,
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            if (tab == 1) item { About(show) }
             if (tab == 0 && page != null && items.isEmpty() && pageState !is Response.Loading) item {
                 Text(
                     stringResource(R.string.show_empty),
@@ -200,6 +226,7 @@ fun ShowScreen(navController: NavController, showId: String, showName: String = 
                     episode = ep,
                     playing = np.uri == "spotify:episode:${ep.url.removePrefix("episode:")}" && SongPlayer.isPlaying(),
                     finished = vm.isFinished(ep),
+                    isNew = vm.isNew(ep),
                     onPlay = {
                         val index = items.indexOfFirst { it.url == ep.url }
                         if (index >= 0) playAt(index)
@@ -233,10 +260,10 @@ private fun Header(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .padding(12.dp)
+                .wideClickable { navController.navigateUp() }
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.35f))
-                .clickable { navController.navigateUp() },
+                .background(Color.Black.copy(alpha = 0.35f)),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.accessibility_navigate_back), tint = Color.White)
         }
@@ -355,7 +382,7 @@ private fun About(show: PodcastModel?) {
     val narrators = show?.narrators.orEmpty().joinToString(", ")
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text(
-            text = show?.description.orEmpty(),
+            text = com.music.spotui.ui.components.rememberLinkedText(show?.description.orEmpty(), AppAccent),
             color = AppText.copy(alpha = 0.75f),
             fontSize = 14.sp,
         )
@@ -377,6 +404,7 @@ private fun EpisodeRow(
     episode: SongsModel,
     playing: Boolean,
     finished: Boolean,
+    isNew: Boolean,
     onPlay: () -> Unit,
     onOpen: () -> Unit,
     onMenu: () -> Unit,
@@ -414,7 +442,20 @@ private fun EpisodeRow(
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isNew) {
+                        Text(
+                            stringResource(R.string.episode_new),
+                            color = AppAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("•", color = AppText.copy(alpha = 0.4f), fontSize = 12.sp)
+                        Spacer(Modifier.width(6.dp))
+                    }
                     if (finished) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = AppAccent, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.episode_marked_played), color = AppText.copy(alpha = 0.6f), fontSize = 12.sp)
                         Spacer(Modifier.width(6.dp))
                         Text("•", color = AppText.copy(alpha = 0.4f), fontSize = 12.sp)
@@ -437,6 +478,10 @@ private fun EpisodeRow(
                             fontSize = 12.sp,
                         )
                     }
+                }
+                if (!finished) {
+                    Spacer(Modifier.height(6.dp))
+                    EpisodeProgressBar(episode.playedPositionMs, episode.durationMs, AppAccent, AppText.copy(alpha = 0.15f))
                 }
             }
         }

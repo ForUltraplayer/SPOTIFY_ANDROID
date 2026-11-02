@@ -25,9 +25,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.sizeIn
@@ -80,6 +82,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.music.spotui.ui.components.pressable
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.graphicsLayer
@@ -163,11 +166,12 @@ fun PlayerScreen(navController: NavController) {
     val energy by EnergySettings.state.collectAsStateWithLifecycle()
     // Liked state is Spotify's (LibraryAPI), pushed by the engine.
     val isLiked = playerViewModel.likeState
-    var showMenu by remember { mutableStateOf(false) }
-    var showLyrics by remember { mutableStateOf(false) }
+    val titleScope = androidx.compose.runtime.rememberCoroutineScope()
+    var showMenu by rememberSaveable { mutableStateOf(false) }
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
     var showSavedIn by remember { mutableStateOf(false) }
     var showDevices by remember { mutableStateOf(false) }
-    var showQueue by remember { mutableStateOf(false) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
     // Immersive view (official app: a tap on the artwork): artwork full-bleed, no top bar,
     // no title / controls block, only one compact strip. A second tap leaves it.
     var immersive by remember { mutableStateOf(false) }
@@ -211,7 +215,7 @@ fun PlayerScreen(navController: NavController) {
 
     // Known cover (warmed by the mini player): the colour is there from the first frame.
     var coverColor by remember {
-        mutableStateOf(Palette.cachedSecond(songCoverUri) ?: Color(0xFF121212))
+        mutableStateOf(Palette.cachedSecond(songCoverUri) ?: AppBackground)
     }
     LaunchedEffect(songCoverUri) {
         // Known: kept as it is (extracted again it could come out a shade off, and the background
@@ -232,6 +236,12 @@ fun PlayerScreen(navController: NavController) {
         if (songCoverUri.isNotBlank()) Palette().extractFirstColorFromImageUrl(context, songCoverUri) { tintColor = it }
     }
     val backdropColor by androidx.compose.animation.animateColorAsState(tintColor ?: coverColor, androidx.compose.animation.core.tween(450), label = "backdrop")
+    // A real crossfade (see SongBlend): the cover and the backdrop go from the outgoing song to
+    // this one with the fade's progress, the words and times switch once, half way.
+    val blend = com.music.spotui.ui.components.rememberSongBlend()
+    val outgoing = blend?.takeIf { it.outgoingWords }?.song
+    // The backdrop's colour when the fade began, before this song's took over.
+    val outgoingBackdrop = remember(blend) { backdropColor }
 
     val shuffle = playerViewModel.shuffleState.value
     val repeat = playerViewModel.repeatState.value
@@ -339,6 +349,7 @@ fun PlayerScreen(navController: NavController) {
     val mv = com.music.spotui.video.MusicVideoController
     androidx.compose.runtime.DisposableEffect(mv) {
         mv.attachPlayerScreen()
+        SongPlayer.refreshLikedIfStale()
         onDispose { mv.detachPlayerScreen() }
     }
     LaunchedEffect(actualTrackId, songTitle, audioBuffering) {
@@ -370,24 +381,32 @@ fun PlayerScreen(navController: NavController) {
         modifier = Modifier
             .graphicsLayer { translationY = pullToClose.offset }
             .fillMaxSize()
-            .background(
+            // Drawn, not composed: the colour moves every frame of a crossfade (and of a change),
+            // and only this draw follows it.
+            .drawBehind {
                 // The tint follows the cover in BOTH modes: AMOLED used to be pure black, and the
                 // colour was asked for anyway (that replaces the halo idea). The screen keeps its
                 // gradient, the toggle still governs the rest of the app.
                 // Official look: the cover's colour at the top, fading to near-black by the
                 // bottom (still faintly tinted halfway), so white text stays readable.
-                Brush.verticalGradient(
-                    0f to backdropColor,
-                    0.55f to androidx.compose.ui.graphics.lerp(backdropColor, PLAYER_BASE, 0.40f),
-                    0.80f to androidx.compose.ui.graphics.lerp(backdropColor, PLAYER_BASE, 0.78f),
+                val top = blend?.let { androidx.compose.ui.graphics.lerp(outgoingBackdrop, backdropColor, it.progress()) } ?: backdropColor
+                drawRect(Brush.verticalGradient(
+                    0f to top,
+                    0.55f to androidx.compose.ui.graphics.lerp(top, PLAYER_BASE, 0.40f),
+                    0.80f to androidx.compose.ui.graphics.lerp(top, PLAYER_BASE, 0.78f),
                     1f to PLAYER_BASE,
-                )
-            )
+                ))
+            }
     ) {
         // The window's height (the inner constraints below shadow `maxHeight`) and the status
         // bar's, to size the page item itself: a LazyColumn item cannot ask for "parent minus x".
         val pageHeight = maxHeight
         val statusTop = androidx.compose.foundation.layout.WindowInsets.Companion.statusBars.asPaddingValues().calculateTopPadding()
+        // The lyrics card peeks in under the buttons only where it will show (it stays hidden for an
+        // ad and for a song without lyrics): otherwise that strip is empty space below the controls.
+        // The state is read here too, as the card sits below the page and is not composed to load it.
+        val lyricsState = rememberLyricsState(viewModel<com.music.spotui.ui.viewmodel.LyricsViewModel>(), songTitle, songSinger)
+        val lyricsPeek = if (adPlaying || lyricsState is com.music.spotui.ui.viewmodel.LyricsViewModel.State.NotFound) 0 else PLAYER_PEEK_DP
         val pillAboveTitle = canvasUrl != null && !videoOn
         if (canvasUrl != null && !videoOn) {
             CanvasVideo(
@@ -435,21 +454,19 @@ fun PlayerScreen(navController: NavController) {
                 // The page stops short of the screen's bottom so the lyrics card peeks in under
                 // the buttons, as in the official app (scroll to open it).
                 else Modifier.height(
-                    (pageHeight - statusTop - PLAYER_PEEK_DP.dp).coerceAtLeast(300.dp)
+                    (pageHeight - statusTop - lyricsPeek.dp).coerceAtLeast(300.dp)
                 )).fillMaxWidth(),
             contentAlignment = Alignment.TopCenter,
         ) {
         val wide = maxWidth > 600.dp && maxWidth > maxHeight
-        val contentWidth = if (wide) maxWidth.coerceAtMost(520.dp) else maxWidth
+        // Large windows wider than tall (tablets, foldables, DeX) and large portrait tablets: the
+        // cover on the left, the title and controls on the right, each in a capped half.
+        val twoPane = !immersive && com.music.spotui.ui.components.windowSize().twoPane
+        val contentWidth = if (twoPane) ((maxWidth - 72.dp) / 2).coerceIn(0.dp, 560.dp)
+            else if (wide) maxWidth.coerceAtMost(520.dp) else maxWidth
         // Immersive: the artwork takes the whole height instead of leaving room for controls.
         val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(contentWidth)
-                .navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        val topBar: @Composable () -> Unit = {
             // Immersive mode has no top bar: only the artwork and the compact strip remain.
             if (!immersive) {
                 PlayerTopBar(
@@ -461,6 +478,8 @@ fun PlayerScreen(navController: NavController) {
                 // Official: the cover starts closer to the header.
                 Spacer(modifier = Modifier.height(14.dp))
             }
+        }
+        val mediaArea: @Composable (Modifier, Alignment) -> Unit = { mediaModifier, mediaAlignment ->
             // Media area: artwork (swipe to change track) or the music video, with
             // Spotify's "Passer à la vidéo" pill over it (black, like the official app).
             // Square, but never taller than what the controls leave (foldables, landscape-ish
@@ -472,8 +491,8 @@ fun PlayerScreen(navController: NavController) {
             // peek, with or without Canvas / clip pill, on short screens too. The art shrinks, the
             // controls do not; on tall screens the slot's spare height sits under the art.
             androidx.compose.foundation.layout.BoxWithConstraints(
-                modifier = if (immersive) Modifier else Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.TopCenter,
+                modifier = mediaModifier,
+                contentAlignment = mediaAlignment,
             ) {
             val artSide = if (immersive) screenHeight
                 else minOf(contentWidth, maxHeight).coerceAtLeast(0.dp)
@@ -550,9 +569,16 @@ fun PlayerScreen(navController: NavController) {
                                 val grow = 1f + (1f - coverAlpha) * 0.06f
                                 scaleX = grow; scaleY = grow
                             },
-                        model = cover,
+                        model = app.myspoti.host.android.Covers.large(cover),
                         contentScale = ContentScale.Crop,
                         contentDescription = "")
+                    // The song a crossfade fades out, dissolving into this one.
+                    if (page == 1) com.music.spotui.ui.components.SongBlendCover(
+                        blend,
+                        (if (immersive) Modifier.fillMaxSize()
+                            else Modifier.padding(horizontal = coverInset).aspectRatio(1f).clip(RoundedCornerShape(8.dp)))
+                            .graphicsLayer { alpha = coverAlpha },
+                    )
                 }
             }
             }
@@ -566,6 +592,8 @@ fun PlayerScreen(navController: NavController) {
             }
             }
             }
+        }
+        val controls: @Composable ColumnScope.() -> Unit = {
             // The slot (pill 32dp + 20dp gap) is reserved in every non-immersive layout, Canvas or
             // not, and before the clip is even known: the title, seek bar and buttons then sit at
             // the same height on every track, and a skip between the two kinds no longer moves
@@ -588,34 +616,39 @@ fun PlayerScreen(navController: NavController) {
             // the screen replaces the title block and every control.
             if (!immersive) {
                 PlayerInfo(
-                    songTitle = songTitle,
-                    songSinger = songSinger,
-                    explicit = np.explicit || currentTrack?.explicit == true,
+                    songTitle = outgoing?.title ?: songTitle,
+                    songSinger = outgoing?.artist ?: songSinger,
+                    wordsAlpha = { blend?.wordsAlpha() ?: 1f },
+                    explicit = outgoing == null && (np.explicit || currentTrack?.explicit == true),
                     liked = isLiked.value,
                     onLikeClick = { playerViewModel.updateLikeState(!isLiked.value) },
                     likeSong = { nowPlayingSong(playerViewModel) },
                     adPlaying = adPlaying,
-                    onTitleClick = {
-                        val albumId = np.albumUri.substringAfterLast(":")
-                        if (albumId.isNotBlank()) navController.navigate(albumRoute(playerViewModel.currentSongAlbum.value, songSinger, albumId))
-                    },
+                    onTitleClick = { openNowPlayingAlbum(playerViewModel, songSinger, titleScope) { navController.navigate(it) } },
                     onArtistClick = {
                         playerViewModel.goToArtist(SongPlayer.currentTrackId, songSinger) { route ->
                             navController.navigate(route)
                         }
+                    },
+                    // One tap per artist: each name opens that artist, not the choice.
+                    artistCredit = com.music.spotui.ui.components.rememberArtistCredit(displayedTrackId, outgoing?.artist ?: songSinger, Color.White.copy(alpha = 0.7f)) { a ->
+                        navController.navigate(com.music.spotui.ui.components.ArtistChooser.routeOf(a))
                     },
                 )
 
                 // Seek bar: follows the finger while dragging, seeks once on release.
                 var isDragging by remember { mutableStateOf(false) }
                 var dragValue by remember { mutableStateOf(0f) }
-                val duration = mv.duration()
+                // The outgoing song's times until half way through a crossfade, as its words.
+                val duration = outgoing?.durationMs ?: mv.duration()
+                val outgoingAt = blend?.takeIf { outgoing != null }
                 SpotifySeekBar(
                     fraction = {
                         frame.value // redraw each frame
                         if (isDragging) dragValue else {
-                            val d = mv.duration()
-                            if (d > 0) (mv.position().toFloat() / d).coerceIn(0f, 1f) else 0f
+                            val d = if (outgoingAt != null) duration else mv.duration()
+                            val at = outgoingAt?.positionMs() ?: mv.position()
+                            if (d > 0) (at.toFloat() / d).coerceIn(0f, 1f) else 0f
                         }
                     },
                     onDrag = { isDragging = true; dragValue = it },
@@ -635,7 +668,8 @@ fun PlayerScreen(navController: NavController) {
                         .padding(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    ElapsedLabel(songPlayingState, if (isDragging) (dragValue * duration).toLong() else null) {
+                    ElapsedLabel(songPlayingState, if (isDragging) (dragValue * duration).toLong() else null,
+                        position = outgoingAt?.let { o -> { o.positionMs() } } ?: mv::position) {
                         playerViewModel.formatDuration(it)
                     }
                     Text(
@@ -658,10 +692,38 @@ fun PlayerScreen(navController: NavController) {
                 )
                 // Buttons from extensions (player.buttons), under the player's own controls.
                 val extTrack = androidx.compose.runtime.remember(songTitle, songSinger) { com.music.spotui.extensions.Extensions.currentTrack() }
+                com.music.spotui.extensions.MirrorIndicator()
                 com.music.spotui.extensions.ExtensionPlayerButtons(extTrack)
                 // 8dp card margin + this = the official 37dp from the buttons' centre to the card.
                 Spacer(modifier = Modifier.height(12.dp))
             }
+        }
+        if (twoPane) Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(Modifier.width(contentWidth * 2 + 72.dp)) { Column { topBar() } }
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(72.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                mediaArea(Modifier.width(contentWidth).fillMaxHeight(), Alignment.Center)
+                Column(Modifier.width(contentWidth), horizontalAlignment = Alignment.CenterHorizontally) { controls() }
+            }
+        } else Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(contentWidth)
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            topBar()
+            mediaArea(if (immersive) Modifier else Modifier.fillMaxWidth().weight(1f), Alignment.TopCenter)
+            controls()
         }
         }
         }
@@ -669,7 +731,7 @@ fun PlayerScreen(navController: NavController) {
         // artwork only, so a swipe there cannot pull a card up under the compact strip.
         if (!immersive) item {
             // T4: no lyrics card during an ad break — the song it belongs to is not what plays.
-            if (!audioBuffering && !adPlaying) InlineLyrics(
+            if (!audioBuffering && !adPlaying && com.music.spotui.data.preferences.PlayerLyricsCardPref.on) InlineLyrics(
                 title = songTitle,
                 artist = songSinger,
                 album = playerViewModel.currentSongAlbum.value,
@@ -833,7 +895,7 @@ private fun playingFromLabels(np: SongPlayer.NowPlaying, fallbackName: String): 
     val type = np.contextUri.split(":").getOrNull(1).orEmpty()
     val name = contextDisplayName(np, fallbackName)
     return when {
-        np.contextUri.contains(":collection") -> stringResource(R.string.context_type_description_collection_your_library) to stringResource(R.string.collection_liked_songs_title)
+        isLikedContext(np.contextUri) -> stringResource(R.string.context_type_description_collection_your_library) to stringResource(R.string.collection_liked_songs_title)
         type == "playlist" -> stringResource(R.string.context_type_description_playlist) to name
         type == "album" -> stringResource(R.string.context_type_description_album) to name
         type == "artist" -> stringResource(R.string.context_type_description_artist) to name
@@ -843,14 +905,28 @@ private fun playingFromLabels(np: SongPlayer.NowPlaying, fallbackName: String): 
     }
 }
 
-/** Route of the page the music is playing from (playlist, album, artist, liked). */
+/** Spotify's uri of the user's Liked Songs: spotify:collection:tracks, or the older spotify:user:<name>:collection (by one artist: ...:artist:<id>). */
+private val LIKED_CONTEXT = Regex("spotify:(collection(:tracks)?|user:[^:]+:collection(:artist:[^:]+)?)")
+
+/** Only Liked Songs itself, not another collection (episodes) nor a radio that mentions one. */
+private fun isLikedContext(uri: String) = LIKED_CONTEXT.matches(uri)
+
+/**
+ * Route of the page the music is playing from (playlist, album, artist, liked); null when there
+ * is none to open. A radio (spotify:station:...) has no page of its own: it never falls back to
+ * Liked Songs.
+ */
 private fun contextRoute(np: SongPlayer.NowPlaying): String? {
     val parts = np.contextUri.split(":")
     val id = parts.getOrNull(2).orEmpty()
     // B26: opening that page again must carry the name the header shows.
     val name = contextDisplayName(np, "")
     return when {
-        np.contextUri.contains(":collection") -> Routes.Liked.route
+        isLikedContext(np.contextUri) -> Routes.Liked.route
+        parts.getOrNull(1) == "station" -> null
+        // The older form of a playlist's uri: spotify:user:<name>:playlist:<id>.
+        parts.getOrNull(1) == "user" && parts.getOrNull(3) == "playlist" && parts.getOrNull(4).orEmpty().isNotBlank() ->
+            com.music.spotui.ui.navigation.playlistRoute(parts[4], name)
         parts.getOrNull(1) == "playlist" && id.isNotBlank() -> com.music.spotui.ui.navigation.playlistRoute(id, name)
         parts.getOrNull(1) == "album" && id.isNotBlank() -> albumRoute(name, "", id)
         parts.getOrNull(1) == "artist" && id.isNotBlank() -> com.music.spotui.ui.navigation.artistRoute(name, id)
@@ -939,7 +1015,7 @@ fun ExplicitBadge(modifier: Modifier = Modifier) {
     ) {
         // No font padding + trimmed line height so the "E" sits dead centre.
         Text(
-            "E",
+            stringResource(R.string.explicit_badge),
             color = Color.Black,
             fontWeight = FontWeight.Bold,
             style = androidx.compose.ui.text.TextStyle(
@@ -962,8 +1038,10 @@ fun LikeButton(liked: Boolean, size: androidx.compose.ui.unit.Dp = 28.dp, onClic
     // Nothing runs on first display, so long lists do not animate while scrolling.
     val scale = remember { androidx.compose.animation.core.Animatable(1f) }
     val firstShown = remember { booleanArrayOf(true) }
+    val reduce = com.music.spotui.ui.look.rememberReduceMotion()
     LaunchedEffect(liked) {
         if (firstShown[0]) { firstShown[0] = false; return@LaunchedEffect }
+        if (reduce) return@LaunchedEffect
         scale.snapTo(0.6f)
         scale.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.4f, stiffness = 600f))
     }
@@ -974,13 +1052,25 @@ fun LikeButton(liked: Boolean, size: androidx.compose.ui.unit.Dp = 28.dp, onClic
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
         ) { onClick() }
-    if (liked) {
-        Box(contentAlignment = Alignment.Center, modifier = mod.clip(CircleShape).background(com.music.spotui.ui.theme.AppAccent)) {
-            // The official check is bolder, with round ends.
-            Icon(PlayerIcons.check, contentDescription = stringResource(R.string.remove_from_liked), tint = Color.Black, modifier = Modifier.size(size * 0.7f))
+    // The disc fills and the glyphs cross-fade, instead of one swapping for the other.
+    val disc by androidx.compose.animation.animateColorAsState(
+        if (liked) com.music.spotui.ui.theme.AppAccent else Color.Transparent,
+        if (reduce) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(180),
+        label = "likeDisc",
+    )
+    Box(contentAlignment = Alignment.Center, modifier = mod.background(disc, CircleShape)) {
+        androidx.compose.animation.Crossfade(
+            liked,
+            animationSpec = if (reduce) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(180),
+            label = "likeGlyph",
+        ) { on ->
+            if (on) {
+                // The official check is bolder, with round ends.
+                Icon(PlayerIcons.check, contentDescription = stringResource(R.string.remove_from_liked), tint = Color.Black, modifier = Modifier.size(size * 0.7f))
+            } else {
+                Icon(painterResource(id = R.drawable.ic_add), contentDescription = stringResource(R.string.aligned_curation_context_menu_item_add_to_liked_songs), tint = Color.White, modifier = Modifier.size(size))
+            }
         }
-    } else {
-        Icon(painterResource(id = R.drawable.ic_add), contentDescription = stringResource(R.string.aligned_curation_context_menu_item_add_to_liked_songs), tint = Color.White, modifier = mod)
     }
 }
 
@@ -995,9 +1085,13 @@ fun PlayerInfo(
     /** The track behind the +: with it, the + opens "Saved in" once the track is saved. */
     likeSong: (() -> SongsModel)? = null,
     onArtistClick: (() -> Unit)? = null,
+    /** The artist line with each artist its own tap target (rememberArtistCredit), when known. */
+    artistCredit: androidx.compose.ui.text.AnnotatedString? = null,
     onTitleClick: (() -> Unit)? = null,
     /** T4: an ad break is on: what the caller passes is the song from before it, not what plays. */
     adPlaying: Boolean = false,
+    /** The words' dip through a crossfade's switch (SongBlend.wordsAlpha), read at draw. */
+    wordsAlpha: () -> Float = { 1f },
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1015,7 +1109,7 @@ fun PlayerInfo(
             textAlpha.snapTo(0f)
             textAlpha.animateTo(1f, androidx.compose.animation.core.tween(200))
         }
-        Column(modifier = Modifier.weight(1f).padding(end = 16.dp).graphicsLayer { alpha = textAlpha.value }) {
+        Column(modifier = Modifier.weight(1f).padding(end = 16.dp).graphicsLayer { alpha = textAlpha.value * wordsAlpha() }) {
             Text(
                 modifier = Modifier
                     // A few passes, after the sheet has settled (not an endless 120 Hz animation).
@@ -1041,7 +1135,7 @@ fun PlayerInfo(
                     Spacer(modifier = Modifier.width(6.dp))
                 }
                 Text(
-                    text = songSinger,
+                    text = artistCredit ?: androidx.compose.ui.text.AnnotatedString(songSinger),
                     color = Color.White.copy(alpha = 0.7f),
                     fontSize = 16.sp,
                     maxLines = 1,
@@ -1064,21 +1158,22 @@ fun PlayerInfo(
 
 /** Elapsed time text with its own ticker (doesn't recompose the whole player). */
 @Composable
-private fun ElapsedLabel(playing: Boolean, override: Long?, format: (Long) -> String) {
+private fun ElapsedLabel(playing: Boolean, override: Long?, position: () -> Long, format: (Long) -> String) {
     val mv = com.music.spotui.video.MusicVideoController
-    var now by remember { mutableStateOf(mv.position()) }
+    val at by androidx.compose.runtime.rememberUpdatedState(position)
+    var now by remember { mutableStateOf(position()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(playing, mv.on.value, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                now = mv.position()
+                now = at()
                 if (!playing) break
                 delay(250L)
             }
         }
     }
     // Seek while paused: pick the new position up as soon as it changes.
-    LaunchedEffect(override) { if (override == null) now = mv.position() }
+    LaunchedEffect(override, position) { if (override == null) now = position() }
     Text(text = format(override ?: now), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, lineHeight = 14.sp)
 }
 
@@ -1308,11 +1403,13 @@ fun PlayerFull(
                 Color.White
             },
             // The official loop with one arrow (drawn here: the old drawable was the two-arrow one).
-            imageVector = if (SongPlayer.repeatMode.value == 2) PlayerIcons.repeatOne else PlayerIcons.repeat,
-            contentDescription = when (SongPlayer.repeatMode.value) { 1 -> stringResource(R.string.repeat_on); 2 -> stringResource(R.string.repeat_one); else -> stringResource(R.string.repeat_off) })
+            // Repeat once has the same loop with "1×" in it.
+            imageVector = when (SongPlayer.repeatMode.value) { 2 -> PlayerIcons.repeatOne; 3 -> com.music.spotui.ui.components.RepeatIcons.once; else -> PlayerIcons.repeat },
+            contentDescription = when (SongPlayer.repeatMode.value) { 1 -> stringResource(R.string.repeat_on); 2 -> stringResource(R.string.repeat_one); 3 -> stringResource(R.string.repeat_once); else -> stringResource(R.string.repeat_off) })
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PlayerConnectRow(
     context: Context,
@@ -1356,16 +1453,20 @@ fun PlayerConnectRow(
                 // download); a tap opens what plays and its quality.
                 val source = com.music.spotui.ui.components.playingSourceLabel()
                 var quality by remember { mutableStateOf(false) }
+                var nerd by remember { mutableStateOf(false) }
                 if (quality) com.music.spotui.ui.components.QualitySheet { quality = false }
-                if (source.isNotBlank()) Text(
+                if (nerd) com.music.spotui.ui.components.StatsForNerdsSheet { nerd = false }
+                if (source.isNotBlank() && com.music.spotui.data.preferences.PlayerSourceLinePref.on) Text(
                     text = source,
                     color = com.music.spotui.ui.theme.AppMuted,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable(
+                    // A tap: what plays and its quality; a long press: the stats for nerds.
+                    modifier = Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
+                        onLongClick = { nerd = true },
                     ) { quality = true },
                 )
             }
@@ -1449,6 +1550,28 @@ fun PlayerOptionsSheet(
     )
 }
 
+
+/**
+ * Opens the album of the track that plays, for both looks. An extension's or a download's song
+ * has no album in Spotify's state: the song's own, as the options' "Go to album". A radio's
+ * tracks may come without one: asked from the track, else by the album's name (the album page
+ * resolves it).
+ */
+fun openNowPlayingAlbum(playerViewModel: PlayerViewModel, singer: String, scope: kotlinx.coroutines.CoroutineScope, navigate: (String) -> Unit) {
+    val song = nowPlayingSong(playerViewModel)
+    val albumId = song.albumId
+    val albumName = playerViewModel.currentSongAlbum.value.ifBlank { song.album }
+    @Suppress("NAME_SHADOWING") val singer = singer.ifBlank { song.singer }
+    if (albumId.isNotBlank()) { navigate(albumRoute(albumName, singer, albumId)); return }
+    val trackId = SongPlayer.currentTrackId
+    scope.launch {
+        val resolved = if (trackId.isBlank()) "" else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { app.myspoti.host.android.MyspotiRuntime.api.catalog.track("spotify:track:$trackId").album?.uri }
+                .getOrNull()?.substringAfterLast(":").orEmpty()
+        }
+        if (resolved.isNotBlank() || albumName.isNotBlank()) navigate(albumRoute(albumName, singer, resolved))
+    }
+}
 
 /** The track that plays, as Spotify reports it (the local queue may not have it). */
 fun nowPlayingSong(playerViewModel: PlayerViewModel): SongsModel {
@@ -1565,7 +1688,7 @@ fun PlayerMenuRow(
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-private fun CanvasVideo(url: String, playing: Boolean, onFirstFrame: () -> Unit, modifier: Modifier = Modifier) {
+internal fun CanvasVideo(url: String, playing: Boolean, onFirstFrame: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val exo = remember(url) { com.music.spotui.ui.components.CanvasPlayer.get(context, url) }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle

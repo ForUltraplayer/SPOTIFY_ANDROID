@@ -22,4 +22,5 @@
     <string name="account_page_title">Konto Spotify</string>
     <string name="account_page_detail">Abonament, prywatność i urządzenia, na spotify.com</string>
     <string name="player_source_downloaded">Pobrane</string>
+    <string name="extension_change_write">Może teraz także wysyłać do Spotify: %1$s</string>
 </resources>

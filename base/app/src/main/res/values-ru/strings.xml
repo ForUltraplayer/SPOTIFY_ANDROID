@@ -22,4 +22,5 @@
     <string name="account_page_title">Аккаунт Spotify</string>
     <string name="account_page_detail">Подписка, конфиденциальность и устройства, на spotify.com</string>
     <string name="player_source_downloaded">Скачано</string>
+    <string name="extension_change_write">Теперь также может отправлять данные в Spotify: %1$s</string>
 </resources>

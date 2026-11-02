@@ -8,11 +8,12 @@ import com.music.spotui.data.api.Response
 import com.music.spotui.data.entity.ContextPageModel
 import com.music.spotui.data.entity.SongsModel
 import com.music.spotui.di.Graph
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -42,7 +43,8 @@ object OfflineCollections {
     private const val SYNC_EVERY_MS = 6 * 3_600_000L
     private lateinit var file: File
     private val lock = Any()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // A refresh that fails (no network, a page that cannot be read) is logged, never a crash of the app.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.w(TAG, "refresh failed: ${e.javaClass.simpleName}: ${e.message}") })
 
     val collections: SnapshotStateMap<String, OfflineCollection> = mutableStateMapOf()
     /** Songs downloaded on their own, kept whatever the lists do. */
@@ -56,11 +58,24 @@ object OfflineCollections {
         runCatching { read(file.readText()) }
     }
 
+    /** Reads the downloaded lists again (main thread): another account's downloads were put in place. */
+    fun reopen() {
+        synchronized(lock) { collections.clear(); singles.clear() }
+        runCatching { read(file.readText()) }
+    }
+
     fun isDownloaded(uri: String) = collections.containsKey(uri)
 
     /** A song still has a reason to stay on the phone. */
     fun isKept(trackId: String): Boolean = synchronized(lock) { trackId in singles } ||
         collections.values.any { trackId in it.trackIds }
+
+    /** What the toast says when [trackId] stays on the phone: the downloaded lists (albums, playlists, Liked Songs) that hold it. */
+    fun keptMessage(context: Context, trackId: String): String {
+        val names = collections.values.filter { trackId in it.trackIds }.mapNotNull { it.name.takeIf(String::isNotBlank) }
+        if (names.isEmpty()) return context.getString(app.myspoti.engine.R.string.download_kept_by_list)
+        return context.getString(app.myspoti.engine.R.string.download_kept_by_named, names.take(3).joinToString(", ") + if (names.size > 3) "…" else "")
+    }
 
     @Volatile private var wifiPending = false
 
@@ -79,6 +94,8 @@ object OfflineCollections {
         // Episodes have no track id and their own downloader (PodcastDownloader): sending one
         // here would only be dropped, or worse, hit the track download path.
         if (song.spotifyTrackId.isBlank() || episodeKeyOf(song) != null) return
+        // Kept only when the download can start: otherwise it would show as downloaded with no file.
+        if (!OfflineDownloader.ready()) return
         synchronized(lock) { singles += song.spotifyTrackId }
         save()
         OfflineDownloader.enqueue(listOf(song), quality)
@@ -101,6 +118,8 @@ object OfflineCollections {
         // An episode in a list is not a track: it stays out of the collection, and the
         // list download never enqueues it (its own menu row is the way to download an episode).
         val ids = page.tracks.map { it.spotifyTrackId }.filter { it.isNotBlank() && !isEpisodeKey(it) }.toSet()
+        // Marked downloaded only when the download can start (downloads on, a download extension).
+        if (!OfflineDownloader.ready()) return
         collections[page.uri] = OfflineCollection(page.uri, page.type, page.name, ids, System.currentTimeMillis(), quality?.name.orEmpty())
         save()
         keepPage(page)
@@ -168,8 +187,15 @@ object OfflineCollections {
             if (com.music.spotui.data.DataSaver.metered) { waitForWifi(); return@launch }
             val due = collections.values.filter { force || System.currentTimeMillis() - it.syncedAt > SYNC_EVERY_MS }
             for (c in due) {
-                val page = withTimeoutOrNull(60_000) { loadComplete(c) } ?: continue
-                withContext(Dispatchers.Main) { sync(page) }
+                // One list that fails does not stop the others.
+                try {
+                    val page = withTimeoutOrNull(60_000) { loadComplete(c) } ?: continue
+                    withContext(Dispatchers.Main) { sync(page) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Log.w(TAG, "${c.name} not refreshed: ${e.javaClass.simpleName}: ${e.message}")
+                }
             }
         }
     }
@@ -193,11 +219,12 @@ object OfflineCollections {
         val api = Graph.api
         val id = c.uri.substringAfterLast(":")
         val flow = when (c.type) {
-            "album" -> api.getAlbumPage(id)
+            "album" -> api.getAlbumPage(id, stored = false)
             "liked" -> api.getLikedPage()
             else -> api.getPlaylistPage(id)
         }
-        return (flow.first { it is Response.Error || (it is Response.Success && it.data.complete) } as? Response.Success)?.data
+        // A flow that ends without a complete page (the player never ready) is no page, not an error.
+        return (flow.firstOrNull { it is Response.Error || (it is Response.Success && it.data.complete) } as? Response.Success)?.data
     }
 
     private fun save() {
@@ -210,12 +237,8 @@ object OfflineCollections {
             }
             JSONObject().put("version", 1).put("lists", lists).put("singles", JSONArray(singles.toList())).toString()
         }
-        runCatching {
-            file.parentFile?.mkdirs()
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(text)
-            tmp.renameTo(file)
-        }
+        runCatching { com.music.spotui.data.writeTextSafely(file, text) }
+            .onFailure { app.myspoti.host.android.Logbook.log("offline: downloaded lists not saved: ${it.message}") }
     }
 
     private fun read(text: String) {

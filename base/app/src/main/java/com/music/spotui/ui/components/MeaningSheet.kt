@@ -41,13 +41,13 @@ import com.music.spotui.data.api.GeniusMeaning
 
 
 /** The reader's choice between Genius's own words and their translation, for the whole session. */
-private val showOriginal = mutableStateOf(false)
+internal val showOriginal = mutableStateOf(false)
 
 /** Genius's words as shown: each text in the reader's language as soon as its translation arrives. */
-private class ShownMeaning(val meaning: GeniusMeaning.Meaning, val translating: Boolean, val canTranslate: Boolean)
+internal class ShownMeaning(val meaning: GeniusMeaning.Meaning, val translating: Boolean, val canTranslate: Boolean)
 
 @Composable
-private fun rememberShown(original: GeniusMeaning.Meaning, texts: List<String>): ShownMeaning {
+internal fun rememberShown(original: GeniusMeaning.Meaning, texts: List<String>): ShownMeaning {
     val lang = readerLanguage()
     // The texts on screen are asked for first (the rest may already be on their way in the background).
     LaunchedEffect(original, texts) { texts.forEach { GeniusMeaning.requestTranslation(original, it, lang) } }

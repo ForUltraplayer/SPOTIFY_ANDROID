@@ -4,6 +4,7 @@ import com.music.spotui.ui.theme.headerTint
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
+import com.music.spotui.ui.theme.AppAccent
 
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -222,12 +223,12 @@ private fun EmptyState(title: String, subtitle: String, button: String?, onClick
 /** The phone's music folders, each shown in Local Files or left out (WhatsApp audio…). */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun LocalFoldersSheet(onChanged: () -> Unit, onDismiss: () -> Unit) {
+internal fun LocalFoldersSheet(onChanged: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var folders by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
     var version by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { folders = LocalMusic.folders(context) }
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(stringResource(R.string.local_folders_title), color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 20.dp))
@@ -255,7 +256,7 @@ private fun LocalFoldersSheet(onChanged: () -> Unit, onDismiss: () -> Unit) {
                                 version++
                                 onChanged()
                             },
-                            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Color(0xFF1DB954)),
+                            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = AppAccent),
                         )
                     }
                 }

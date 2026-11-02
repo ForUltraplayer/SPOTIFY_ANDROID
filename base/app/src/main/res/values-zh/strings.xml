@@ -22,4 +22,5 @@
     <string name="account_page_title">Spotify 账号</string>
     <string name="account_page_detail">订阅、隐私和设备，在 spotify.com 上管理</string>
     <string name="player_source_downloaded">已下载</string>
+    <string name="extension_change_write">现在也可以向 Spotify 发送：%1$s</string>
 </resources>

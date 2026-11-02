@@ -57,7 +57,7 @@ object ShareCard {
     private fun loadCover(context: Context, uri: String): Bitmap? {
         if (uri.isBlank()) return null
         val bmp = runCatching {
-            Glide.with(context.applicationContext).asBitmap().load(uri).submit(1000, 1000).get()
+            Glide.with(context.applicationContext).asBitmap().load(app.myspoti.host.android.Covers.large(uri)).submit(1000, 1000).get()
         }.getOrNull() ?: return null
         return if (bmp.config == Bitmap.Config.HARDWARE) bmp.copy(Bitmap.Config.ARGB_8888, false) else bmp
     }

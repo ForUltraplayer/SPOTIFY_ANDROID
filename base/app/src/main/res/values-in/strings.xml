@@ -13,4 +13,12 @@
     <string name="notif_shuffle_disable">Nonaktifkan pemutaran acak</string>
     <string name="notif_shuffle_disable_smart">Nonaktifkan pemutaran acak pintar</string>
     <string name="player_source_downloaded">Diunduh</string>
+    <string name="energy_saver_title">Penghemat baterai</string>
+    <string name="energy_saver_summary">Canvas mati, video dan animasi lebih ringan</string>
+    <string name="video_fullscreen_enter">Layar penuh</string>
+    <string name="video_fullscreen_exit">Keluar dari layar penuh</string>
+    <string name="playback_seek_description">Posisi pemutaran</string>
+    <string name="account_page_title">Akun Spotify</string>
+    <string name="account_page_detail">Paket, privasi, dan perangkat, di spotify.com</string>
+    <string name="extension_change_write">Sekarang juga boleh mengirim ke Spotify: %1$s</string>
 </resources>

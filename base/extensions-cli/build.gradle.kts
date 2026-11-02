@@ -21,4 +21,5 @@ dependencies {
     implementation(project(":host-cdp"))
     implementation(libs.serialization.json)
     implementation(libs.coroutines.core)
+    testImplementation("junit:junit:4.13.2")
 }

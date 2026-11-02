@@ -1,5 +1,6 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.theme.AppDestructive
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
@@ -34,6 +35,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
@@ -185,7 +188,7 @@ fun LibraryCreateSheet(navController: NavController, onDismiss: () -> Unit, onLi
             else -> AddLocalToPlaylistSheet(track, onDismiss)
         }
         "importing" -> Unit // The file picker is open; this sheet stays to receive its answer.
-        else -> ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+        else -> com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
             Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
                 SheetRow(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.assisted_curation_search_playlist)) { asking = "playlist" }
                 SheetRow(Icons.Outlined.Group, stringResource(R.string.blend_title), stringResource(R.string.blend_detail)) { asking = "blend" }
@@ -233,7 +236,7 @@ private fun BlendSheet(navController: NavController, onDismiss: () -> Unit) {
             if (opened != null) { onDismiss(); navController.navigate(playlistRoute(opened.substringAfterLast(':'))) }
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             Text(stringResource(R.string.blend_title), color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(20.dp, 0.dp, 20.dp, 8.dp))
@@ -282,7 +285,7 @@ fun BlendInviteSheet(link: com.music.spotui.data.api.InviteLinks.BlendLink, navC
             }
             .onFailure { failed = true }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(24.dp, 0.dp, 24.dp, 20.dp),
@@ -389,7 +392,7 @@ fun FolderScreen(navController: NavController, uri: String, initialName: String)
     }
     // A change just written: the folder is read again once Spotify's list has had time to catch up.
     LaunchedEffect(uri) { com.music.spotui.data.api.LibraryEdits.reloads.collect { generation++ } }
-    if (menu) ModalBottomSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
+    if (menu) com.music.spotui.ui.components.LookSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             SheetRow(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.add_to_playlist_new_playlist_button_text)) { menu = false; newPlaylist = true }
             SheetRow(Icons.Outlined.Edit, stringResource(R.string.context_menu_rename_folder)) { menu = false; renaming = true }
@@ -406,7 +409,7 @@ fun FolderScreen(navController: NavController, uri: String, initialName: String)
                 // The folder is gone from the library at once; a refusal brings it back.
                 LibraryFolders.delete(context, uri)
                 navController.navigateUp()
-            }) { Text(stringResource(R.string.actions_picker_delete), color = Color(0xFFF15E6C)) }
+            }) { Text(stringResource(R.string.actions_picker_delete), color = AppDestructive) }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { deletingFolder = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
     )
@@ -488,7 +491,7 @@ fun LocalPlaylistScreen(navController: NavController, id: String) {
         return
     }
     if (addingLink) YouTubeLinkDialog(onDismiss = { addingLink = false }) { addingLink = false; LocalPlaylists.add(id, it) }
-    if (menu) ModalBottomSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
+    if (menu) com.music.spotui.ui.components.LookSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             SheetRow(Icons.Outlined.Edit, stringResource(R.string.local_rename)) { menu = false; renaming = true }
             SheetRow(Icons.Outlined.Link, "YouTube 링크 추가") { menu = false; addingLink = true }
@@ -539,7 +542,7 @@ fun AddLocalToPlaylistSheet(track: LocalTrack, onDismiss: () -> Unit) {
     var spotifyLists by remember { mutableStateOf<List<com.music.spotui.data.api.EditablePlaylist>?>(null) }
     var creating by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        spotifyLists = com.music.spotui.data.api.EditablePlaylists.load()
+        spotifyLists = com.music.spotui.data.api.EditablePlaylists.loadWithCovers()
     }
     fun added(name: String) {
         Toast.makeText(context, context.getString(R.string.local_added_to, name), Toast.LENGTH_SHORT).show()
@@ -554,7 +557,7 @@ fun AddLocalToPlaylistSheet(track: LocalTrack, onDismiss: () -> Unit) {
         }
         return
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         LazyColumn(Modifier.navigationBarsPadding().heightIn(max = 560.dp)) {
             item {
                 Text(stringResource(R.string.context_menu_add_to_playlist), color = AppText, fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -620,11 +623,20 @@ fun LibraryItemSheet(entry: LibraryEntry, onDismiss: () -> Unit, onChanged: () -
         onDismiss()
     }
     val api = app.myspoti.host.android.MyspotiRuntime.api
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             Text(entry.name, color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.padding(20.dp, 0.dp, 20.dp, 8.dp))
             if (!moving) {
+                // A saved playlist or album: all its songs into the queue (read to the end first).
+                if (entry.uri.startsWith("spotify:playlist:") || entry.uri.startsWith("spotify:album:")) {
+                    SheetRow(Icons.AutoMirrored.Outlined.PlaylistPlay, stringResource(R.string.context_menu_play_next)) {
+                        com.music.spotui.di.CollectionQueue.queue(entry.uri, next = true); onDismiss()
+                    }
+                    SheetRow(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.context_menu_add_to_queue)) {
+                        com.music.spotui.di.CollectionQueue.queue(entry.uri, next = false); onDismiss()
+                    }
+                }
                 SheetRow(Icons.Outlined.PushPin, stringResource(if (entry.pinned) R.string.library_unpin else R.string.library_pin)) {
                     act(LibraryEdits.Pin(entry.uri, !entry.pinned)) { if (entry.pinned) api.library.unpin(entry.uri) else api.library.pin(entry.uri) }
                 }
@@ -652,7 +664,7 @@ fun LibraryItemSheet(entry: LibraryEntry, onDismiss: () -> Unit, onChanged: () -
         text = { Text(stringResource(R.string.folder_delete_confirm, entry.name), color = AppText) },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = { deleting = false; act(LibraryEdits.Remove(entry.uri)) { api.library.deleteFolder(entry.uri) } }) {
-                Text(stringResource(R.string.actions_picker_delete), color = Color(0xFFF15E6C))
+                Text(stringResource(R.string.actions_picker_delete), color = AppDestructive)
             }
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { deleting = false }) { Text(stringResource(R.string.cancel), color = AppText) } },

@@ -3,6 +3,8 @@ package com.music.spotui.ui.components
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
+import com.music.spotui.ui.theme.AppBackground
+import com.music.spotui.ui.theme.AppAccent
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -75,7 +77,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
-private val Green = Color(0xFF1ED760)
+private val Green get() = AppAccent
 private const val SUGGESTIONS = 20
 private const val TYPE_PAUSE_MS = 300L
 
@@ -120,7 +122,7 @@ fun AddSongsScreen(page: ContextPageModel, onClose: (added: Boolean) -> Unit) {
 
     val close = { onClose(added.isNotEmpty()) }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(tone(0xFF121212)).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        Column(Modifier.fillMaxSize().background(AppBackground).statusBarsPadding().navigationBarsPadding().imePadding()) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp)) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = close)) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.add_songs_close), tint = AppText)
@@ -145,8 +147,7 @@ fun AddSongsScreen(page: ContextPageModel, onClose: (added: Boolean) -> Unit) {
                         modifier = Modifier.fillMaxWidth().focusRequester(focus),
                     )
                 }
-                if (query.isNotEmpty()) Icon(Icons.Default.Close, contentDescription = null, tint = AppText,
-                    modifier = Modifier.size(20.dp).clickable { query = "" })
+                if (query.isNotEmpty()) SearchClearButton(focus, AppText) { query = "" }
             }
             val searching = query.isNotBlank()
             val list = if (searching) results else suggestions

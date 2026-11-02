@@ -26,8 +26,10 @@ android {
     // so a plain Gradle build never goes back to a version code lower than the installed app's.
     val releaseJson = rootProject.file("../release.json").takeIf { it.isFile }?.readText().orEmpty()
     fun releaseField(name: String) = Regex("\"$name\"\\s*:\\s*\"?([^\",}\\s]+)").find(releaseJson)?.groupValues?.get(1)
-    val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.0.1"
-    val beta = findProperty("appVersionName") == null || version.contains("-")
+    val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.3.0"
+    // "-beta" or "-hangul." as in UpdateChecker.isBeta, one predicate for the app id, the label and the log stripping.
+    // Hangul builds stay on the beta side as before, so their Log.d diagnostics remain in the release APK.
+    val beta = findProperty("appVersionName") == null || version.contains("-beta") || version.contains("-hangul.")
     defaultConfig {
         applicationId = "app.myspoti.hangul"
         manifestPlaceholders["appLabel"] = "Myspoti 한글"
@@ -42,7 +44,8 @@ android {
         // (local builds). CI sets it to the repository it builds.
         buildConfigField("String", "UPDATE_REPO", "\"${(findProperty("updateRepo") as String?) ?: System.getenv("MYSPOTI_UPDATE_REPO") ?: ""}\"")
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // -Pabis=arm64-v8a: a smaller test APK for one phone.
+            abiFilters += (findProperty("abis") as String?)?.split(",") ?: listOf("arm64-v8a", "armeabi-v7a")
         }
         // On-device tests (codecs): ./gradlew connectedDebugAndroidTest
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -56,6 +59,11 @@ android {
     // Release key from the CI secrets (env), else keystore/keystore.properties.
     val envStore = System.getenv("MYSPOTI_KEYSTORE")
     val hasReleaseKey = envStore != null || keystorePropertiesFile.exists()
+    // A stable release (a version without "-beta", given by CI) is never signed with the debug key:
+    // without the release key the build stops. Local builds (no version) and -PoverDev are not stable releases.
+    val stableRelease = !beta && findProperty("overDev") == null
+    if (stableRelease && !hasReleaseKey && gradle.startParameter.taskNames.any { Regex("(assemble|bundle|package|install)Release").containsMatchIn(it) })
+        throw GradleException("A stable release needs the release key: set MYSPOTI_KEYSTORE (CI) or add keystore/keystore.properties.")
     signingConfigs {
         create("release") {
             if (envStore != null) {
@@ -119,6 +127,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // The real org.json in unit tests (android.jar only has stubs).
     testImplementation("org.json:json:20240303")
+    // A real XML pull parser in unit tests (the TTML lyrics parser; the tests skip themselves without it).
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation(libs.androidx.core.ktx)
@@ -144,10 +154,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("com.github.bumptech.glide:compose:1.0.0-beta01")
     implementation("androidx.palette:palette-ktx:1.0.0")
+    // Frosted (blurred) bars of the Immersive look. Apache-2.0.
+    implementation("dev.chrisbanes.haze:haze:1.3.1")
     // MediaTransferReceiver: lets the system output switcher transfer to our Connect routes
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation(libs.serialization.json)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

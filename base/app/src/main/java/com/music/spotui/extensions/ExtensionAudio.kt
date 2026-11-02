@@ -31,6 +31,15 @@ object ExtensionAudio {
     }
     private val known = ConcurrentHashMap<String, Known>()
 
+    /** Drops every remembered answer (an extension was removed: none of them may keep playing from it). */
+    fun forgetAll() = known.clear()
+
+    /**
+     * Drops the answers kept for every song but [playing] (the audio sources changed: the songs
+     * after it are asked again, in the new order; the one playing keeps its stream for seeks).
+     */
+    fun forgetAllBut(playing: String?) { known.keys.removeIf { it != playing } }
+
     fun uri(s: SongsModel): Uri = Uri.Builder().scheme(SCHEME).authority("track").appendPath(s.spotifyTrackId)
         .appendQueryParameter("title", s.title).appendQueryParameter("artist", s.singer)
         .appendQueryParameter("album", s.album).appendQueryParameter("duration", s.durationMs.toString())
@@ -44,12 +53,12 @@ object ExtensionAudio {
     /**
      * Where the sound of [t] comes from, for the player: "<extension> · FLAC · 24-bit · 96 kHz" for
      * a stream (the name in its manifest, then the quality it announced, nothing it did not say),
-     * "Downloaded · <source> · <extension>" for a download; "" for the phone's own files and while
+     * "Downloaded · <FLAC, MP3…> · <source> · <extension>" for a download; "" for the phone's own files and while
      * the stream's answer is not known yet.
      */
     fun sourceLabel(t: LocalTrack, downloaded: String): String {
         OfflineStore.byLocalId(t.id)?.takeIf { t.uri.scheme == "file" }?.let { o ->
-            return listOfNotNull(downloaded, o.source.ifBlank { null }, extensionName(o.providerId)).distinct().joinToString(" · ")
+            return listOfNotNull(downloaded, o.file.substringAfterLast('.', "").uppercase().ifBlank { null }, o.source.ifBlank { null }, extensionName(o.providerId)).distinct().joinToString(" · ")
         }
         if (t.uri.scheme != SCHEME) return ""
         val s = known[t.uri.lastPathSegment.orEmpty()]?.stream ?: return ""
@@ -69,6 +78,9 @@ object ExtensionAudio {
         known[trackId] = Known(stream)
         answers.intValue++
     }
+
+    /** [stream], from the source picked for it in the player (SongPlayer.switchSource), is the song [trackId]'s audio from now on. */
+    fun use(trackId: String, stream: AudioStream) = keep(trackId, stream)
 
     private val warming = ConcurrentHashMap.newKeySet<String>()
 
@@ -106,8 +118,18 @@ object ExtensionAudio {
     /** The extension that gave the audio of the song with Spotify id [trackId] last, or null. */
     fun providerOf(trackId: String): String? = known[trackId]?.stream?.providerId
 
+    /** The answer kept for the song [trackId] (what the extension announced about its audio), or null. */
+    fun streamOf(trackId: String): AudioStream? = known[trackId]?.stream
+
     /** The quality the extension announced for the song [trackId] ("FLAC · 24-bit · 96 kHz"), or null. */
     fun qualityOf(trackId: String): String? = known[trackId]?.stream?.qualityLabel()
+
+    /** The length the extension announced for the song [trackId]'s audio, ms, or null (none said, not answered). */
+    fun announcedLengthOf(trackId: String): Long? = known[trackId]?.stream?.durationMs
+
+    /** How the audio of the song [trackId] comes, for the diagnostic ("dash", "url audio/flac"), or null. */
+    fun deliveryOf(trackId: String): String? =
+        known[trackId]?.stream?.let { if (it.manifest != null) "dash" else "url ${it.mimeType ?: "untyped"}" }
 
     /**
      * For the player's data source: the audio of a `myspoti-ext:` item, or null. Blocks.
@@ -116,7 +138,11 @@ object ExtensionAudio {
      */
     fun resolve(u: Uri, again: Boolean = false, ahead: Boolean = false): AudioStream? {
         val key = u.lastPathSegment.orEmpty()
-        if (again) known.remove(key)
+        if (again) {
+            known.remove(key)
+            // Its address was refused: the attempt says so, the new ask is an attempt of its own.
+            Extensions.noteAttempt(key) { it.copy(fallback = "asked the extensions again: its address was refused (expired or gone)") }
+        }
         known[key]?.takeIf { it.fresh }?.let { return it.stream }
         // The song skipped to while its ask ahead is still out: that answer is waited for rather
         // than a second ask (which cost the source a request and the song seconds); only a miss
@@ -203,6 +229,14 @@ object ExtensionAudio {
         withContext(Dispatchers.Main) { LocalPlayer.enqueue(track, next) }
         return true
     }
+
+    /**
+     * [enqueue] for a song the caller already has (a list being queued): no look-up. Its download,
+     * else the extension's stream; null when neither has it, Spotify's queue takes it then.
+     */
+    fun queueTrack(s: SongsModel): LocalTrack? =
+        OfflineStore.tracks[s.spotifyTrackId]?.takeIf { OfflineStore.isDownloaded(s.spotifyTrackId) }?.let(OfflineStore::toLocalTrack)
+            ?: if (Extensions.hasAudioSource()) localTrack(s) else null
 
     /** The song's title, artists, album and length from Spotify, for a play that knows only its uri. */
     private suspend fun lookup(trackId: String): SongsModel? = runCatching {

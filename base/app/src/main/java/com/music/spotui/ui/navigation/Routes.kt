@@ -24,11 +24,14 @@ sealed class Routes(
     object Liked : Routes(0, "Liked", "liked")
     object LocalFiles : Routes(0, "LocalFiles", "localfiles")
     object Downloads : Routes(0, "Downloads", "downloads")
+    object HiddenSongs : Routes(0, "HiddenSongs", "hiddensongs")
+    object Equalizer : Routes(0, "Equalizer", "equalizer")
     object Folder : Routes(0, "Folder", "folder")
     object LocalPlaylist : Routes(0, "LocalPlaylist", "localplaylist")
     object Category : Routes(0, "Category", "category")
     object NewReleases : Routes(0, "NewReleases", "newreleases")
     object Episodes : Routes(0, "Episodes", "episodes")
+    object NewEpisodes : Routes(0, "NewEpisodes", "newepisodes")
     object Recap : Routes(0, "Recap", "recap")
     object Recent : Routes(0, "Recent", "recent")
     object Friends : Routes(0, "Friends", "friends")
@@ -90,3 +93,10 @@ fun artistRoute(name: String, id: String = ""): String {
 fun albumRoute(name: String, artist: String = "", id: String = ""): String =
     "${Routes.Album.route}/${android.net.Uri.encode(name.ifBlank { "album" })}" +
         "?artist=${android.net.Uri.encode(artist)}&id=${android.net.Uri.encode(id)}"
+
+/**
+ * Opens a page from outside the page's own UI (a shared link): a second link to the page already
+ * on top reuses it instead of stacking a duplicate.
+ */
+fun androidx.navigation.NavController.navigateSingleTop(route: String) =
+    navigate(route) { launchSingleTop = true }

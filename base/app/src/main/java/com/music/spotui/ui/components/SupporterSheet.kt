@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import app.myspoti.engine.R
 import com.music.spotui.data.api.SupportReminder
 import com.music.spotui.data.api.SupportReminder.Accent
+import com.music.spotui.data.preferences.LookPref
 import com.music.spotui.data.api.SupportReminder.Level
 import com.music.spotui.ui.theme.AppAccent
 
@@ -100,7 +100,7 @@ fun SupporterSheet(onDismiss: () -> Unit) {
     var choosing by remember { mutableStateOf(false) }
     val level = SupportReminder.level
     // Opened in full: half open, it hid the support buttons at the bottom.
-    ModalBottomSheet(
+    LookSheet(
         onDismissRequest = onDismiss,
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = tone(0xFF282828),
@@ -132,12 +132,12 @@ fun SupporterSheet(onDismiss: () -> Unit) {
             Text(stringResource(R.string.supporter_accent), color = AppText, fontSize = 16.sp, modifier = Modifier.padding(top = 20.dp, bottom = 10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 for (a in Accent.entries) {
-                    val selected = SupportReminder.accent == a
+                    val selected = SupportReminder.accentOf(LookPref.look) == a
                     val name = stringResource(accentName(a))
                     Box(
                         Modifier.size(40.dp).semantics { contentDescription = name }.clip(CircleShape).background(a.color)
                             .then(if (selected) Modifier.border(3.dp, AppText, CircleShape) else Modifier)
-                            .pressable(0.92f) { SupportReminder.setAccent(context, a) },
+                            .pressable(0.92f) { SupportReminder.setAccent(context, LookPref.look, a) },
                     )
                 }
             }

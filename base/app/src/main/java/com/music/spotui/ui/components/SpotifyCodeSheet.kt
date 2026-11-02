@@ -1,5 +1,6 @@
 package com.music.spotui.ui.components
 
+import app.myspoti.host.android.Covers as HostCovers
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
@@ -105,7 +106,7 @@ object SpotifyCode {
             runCatching {
                 val app = context.applicationContext
                 val code = Glide.with(app).asBitmap().load(imageUrl(target.uri, background, barsOn(background))).submit().get()
-                val cover = target.coverUri.takeIf { it.isNotBlank() }?.let { runCatching { Glide.with(app).asBitmap().load(it).submit(840, 840).get() }.getOrNull() }
+                val cover = target.coverUri.takeIf { it.isNotBlank() }?.let { runCatching { Glide.with(app).asBitmap().load(HostCovers.large(it)).submit(840, 840).get() }.getOrNull() }
                 val w = 1080; val side = 840; val pad = 120
                 val codeH = side * code.height / code.width.coerceAtLeast(1)
                 val h = pad + (if (cover != null) side + 60 else 0) + codeH + pad
@@ -152,7 +153,7 @@ fun SpotifyCodeSheet(target: ShareTarget, onDismiss: () -> Unit) {
     }
     val bars = SpotifyCode.barsOn(background)
     val text = if (bars == "black") Color.Black else AppText
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = tone(0xFF121212)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = tone(0xFF121212)) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // The card: cover, name, and the code under them, all on the cover's colour.
             Column(
@@ -160,7 +161,7 @@ fun SpotifyCodeSheet(target: ShareTarget, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(0.82f).clip(RoundedCornerShape(16.dp)).background(background).padding(20.dp),
             ) {
                 if (target.coverUri.isNotBlank()) GlideImage(
-                    model = target.coverUri, contentDescription = null, contentScale = ContentScale.Crop, transition = CrossFade,
+                    model = app.myspoti.host.android.Covers.large(target.coverUri), contentDescription = null, contentScale = ContentScale.Crop, transition = CrossFade,
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(6.dp)),
                 )
                 Text(target.title, color = text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,

@@ -13,26 +13,24 @@ class ConflictsTest {
             conflictsWith = conflictsWith, replaces = replaces)
 
     @Test fun modes() {
-        assertEquals(setOf(Action.AUDIO_SOURCE, Action.DOWNLOAD_SOURCE), Action.entries.filter { it.mode == Mode.EXCLUSIVE }.toSet())
+        assertEquals(setOf(Action.AUDIO_SOURCE, Action.DOWNLOAD_SOURCE), Action.entries.filter { it.mode == Mode.ORDERED }.toSet())
+        assertTrue(Action.entries.none { it.mode == Mode.EXCLUSIVE })
         assertTrue(listOf(Action.LYRICS_PROVIDE, Action.MENU_ITEMS, Action.HOME_SECTIONS, Action.SEARCH_PROVIDE, Action.TRACKINFO_PROVIDE).all { it.mode == Mode.ADDITIVE })
         assertEquals(Mode.SHARED, Action.NETWORK.mode)
     }
 
-    @Test fun anExclusiveActionHasOneActiveExtension() {
+    @Test fun sourcesAreAskedInOrderAndNeverClash() {
         val a = m("io.x.a", "audio.source")
         val b = m("io.x.b", "audio.source", "download.source")
         val lyrics = m("io.x.l", "lyrics.provide")
-        // Nothing chosen: the first in priority acts; a choice wins while that one is there.
+        // An exclusive action (none today): the user's choice while it is there, else the first.
         assertEquals("io.x.a", Conflicts.activeFor(listOf("io.x.a", "io.x.b"), null))
         assertEquals("io.x.b", Conflicts.activeFor(listOf("io.x.a", "io.x.b"), "io.x.b"))
         assertEquals("io.x.a", Conflicts.activeFor(listOf("io.x.a"), "io.x.gone"))
         assertNull(Conflicts.activeFor(emptyList(), "io.x.b"))
-        // Installing b next to a: it would replace a for audio; downloads are free. Additive actions never clash.
-        assertEquals(listOf(Clash(Clash.Kind.EXCLUSIVE, "io.x.a", Action.AUDIO_SOURCE)), Conflicts.clashes(b, listOf(a, lyrics), emptyMap()))
+        // A second audio source goes after the first in the order: nothing to choose at install.
+        assertEquals(emptyList<Clash>(), Conflicts.clashes(b, listOf(a, lyrics), emptyMap()))
         assertEquals(emptyList<Clash>(), Conflicts.clashes(m("io.x.l2", "lyrics.provide"), listOf(lyrics), emptyMap()))
-        // With b active for audio, a new audio source would replace b.
-        val c = m("io.x.c", "audio.source")
-        assertEquals("io.x.b", Conflicts.clashes(c, listOf(a, b), mapOf("audio.source" to "io.x.b")).single().otherId)
     }
 
     @Test fun conflictsWithAndReplacesAreAskedEitherWay() {

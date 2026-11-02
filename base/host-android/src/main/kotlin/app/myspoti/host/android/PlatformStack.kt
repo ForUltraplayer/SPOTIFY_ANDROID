@@ -15,13 +15,13 @@ import java.util.concurrent.Executors
 
 /**
  * The platform's own HTTP stack (android.net.http, Cronet in the system since Android 14): the
- * last way a refused relayed command is sent (see RelayRoutes). Chromium's network stack, like
- * the WebView's, without a new dependency.
+ * first way a refused relayed command is sent again (see RelayRoutes). Chromium's network stack,
+ * like the WebView's, without a new dependency.
  *
- * The request carries exactly the headers the OkHttp relay sends, built in the same place; this
- * stack adds no "X-Requested-With" (that header is the WebView's own), only its transport headers
- * (Accept-Encoding, which it also decodes). The WebView's cookies are added by hand: this stack
- * has no cookie jar of its own.
+ * The request carries the headers the OkHttp relay sends, built in the same place, less
+ * Accept-Encoding: this stack writes its own, as Chrome does, and decodes what it asked for. It
+ * adds no "X-Requested-With" (that header is the WebView's own) and no cookie: the real Web
+ * Player sends none to spclient.
  */
 /** A body from memory (the platform has no ready-made one). */
 @RequiresApi(34)
@@ -46,7 +46,7 @@ internal object PlatformStack {
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "relay-platform").apply { isDaemon = true } }
 
     private fun engine(context: Context): HttpEngine =
-        engine ?: synchronized(this) { engine ?: HttpEngine.Builder(context).build().also { engine = it } }
+        engine ?: synchronized(this) { engine ?: HttpEngine.Builder(context).setEnableBrotli(true).build().also { engine = it } }
 
     fun fetch(
         context: Context,
@@ -81,8 +81,7 @@ internal object PlatformStack {
         }
         runCatching {
             val builder = engine(context).newUrlRequestBuilder(url, executor, callback).setHttpMethod(method)
-            headers.forEach { (name, value) -> builder.addHeader(name, value) }
-            android.webkit.CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }?.let { builder.addHeader("Cookie", it) }
+            headers.forEach { (name, value) -> if (!name.equals("Accept-Encoding", true)) builder.addHeader(name, value) }
             if (method != "GET" && method != "HEAD") {
                 // This stack refuses a body without a type: the one a browser's fetch gives a string body.
                 if (headers["Content-Type"] == null) builder.addHeader("Content-Type", "text/plain;charset=UTF-8")

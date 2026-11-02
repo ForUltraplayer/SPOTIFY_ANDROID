@@ -3,9 +3,11 @@ package com.music.spotui.ui.screens
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
+import com.music.spotui.ui.theme.AppAccent
 
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import com.music.spotui.ui.components.SearchClearButton
 import com.music.spotui.ui.components.pressable
 import androidx.compose.ui.res.stringResource
 
@@ -42,7 +44,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -71,6 +72,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -104,6 +107,7 @@ import com.music.spotui.ui.navigation.artistRoute
 import com.music.spotui.ui.navigation.playlistRoute
 import com.music.spotui.ui.navigation.folderRoute
 import com.music.spotui.ui.navigation.localPlaylistRoute
+import com.music.spotui.ui.navigation.showRoute
 import com.music.spotui.ui.theme.AppBackground
 import com.music.spotui.ui.theme.AppPalette
 import com.music.spotui.ui.viewmodel.LibraryViewModel
@@ -130,10 +134,11 @@ fun LibraryScreen(navController: NavController) {
     val account by libraryViewModel.account.collectAsState()
     var showAccount by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { com.music.spotui.data.api.ProfileCache.ensure(context) }
     // Spotify-style layout toggle: rows or a 3-column grid, persisted across runs.
     var gridView by remember { mutableStateOf(isLibraryGridView(context)) }
-    var searchActive by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchActive by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     // The filter chips under the title; the chosen one is kept while the screen is open.
     var chip by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(com.music.spotui.data.local.LibraryChip.ALL) }
 
@@ -254,6 +259,7 @@ fun LibraryScreen(navController: NavController) {
                     .padding(horizontal = 12.dp),
             ) {
                 Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF888888), modifier = Modifier.size(18.dp))
+                val searchFocus = remember { FocusRequester() }
                 BasicTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -261,7 +267,8 @@ fun LibraryScreen(navController: NavController) {
                     textStyle = TextStyle(color = AppText, fontSize = 15.sp),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(8.dp, 10.dp),
+                        .padding(8.dp, 10.dp)
+                        .focusRequester(searchFocus),
                     decorationBox = { inner ->
                         Box {
                             if (searchQuery.isEmpty()) Text(stringResource(R.string.navigationbar_musicappitems_search_title), color = Color(0xFF888888), fontSize = 15.sp)
@@ -269,20 +276,16 @@ fun LibraryScreen(navController: NavController) {
                         }
                     },
                 )
-                if (searchQuery.isNotEmpty()) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.chat_content_picker_clear_recent_searches),
-                        tint = Color(0xFF888888),
-                        modifier = Modifier.pressable(0.96f) { searchQuery = "" }
-                            .size(18.dp)
-                            ,
-                    )
-                }
+                if (searchQuery.isNotEmpty()) SearchClearButton(searchFocus, Color(0xFF888888)) { searchQuery = "" }
             }
         }
 
         val followedArtists by libraryViewModel.followedArtists.collectAsState()
+        val followedShows by libraryViewModel.followedShows.collectAsState()
+        // The shows are only read once the Podcasts chip is chosen.
+        androidx.compose.runtime.LaunchedEffect(chip) {
+            if (chip == com.music.spotui.data.local.LibraryChip.PODCASTS) libraryViewModel.loadFollowedShows()
+        }
         val refreshing by libraryViewModel.refreshing.collectAsState()
         when (entries) {
             is Response.Loading -> LibrarySkeleton(PaddingValues(0.dp))
@@ -328,9 +331,12 @@ fun LibraryScreen(navController: NavController) {
                     LibraryOrder.version
                     LibraryOrder.arrange(list, LibraryOrder.sort, LibraryOrder.custom(LibraryOrder.ROOT), rootPinned)
                 }
+                // Read through the name, which redraws the screen once the account is known.
+                val myId = com.music.spotui.data.api.ProfileCache.name?.let { com.music.spotui.data.api.ProfileCache.id }
                 val (chipEntries, chipArtists) = com.music.spotui.data.local.LibraryChips.apply(
                     chip, allEntries, followedArtists,
                     setOf(Api.HomeCache.LIKED_SONGS_ID, Api.HomeCache.LOCAL_FILES_ID, Api.HomeCache.DOWNLOADS_ID),
+                    myId, followedShows, setOf(Api.HomeCache.EPISODES_ID),
                 )
                 val filteredEntries = if (searchQuery.isBlank()) chipEntries
                     else chipEntries.filter {
@@ -352,13 +358,15 @@ fun LibraryScreen(navController: NavController) {
     }
 }
 
-/** Playlists / Artists / Albums / Songs: one chip chosen at a time; the chosen one again clears it. */
+/** Playlists / By me / Artists / Albums / Podcasts / Songs: one chip chosen at a time; the chosen one again clears it. */
 @Composable
 private fun LibraryChipRow(chosen: com.music.spotui.data.local.LibraryChip, onTap: (com.music.spotui.data.local.LibraryChip) -> Unit) {
     val chips = listOf(
         com.music.spotui.data.local.LibraryChip.PLAYLISTS to R.string.library_chip_playlists,
+        com.music.spotui.data.local.LibraryChip.BY_ME to R.string.library_chip_by_me,
         com.music.spotui.data.local.LibraryChip.ARTISTS to R.string.library_chip_artists,
         com.music.spotui.data.local.LibraryChip.ALBUMS to R.string.library_chip_albums,
+        com.music.spotui.data.local.LibraryChip.PODCASTS to R.string.library_chip_podcasts,
         com.music.spotui.data.local.LibraryChip.SONGS to R.string.library_chip_songs,
     )
     Row(
@@ -610,8 +618,8 @@ const val LOCAL_PLAYLIST_PREFIX = "local-playlist:"
 
 private fun prefetchLibraryEntry(entry: LibraryEntry) = when {
     LibraryEdits.isPending(entry.spotifyId) -> Unit
-    entry.isFolder || entry.spotifyId.startsWith(LOCAL_PLAYLIST_PREFIX) -> Unit
-    entry.spotifyId == Api.HomeCache.LOCAL_FILES_ID || entry.spotifyId == Api.HomeCache.DOWNLOADS_ID || entry.spotifyId == Api.HomeCache.EPISODES_ID -> Unit
+    entry.isFolder || entry.spotifyId.startsWith(LOCAL_PLAYLIST_PREFIX) || entry.spotifyId.startsWith(Api.HomeCache.SHOW_PREFIX) -> Unit
+    entry.spotifyId == Api.HomeCache.LOCAL_FILES_ID || entry.spotifyId == Api.HomeCache.DOWNLOADS_ID || entry.spotifyId == Api.HomeCache.EPISODES_ID || entry.spotifyId == Api.HomeCache.NEW_EPISODES_ID -> Unit
     entry.spotifyId == Api.HomeCache.LIKED_SONGS_ID -> ContextViewModel.prefetch("liked", "")
     entry.isPlaylist -> ContextViewModel.prefetch("playlist", entry.spotifyId)
     else -> ContextViewModel.prefetch("album", entry.spotifyId)
@@ -622,10 +630,12 @@ private fun openLibraryEntry(entry: LibraryEntry, navController: NavController) 
     if (LibraryEdits.isPending(entry.spotifyId)) return
     if (entry.isFolder) navController.navigate(folderRoute(entry.folderUri, entry.name))
     else if (entry.spotifyId.startsWith(LOCAL_PLAYLIST_PREFIX)) navController.navigate(localPlaylistRoute(entry.spotifyId.removePrefix(LOCAL_PLAYLIST_PREFIX)))
+    else if (entry.spotifyId.startsWith(Api.HomeCache.SHOW_PREFIX)) navController.navigate(showRoute(entry.spotifyId.removePrefix(Api.HomeCache.SHOW_PREFIX), entry.name))
     else if (entry.spotifyId == Api.HomeCache.DOWNLOADS_ID) navController.navigate(Routes.Downloads.route)
     else if (entry.spotifyId == Api.HomeCache.LOCAL_FILES_ID) navController.navigate(Routes.LocalFiles.route)
     else if (entry.spotifyId == Api.HomeCache.LIKED_SONGS_ID) navController.navigate(Routes.Liked.route)
     else if (entry.spotifyId == Api.HomeCache.EPISODES_ID) navController.navigate(Routes.Episodes.route)
+    else if (entry.spotifyId == Api.HomeCache.NEW_EPISODES_ID) navController.navigate(Routes.NewEpisodes.route)
     else if (entry.isPlaylist) navController.navigate(playlistRoute(entry.spotifyId, entry.name))
     else navController.navigate(albumRoute(entry.name, entry.artists, entry.spotifyId))
 }
@@ -726,7 +736,7 @@ fun LibraryGridScreen(
 
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(3),
+        columns = GridCells.Fixed(com.music.spotui.ui.components.windowSize().columns(3, 170.dp)),
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
@@ -846,7 +856,7 @@ private fun AccountSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
-    ModalBottomSheet(
+    com.music.spotui.ui.components.LookSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = tone(0xFF1A1A1A),
@@ -867,7 +877,7 @@ private fun AccountSheet(
                 Column {
                     Text(account.name.ifBlank { stringResource(R.string.spotify_user) }, color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (account.email.isNotBlank()) Text(account.email, color = AppMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (account.plan.isNotBlank()) Text("Spotify ${account.plan}", color = Color(0xFF1DB954), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    if (account.plan.isNotBlank()) Text(stringResource(R.string.spotify_plan, account.plan), color = AppAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
             HorizontalDivider(color = tone(0xFF2A2A2A))
@@ -919,7 +929,7 @@ private fun sortLabel(sort: LibraryOrder.Sort) = when (sort) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibrarySortSheet(onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(stringResource(R.string.filter_and_sort_sort_section_title), color = AppText, fontSize = 18.sp,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))

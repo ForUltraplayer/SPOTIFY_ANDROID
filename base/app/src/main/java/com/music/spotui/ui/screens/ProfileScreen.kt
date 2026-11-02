@@ -1,5 +1,6 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.theme.AppDestructive
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
 import com.music.spotui.ui.theme.tone
@@ -103,7 +104,7 @@ fun ProfileScreen(navController: NavController, userId: String, userName: String
                             .onSuccess { blocked = true; following = false }
                             .onFailure { android.widget.Toast.makeText(context, R.string.profile_block_failed, android.widget.Toast.LENGTH_SHORT).show() }
                     }
-                }) { Text(stringResource(R.string.profile_block), color = androidx.compose.ui.graphics.Color(0xFFF15E6C)) }
+                }) { Text(stringResource(R.string.profile_block), color = AppDestructive) }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { blockAsk = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
         )

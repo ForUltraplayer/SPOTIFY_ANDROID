@@ -51,12 +51,11 @@ class GitHubTest {
         assertEquals(Change.Kind.REPLACES, changes(lyrics, net, replaces = listOf("io.github.other.lyrics")).single().kind)
     }
 
-    @Test fun anExclusiveRoleOnAnAcceptedActionIsAChange() {
+    @Test fun aSourceIsNotAnExclusiveRole() {
+        // Sources are asked in the user's order now: an update keeping audio.source asks nothing new.
         val m = manifest(1, req("audio.source", "Plays from my server"))
-        val accepted = snap(m).copy(exclusive = emptyList())
-        val c = (UpdateGate.decide(accepted, snap(manifest(2, req("audio.source", "Plays from my server")))) as UpdateGate.Decision.Ask).changes.single()
-        assertEquals(Change.Kind.EXCLUSIVE, c.kind)
-        // A new exclusive action is listed once, as an action.
+        assertTrue(UpdateGate.decide(snap(m), snap(manifest(2, req("audio.source", "Plays from my server")))) is UpdateGate.Decision.Apply)
+        // A new source action is listed once, as an action.
         val fresh = (UpdateGate.decide(snap(manifest(1, lyrics)), snap(manifest(2, lyrics, req("audio.source", "x")))) as UpdateGate.Decision.Ask).changes
         assertEquals(listOf(Change.Kind.ACTION), fresh.map { it.kind })
     }
@@ -153,6 +152,16 @@ class GitHubTest {
             { "number": 1, "user": { "login": "x" }, "repository_url": "https://api.github.com/repos/x/unknown", "reactions": { "+1": 5 } } ] }""", setOf("me/ext"))
         assertEquals(mapOf("me/ext" to Rating(12, 2, 3)), ratings)
 
+        val gitlab = Discovery.parseGitLab("""[ { "path_with_namespace": "grp/ext", "description": "d", "web_url": "https://gitlab.com/grp/ext", "default_branch": "main",
+            "last_activity_at": "2026-01-02T00:00:00Z", "star_count": 3, "archived": false, "topics": ["myspoti-extension"] },
+            { "path_with_namespace": "grp/old", "archived": true } ]""").single()
+        assertEquals("gitlab:grp/ext", gitlab.repo!!.slug)
+        assertEquals("https://gitlab.com/grp/ext/-/raw/main/manifest.json", gitlab.manifestUrl())
+        val codeberg = Discovery.parseCodeberg("""{ "ok": true, "data": [ { "full_name": "me/ext", "html_url": "https://codeberg.org/me/ext", "default_branch": "trunk",
+            "updated_at": "2026-01-02T00:00:00Z", "stars_count": 1, "archived": false, "empty": false }, { "full_name": "me/none", "empty": true } ] }""").single()
+        assertEquals("codeberg:me/ext", codeberg.repo!!.slug)
+        assertEquals("https://codeberg.org/me/ext/raw/trunk/manifest.json", codeberg.manifestUrl())
+        assertEquals("trunk", Discovery.parseDefaultBranch("""{ "default_branch": "trunk" }"""))
         assertEquals(41L, Discovery.parseDownloads("""{ "assets": [ { "name": "extension.zip", "download_count": 41 }, { "name": "other.zip", "download_count": 9 } ] }"""))
         assertEquals(9L, Discovery.parseDownloads("""{ "assets": [ { "name": "other.zip", "download_count": 9 } ] }"""))
         assertNull(Discovery.parseDownloads("""{ "assets": [] }"""))
@@ -174,7 +183,21 @@ class GitHubTest {
         assertEquals("me/ext", GitHubRepo.parse("https://github.com/me/ext.git/")?.slug)
         assertEquals("me/ext", GitHubRepo.parse("github.com/me/ext/releases")?.slug)
         assertEquals("me/ext", GitHubRepo.parse("me/ext")?.slug)
-        assertNull(GitHubRepo.parse("https://gitlab.com/me/ext"))
+        val gl = GitHubRepo.parse("https://gitlab.com/grp/sub/ext.git/-/tree/main")!!
+        assertEquals("gitlab:grp/sub/ext", gl.slug)
+        assertEquals("https://gitlab.com/grp/sub/ext/-/raw/v1/manifest.json", gl.raw("v1", "manifest.json"))
+        assertEquals("https://gitlab.com/grp/sub/ext/-/archive/main/ext-main.zip", gl.archive("main", false))
+        assertEquals(gl, GitHubRepo.parse(gl.slug))
+        val cb = GitHubRepo.parse("https://codeberg.org/me/ext/src/branch/main")!!
+        assertEquals("codeberg:me/ext", cb.slug)
+        assertEquals("https://codeberg.org/me/ext/raw/main/manifest.json", cb.raw("main", "manifest.json"))
+        assertEquals("https://codeberg.org/me/ext/archive/v1.zip", cb.archive("v1", true))
+        assertEquals("https://codeberg.org/me/ext/releases/download/v1/extension.zip", cb.releaseAsset("v1"))
+        assertNull(gl.releaseAsset("v1"))
+        assertEquals("v2", GitHub.tagFromLocation("https://gitlab.com/grp/ext/-/releases/v2"))
+        assertNull(GitHub.tagFromLocation("https://gitlab.com/grp/ext/-/releases/permalink/latest"))
+        assertEquals("codeberg:me/ext", GitHub.repoOf("https://codeberg.org/me/ext/archive/main.zip"))
+        assertNull(GitHubRepo.parse("https://example.com/me/ext"))
         assertNull(GitHubRepo.parse("https://example.com/ext.zip"))
         assertNull(GitHubRepo.parse("me"))
         assertEquals("v1.2.0", GitHub.tagFromLocation("https://github.com/me/ext/releases/tag/v1.2.0"))

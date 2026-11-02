@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import app.myspoti.extensions.ExtensionPackage
+import app.myspoti.host.android.MyspotiRuntime
 import com.music.spotui.di.SongPlayer
 import com.music.spotui.extensions.Extensions
 import com.music.spotui.extensions.Grants
@@ -52,13 +53,18 @@ class CliReceiver : BroadcastReceiver() {
                 tmp.renameTo(File(dir, "$req.json"))
             }.onFailure { Log.w(TAG, "$req: reply not written: $it") }
             Log.i(TAG, "$req $cmd ${reply.take(3500)}")
+            // 1: the receiver answered (an absent or disabled one leaves 0), how tools/myspoti-cli tells them apart.
+            pending.resultCode = 1
             pending.resultData = if (reply.length < 1000) reply else null
             pending.finish()
         }
     }
 
     private suspend fun run(ctx: Context, c: CliCommand): JsonElement = when (c) {
-        CliCommand.Status -> onMain {
+        CliCommand.Status -> {
+          // What the page streams now (bitrate, codec): one bridge call, for the mirror's quality check.
+          val audio = withContext(Dispatchers.Main) { if (MyspotiRuntime.isStarted) MyspotiRuntime.spotify.player.audioInfo() else 0 to "" }
+          onMain {
             val np = SongPlayer.nowPlaying.value
             buildJsonObject {
                 put("package", ctx.packageName)
@@ -88,7 +94,27 @@ class CliReceiver : BroadcastReceiver() {
                 }
                 put("extensions", if (Extensions.isReady) Extensions.registry.value.extensions.size else 0)
                 put("ui", nav.subscriptionCount.value > 0)
+                // The Connect mirror ("Count extension plays on Spotify") and the page under it.
+                put("mirror", buildJsonObject {
+                    val m = com.music.spotui.di.ConnectMirror.status()
+                    put("on", m.on); put("running", m.running); put("handedAway", m.handedAway); put("landed", m.landed)
+                    m.uri?.let { put("uri", it) }; m.paused?.let { put("paused", it) }
+                    m.webPositionMs?.let { put("webPositionMs", it) }; m.failedUri?.let { put("failedUri", it) }
+                    if (MyspotiRuntime.isStarted) {
+                        val page = MyspotiRuntime.spotify.player
+                        val s = page.state.value
+                        put("pageUri", s?.item?.uri ?: "")
+                        put("pagePaused", s?.isPaused ?: true)
+                        put("pagePositionMs", s?.positionAt(System.currentTimeMillis()) ?: 0L)
+                        put("hushed", page.localMute)
+                        put("quality", page.streamingLevel)
+                        put("bitrate", audio.first); put("codec", audio.second)
+                        put("playsElsewhere", page.playsElsewhere.value)
+                    }
+                    SongPlayer.activeDevice.value?.let { put("activeDevice", it.name) }
+                })
             }
+          }
         }
         CliCommand.ExtList -> JsonArray(ready().registry.value.extensions.map { e ->
             val m = Extensions.manifest(e.id)
@@ -148,6 +174,18 @@ class CliReceiver : BroadcastReceiver() {
             val known = secrets(c.id)
             JsonArray(Extensions.logLines(c.id).takeLast(c.lines).map { JsonPrimitive(CliMask.text(it, known)) })
         }
+        is CliCommand.ExtWhy -> {
+            // Debug builds only: a beta's receiver answers that it is off here (the CLI's exit code 5).
+            if (!app.myspoti.engine.BuildConfig.DEBUG) throw CliError(DISABLED)
+            // The song playing now: what the decoder reports, read on the player's thread.
+            onMain {
+                val t = com.music.spotui.di.LocalPlayer.current()?.uri?.takeIf { it.scheme == com.music.spotui.extensions.ExtensionAudio.SCHEME }
+                val detected = com.music.spotui.ui.components.detectedLabel(com.music.spotui.di.LocalPlayer.audioFormat())
+                if (t != null && detected != null) Extensions.noteAttempt(t.lastPathSegment) { it.copy(detected = detected) }
+            }
+            val known = Extensions.registry.value.extensions.flatMap { secrets(it.id) }
+            CliMask.json(Extensions.attempts.toJson(c.n), known)
+        }
         is CliCommand.ExtStorage -> {
             installed(c.id)
             val values = Extensions.storageValues(c.id)
@@ -185,6 +223,9 @@ class CliReceiver : BroadcastReceiver() {
 
     companion object {
         const val TAG = "MyspotiCli"
+
+        /** The error of a command this build does not have (tools/myspoti-cli exits with 5 on it). */
+        const val DISABLED = "disabled in this build"
 
         /** Debug and beta builds; the manifest leaves the receiver off in the others too. */
         val enabled: Boolean get() = app.myspoti.engine.BuildConfig.DEBUG || com.music.spotui.data.api.UpdateChecker.isBeta

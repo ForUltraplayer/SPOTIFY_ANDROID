@@ -1,5 +1,6 @@
 package com.music.spotui.ui.components
 
+import com.music.spotui.ui.theme.AppDestructive
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
@@ -26,6 +27,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
@@ -150,7 +153,7 @@ fun PlaylistOptionsSheet(
         com.music.spotui.data.api.SpotifySync.setPlaylistPublished(page.uri, on) { ok -> if (!ok) restore() }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             // As the official app: the playlist itself on top (cover, name, owner), then one action a row.
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(20.dp, 0.dp, 20.dp, 12.dp)) {
@@ -167,6 +170,8 @@ fun PlaylistOptionsSheet(
             androidx.compose.material3.HorizontalDivider(color = AppText.copy(alpha = 0.08f))
             Spacer(Modifier.height(6.dp))
             val share = { SpotifyCode.show(ShareTarget(page.uri, page.name, page.ownerName, page.coverUri)); onDismiss() }
+            // The whole playlist into the queue, in its order (a long one is read to its end first).
+            QueueListRows(page.uri, page, onDismiss)
             // Every song of this playlist into another one of yours (Web Player: "Add playlist to other playlist").
             if (page.uri.startsWith("spotify:playlist:")) OptionRow(Icons.Outlined.AddCircleOutline, stringResource(R.string.add_playlist_to_playlist)) { mergingInto = true }
             if (page.isBlend) {
@@ -286,7 +291,7 @@ fun PlaylistOptionsSheet(
                 com.music.spotui.data.api.LibraryEdits.run(context, com.music.spotui.data.api.LibraryEdits.Remove(page.uri),
                     write = { MyspotiRuntime.api.blends.leave(page.uri) })
                 onDismiss(); onDeleted()
-            }) { Text(stringResource(R.string.blend_leave_button), color = Color(0xFFF15E6C)) }
+            }) { Text(stringResource(R.string.blend_leave_button), color = AppDestructive) }
         },
         dismissButton = { TextButton(onClick = { leavingBlend = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
     )
@@ -306,7 +311,7 @@ fun PlaylistOptionsSheet(
                     android.widget.Toast.makeText(context, R.string.playlist_now_solo, android.widget.Toast.LENGTH_SHORT).show()
                     // Written in order with the other visibility taps; a refusal puts back what Spotify has.
                     com.music.spotui.data.api.SpotifySync.stopPlaylistCollaboration(page.uri) { ok -> if (ok) onChanged() else restore() }
-                }) { Text(stringResource(R.string.playlist_stop_collab), color = Color(0xFFF15E6C)) }
+                }) { Text(stringResource(R.string.playlist_stop_collab), color = AppDestructive) }
             },
             dismissButton = { TextButton(onClick = { stoppingCollab = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
         )
@@ -325,7 +330,7 @@ fun PlaylistOptionsSheet(
                     write = { MyspotiRuntime.api.playlists.leave(page.uri) },
                     onDone = { ok -> if (ok) com.music.spotui.data.api.LibraryEdits.reloadSoon() })
                 onDismiss(); onDeleted()
-            }) { Text(stringResource(R.string.playlist_leave_button), color = Color(0xFFF15E6C)) }
+            }) { Text(stringResource(R.string.playlist_leave_button), color = AppDestructive) }
         },
         dismissButton = { TextButton(onClick = { leavingPlaylist = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
     )
@@ -341,7 +346,7 @@ fun PlaylistOptionsSheet(
                 com.music.spotui.data.api.LibraryEdits.run(context, com.music.spotui.data.api.LibraryEdits.Remove(page.uri),
                     write = { MyspotiRuntime.api.playlists.delete(page.uri) })
                 onDismiss(); onDeleted()
-            }) { Text(stringResource(R.string.actions_picker_delete), color = Color(0xFFF15E6C)) }
+            }) { Text(stringResource(R.string.actions_picker_delete), color = AppDestructive) }
         },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text(stringResource(R.string.cancel), color = AppText) } },
     )
@@ -445,3 +450,15 @@ internal fun OptionRow(icon: ImageVector, label: String, enabled: Boolean = true
     }
 }
 
+/** "Play next" and "Add to queue" for the whole list [uri]; [known] is its page when the screen has it. */
+@Composable
+internal fun QueueListRows(uri: String, known: ContextPageModel?, onDismiss: () -> Unit) {
+    OptionRow(Icons.AutoMirrored.Outlined.PlaylistPlay, stringResource(R.string.context_menu_play_next)) {
+        com.music.spotui.di.CollectionQueue.queue(uri, next = true, known = known)
+        onDismiss()
+    }
+    OptionRow(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.context_menu_add_to_queue)) {
+        com.music.spotui.di.CollectionQueue.queue(uri, next = false, known = known)
+        onDismiss()
+    }
+}

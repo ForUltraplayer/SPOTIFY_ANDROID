@@ -1,5 +1,6 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.components.wideClickable
 import com.music.spotui.ui.theme.headerTint
 import com.music.spotui.ui.theme.AppText
 
@@ -127,10 +128,10 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .padding(12.dp)
+                            .wideClickable { navController.navigateUp() }
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.35f))
-                            .clickable { navController.navigateUp() },
+                            .background(Color.Black.copy(alpha = 0.35f)),
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.accessibility_navigate_back), tint = Color.White)
                     }
@@ -263,7 +264,7 @@ fun EpisodeScreen(navController: NavController, episodeId: String, fallbackName:
                 if (ep.description.isNotBlank()) item {
                     Column(Modifier.fillMaxWidth().animateContentSize(androidx.compose.animation.core.tween(250)).padding(16.dp)) {
                         Text(
-                            text = ep.description,
+                            text = com.music.spotui.ui.components.rememberLinkedText(ep.description, AppAccent),
                             color = AppText.copy(alpha = 0.78f),
                             fontSize = 14.sp,
                             maxLines = if (expanded) Int.MAX_VALUE else 4,

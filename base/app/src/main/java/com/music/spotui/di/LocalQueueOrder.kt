@@ -50,4 +50,29 @@ internal object LocalQueueOrder {
         val at = rest.indexOfFirst { it === current }
         return if (at < 0) queued + rest else rest.take(at + 1) + queued + rest.drop(at + 1)
     }
+
+    /**
+     * The song at [from] dropped before / [after] the one at [target], into [target]'s part (queued
+     * or the list's). The new order and whether the song is queued now; null when nothing moves.
+     * [cur] is the current song's index: it keeps playing, and the queued songs stay right after it.
+     */
+    fun <T> moveBeside(order: List<T>, cur: Int, from: Int, target: Int, after: Boolean, isQueued: (T) -> Boolean): Pair<List<T>, Boolean>? {
+        if (from !in order.indices || target !in order.indices || from == target) return null
+        val t = order[from]
+        val toQueue = isQueued(order[target])
+        val rest = order.toMutableList().apply { removeAt(from) }
+        val at = rest.indexOfFirst { it === order[target] }
+        rest.add(if (after) at + 1 else at, t)
+        val playing = order.getOrNull(cur)
+        return settle(rest, rest.indexOfFirst { it === playing }, { x -> if (x === t) toQueue else isQueued(x) }) to toQueue
+    }
+
+    /** The song at [from] queued as the first queued one, right after the current song. */
+    fun <T> moveToFront(order: List<T>, cur: Int, from: Int): List<T>? {
+        if (from !in order.indices || from == cur) return null
+        val rest = order.toMutableList().apply { removeAt(from) }
+        val playing = order[cur]
+        rest.add(rest.indexOfFirst { it === playing } + 1, order[from])
+        return rest
+    }
 }

@@ -8,11 +8,15 @@ import app.myspoti.spotify.bridge.RelayRoute
 import app.myspoti.spotify.bridge.RelayRoutes
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.Cookie
-import okhttp3.CookieJar
+import okhttp3.CompressionInterceptor
+import okhttp3.Gzip
 import okhttp3.Headers
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.brotli.Brotli
+import okhttp3.zstd.Zstd
+import okio.BufferedSource
+import okio.InflaterSource
+import okio.Source
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -39,42 +43,19 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
     @Volatile var onDeviceRegistered: (() -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
 
-    /**
-     * The WebView's own cookies. The page's `fetch` sends them, this app's OkHttp does not: a
-     * relayed request without them is not the shape of the real Web Player's request, which
-     * Spotify can tell apart (a `402 COMMAND_FAILED` on a free account is one such refusal).
-     */
-    private val cookies = object : CookieJar {
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = Unit
-        override fun loadForRequest(url: HttpUrl): List<Cookie> = runCatching {
-            val raw = android.webkit.CookieManager.getInstance().getCookie(url.toString()) ?: return emptyList()
-            raw.split(';').mapNotNull { part ->
-                val at = part.indexOf('=')
-                if (at <= 0) null
-                else Cookie.Builder()
-                    .name(part.take(at).trim())
-                    .value(part.substring(at + 1).trim())
-                    .domain(url.host)
-                    .path("/")
-                    .build()
-            }
-        }.getOrDefault(emptyList())
-    }
+    /** The guarded fallback channel of a WebView without web message listeners (see [PlayerChannel]). */
+    internal var channel: PlayerChannel? = null
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .cookieJar(cookies)
-        .eventListener(RelayEvents)
-        .build()
-    /** The same client, pinned to one address family (see RelayRoutes). */
+    /** The same client ([http]), pinned to one address family (see RelayRoutes); same pool. */
     private val v4Client by lazy { http.newBuilder().dns(FamilyDns(IpFamily.V4)).build() }
     private val v6Client by lazy { http.newBuilder().dns(FamilyDns(IpFamily.V6)).build() }
     private val routes get() = ROUTES
 
     fun install() {
         NetworkReport.logOnce(view.context.applicationContext)
-        view.exposeToPlayer("MyspotiNet", ::onMessage)
+        // Before Android 14: Cronet from Play services, ready before any refusal needs it.
+        CronetStack.prepare(view.context)
+        channel = view.exposeToPlayer("MyspotiNet", ::onMessage)
         val documentStart = androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)
         if (documentStart) androidx.webkit.WebViewCompat.addDocumentStartJavaScript(view, SCRIPT, setOf("https://open.spotify.com"))
         Logbook.log("control relay installed (document start: $documentStart)")
@@ -129,45 +110,45 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
             Logbook.log("page identity: ${identity.toString().take(320)}")
             return
         }
+        // A relayed answer that came back after its page was replaced: the new page left it alone.
+        if (m.optString("type") == "stale") {
+            Logbook.log("relay reply #${m.optInt("id")} for a previous page ignored")
+            return
+        }
         if (m.optString("type") == "direct") {
-            if (m.has("kept")) Logbook.log("commands from the page: ${if (m.optBoolean("kept")) "kept, the music plays" else "dropped, nothing played in 10 s"}")
-            else Logbook.log("refused command sent again from the page -> ${m.optInt("status")}")
+            if (m.has("kept")) {
+                Logbook.log("commands from the page: ${if (m.optBoolean("kept")) "kept, the music plays" else "dropped, nothing played in 10 s"}")
+                app.myspoti.spotify.report.Refusal402.pageKept(m.optBoolean("kept"))
+                // A page fetch answered 200 can still be dropped (X-Requested-With): the matrix says which.
+                matrixPageLine?.let { line ->
+                    matrixPageLine = null
+                    Logbook.fact("402 matrix", "$line (page: ${if (m.optBoolean("kept")) "played" else "nothing played"})")
+                }
+            } else {
+                Logbook.log("refused command sent again from the page -> ${m.optInt("status")}")
+                app.myspoti.spotify.report.Refusal402.pageFetch(m.optInt("status"))
+                // The matrix's last row: the same command through the page's own fetch.
+                if (matrixPage) {
+                    matrixPage = false
+                    val line = "$matrixRows; page fetch=${m.optInt("status")}"
+                    Logbook.log("402 matrix: $line")
+                    Logbook.fact("402 matrix", line)
+                    if (m.optInt("status") in 200..299) matrixPageLine = line
+                }
+            }
             return
         }
         val id = m.optInt("id", -1).takeIf { it >= 0 } ?: return
         val body = if (m.isNull("body")) null else m.optString("body")
-        send(id, m.optString("url"), m.optString("method", "GET"), m.optJSONObject("headers") ?: JSONObject(), body)
+        send(id, m.optString("doc"), m.optString("url"), m.optString("method", "GET"), m.optJSONObject("headers") ?: JSONObject(), body)
     }
 
-    private fun send(id: Int, url: String, method: String, given: JSONObject, body: String?) {
+    private fun send(id: Int, doc: String, url: String, method: String, given: JSONObject, body: String?) {
         if (!isRelayed(url)) {
-            reply(id, 0, "{}", "")
+            reply(id, doc, 0, "{}", "")
             return
         }
-        val headers = Headers.Builder()
-        given.keys().forEach { key ->
-            // OkHttp sets the transport headers itself.
-            if (key.lowercase() !in setOf("host", "content-length", "connection", "accept-encoding", "x-requested-with"))
-                runCatching { headers.add(key, given.getString(key)) }
-        }
-        val page = identity
-        fun fromPage(name: String, fallback: String) = page?.optString(name)?.takeIf { it.isNotEmpty() } ?: fallback
-        headers["User-Agent"] = fromPage("userAgent", fingerprint.userAgent)
-        headers["Origin"] = "https://open.spotify.com"
-        headers["Referer"] = "https://open.spotify.com/"
-        // The transport headers Chromium adds by itself, which the page's `fetch` cannot set
-        // (forbidden header names in JS) and OkHttp does not add either: without them the
-        // relayed request carries a shape the real Web Player's request never has.
-        headers["Sec-Fetch-Site"] = "same-site"
-        headers["Sec-Fetch-Mode"] = "cors"
-        headers["Sec-Fetch-Dest"] = "empty"
-        // Values taken from the page, not written by hand: whichever language and client hints it
-        // presents, the relayed request presents the same.
-        headers["Accept-Language"] = fromPage("acceptLanguage", fallbackLanguage)
-        headers["sec-ch-ua"] = fromPage("brands", fingerprint.secChUa)
-        headers["sec-ch-ua-mobile"] = fromPage("mobile", "?0")
-        headers["sec-ch-ua-platform"] = "\"${fromPage("platform", "Linux")}\""
-        val built = headers.build()
+        val built = relayHeaders(given, identity, fingerprint.userAgent, fallbackLanguage, fingerprint.secChUa)
         // The registration goes out as the real Web Player sends it, except for its name: the phone's
         // own (see [deviceName]) replaces "Web Player (Chrome)".
         val registration = body != null && app.myspoti.spotify.bridge.AdBlock.isDeviceRegistration(method, url)
@@ -175,6 +156,16 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
             Logbook.log("connect-state body: ${body.take(500)}")
         if (registration) runCatching { JSONObject(body!!).optJSONObject("device")?.optString("device_id") }
             .getOrNull()?.takeIf { it.isNotEmpty() }?.let { self = it }
+        // The device the previous page left behind (app swiped away or killed before its unload
+        // handler ran) is taken off the account alongside this registration, not after it: the
+        // cluster the page joins next then lists this player alone.
+        if (registration) self?.let { mine ->
+            if (debuggable) Logbook.log("player device #${shortHash(mine)}")
+            devices.registering(mine)?.let { (old, seq) ->
+                staleOwn = old
+                sayGoodbye(url, built, old, seq)
+            }
+        } else if (method != "DELETE") devices.sent(url, body)
         // 402 on some free accounts: which headers the page gave its commands (names only), so a
         // refused session can be set against a working one. Logged when the set changes.
         if (COMMAND.containsMatchIn(url)) {
@@ -191,29 +182,56 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
         } else body
         val asked = android.os.SystemClock.uptimeMillis()
         // A refused command (or a refused registration) is sent again another way before the page
-        // hears of it (see RelayRoutes): the other address family, then the platform's own stack.
+        // hears of it (see RelayRoutes): a Chromium network stack, then the other address family.
         val retriable = COMMAND.containsMatchIn(url) || registration
         val tried = ArrayList<RelayRoute>()
+        // What each route answered, for the 402 matrix (the first refused command of the session).
+        val rows = ArrayList<String>()
         var refusal: Answer? = null
+        fun matrixDone(page: Boolean) {
+            if (refusal == null || !COMMAND.containsMatchIn(url) || !MATRIX_RUN.compareAndSet(false, true)) return
+            val chromium = routes.chromiumRoute()
+            if (chromium == null) rows += if (android.os.Build.VERSION.SDK_INT >= 34) "HTTP_ENGINE=unavailable" else "CRONET=${CronetStack.status}"
+            matrixRows = rows.joinToString("; ")
+            if (page) matrixPage = true
+            val line = matrixRows + if (page) "; page fetch=pending" else "; page fetch=not needed"
+            Logbook.log("402 matrix (first refused command): $line")
+            Logbook.fact("402 matrix", line)
+        }
+        val command = COMMAND.containsMatchIn(url)
+        val kind = if (command) commandKind(url, body) else ""
+        fun finish(answer: Answer) {
+            matrixDone(page = answer.code == 402)
+            if (command) app.myspoti.spotify.report.Refusal402.command(kind, answer.code, retried = refusal != null)
+            handle(id, doc, url, method, body, registration, asked, answer)
+        }
         fun attempt(route: RelayRoute) {
             tried += route
+            val began = android.os.SystemClock.uptimeMillis()
             fetch(route, url, method, built, sent) { answer, error ->
                 val via = if (route == RelayRoute.DEFAULT) "" else " via $route"
+                if (command) app.myspoti.spotify.report.Refusal402.attempt(kind, shortRoute(route), answer?.code, android.os.SystemClock.uptimeMillis() - began,
+                    answer?.headers.orEmpty(), answer?.text.orEmpty())
+                rows += "${routeLabel(route)}=${answer?.code ?: "failed (${error?.take(60)})"}"
                 if (answer == null) {
                     Logbook.log("relay $method ${shortPath(url)} failed$via: $error")
                     val first = refusal
                     when {
-                        first != null -> routes.next(tried, null)?.let { attempt(it) } ?: handle(id, url, method, body, registration, asked, first)
+                        first != null -> routes.next(tried, null)?.let { attempt(it) } ?: finish(first)
                         // A kept route the network no longer offers (IPv6 gone with the Wi-Fi): this
                         // request goes the default way; the route stays kept for the next ones.
                         route != RelayRoute.DEFAULT && RelayRoute.DEFAULT !in tried -> attempt(RelayRoute.DEFAULT)
-                        else -> reply(id, 0, "{}", "")
+                        else -> reply(id, doc, 0, "{}", "")
                     }
                     return@fetch
                 }
                 val refused = answer.code == 402 || (registration && answer.code == 403)
                 if (refused && retriable) {
-                    if (refusal == null) { refusal = answer; logRefusal(answer, body) }
+                    if (refusal == null) {
+                        refusal = answer
+                        logRefusal(answer, body)
+                        Logbook.fact("ads", adsMode())
+                    }
                     val next = routes.next(tried, answer.family)
                     if (next != null) {
                         Logbook.log("relay $method ${shortPath(url)} -> ${answer.code}$via (${answer.family ?: "family unknown"}): sent again via $next")
@@ -226,9 +244,10 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
                         routes.won(route)
                         Logbook.log("relay: $route answered ${answer.code} where ${tried.first()} was refused: kept for this session")
                         Logbook.fact("relay route", "$route (taken after a refusal on ${tried.first()})")
+                        if (command) checkAudio(shortRoute(route))
                     } else Logbook.log("relay: refused on every route (${tried.joinToString()})")
                 }
-                handle(id, url, method, body, registration, asked, answer)
+                finish(answer)
             }
         }
         attempt(routes.kept)
@@ -256,6 +275,12 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
     private fun fetch(route: RelayRoute, url: String, method: String, headers: Headers, sent: String?, done: (Answer?, String?) -> Unit) {
         if (route == RelayRoute.HTTP_ENGINE && android.os.Build.VERSION.SDK_INT >= 34) {
             PlatformStack.fetch(view.context.applicationContext, url, method, headers, sent) { code, heads, text, protocol, error ->
+                done(if (error == null) Answer(code, heads, text, protocol, null, null) else null, error)
+            }
+            return
+        }
+        if (route == RelayRoute.CRONET) {
+            CronetStack.fetch(url, method, headers, sent) { code, heads, text, protocol, error ->
                 done(if (error == null) Answer(code, heads, text, protocol, null, null) else null, error)
             }
             return
@@ -291,30 +316,60 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
     }
 
     /** What the page gets back, and what the logs keep of it. */
-    private fun handle(id: Int, url: String, method: String, body: String?, registration: Boolean, asked: Long, it: Answer) {
+    private fun handle(id: Int, doc: String, url: String, method: String, body: String?, registration: Boolean, asked: Long, it: Answer) {
         val out = JSONObject()
         it.headers.forEach { (name, value) -> out.put(name, value) }
         val text = it.text
         val net = android.os.SystemClock.uptimeMillis() - asked
-        Logbook.log("relay $method ${shortPath(url)} -> ${it.code} in $net ms")
+        val path = shortPath(url)
+        // Steady streams answered 2xx (play reports, playback state and volume PUTs: hundreds per
+        // report, never read in an analysis) are logged once a minute; failures always.
+        val steady = STEADY.find(path)?.value
+        if (steady != null && it.code in 200..299) Logbook.logEvery("relay $method $steady", 60_000, "relay $method $path -> ${it.code} in $net ms")
+        else Logbook.log("relay $method $path -> ${it.code} in $net ms")
         if (it.code >= 400) Logbook.log("relay error body: ${text.take(400)}")
+        // A command sent before the page's device joined: the player sends its play again once it has.
+        if (it.code == 404 && COMMAND.containsMatchIn(url) && "DEVICE_NOT_FOUND" in text) app.myspoti.spotify.bridge.PageDevice.commandLost()
         if (it.code in 200..299 && method == "POST" && url.substringBefore('?').endsWith("/track-playback/v1/devices")) onDeviceRegistered?.invoke()
         if (it.code == 402 && !(COMMAND.containsMatchIn(url) || registration)) logRefusal(it, body)
         if (registration) Regex("\"effective_license\"\\s*:\\s*\"([^\"]*)\"").find(text)
             ?.let { m -> Logbook.log("registration: effective_license=${m.groupValues[1]}") }
+        if (registration) app.myspoti.spotify.report.Refusal402.registered(it.code)
         if (registration && it.code in 200..299) Logbook.log("registration answer: ${registrationSummary(text)}")
+        // The page's connect-state PUT (joining the cluster): its status and its answer's header names.
+        if (method == "PUT" && url.contains("/connect-state/v1/devices/"))
+            app.myspoti.spotify.report.Refusal402.connectStatePut(it.code, it.headers.map { h -> h.first.lowercase() }.distinct().sorted().joinToString(","))
+        // Joined: the page's device now takes commands (the app's mirror waits for this after a reload).
+        if (method == "PUT" && url.contains("/connect-state/v1/devices/") && it.code in 200..299)
+            app.myspoti.spotify.bridge.PageDevice.joined()
+        if (registration && it.code in 200..299) runCatching { JSONObject(text).optLong("initial_seq_num", 0) }.getOrNull()?.let(devices::answered)
+        if (method == "DELETE" && it.code in 200..299 && url.contains("/track-playback/v1/devices/")) devices.deregistered(url)
         if (registration) Logbook.fact("registration", "${it.code}" + (Regex("\"effective_license\"\\s*:\\s*\"([^\"]*)\"").find(text)?.let { m -> " effective_license=${m.groupValues[1]}" } ?: ""))
         // What Spotify holds for this account's devices (this player's license, whether
         // it may play, another device active): the cluster comes back on joining and
         // on every cluster read, the one the page makes after a refused command.
         if (it.code in 200..299 && (url.contains("/connect-state/v1/cluster") || (method == "PUT" && url.contains("/connect-state/v1/devices/"))))
-            clusterSummary(text, self)?.let { s -> Logbook.log("cluster: $s"); Logbook.fact("devices", s) }
+            clusterSummary(text, self, staleOwn)?.let { s ->
+                // The same cluster again (every state PUT and cluster read returns it) is not logged twice.
+                if (s != lastCluster) { lastCluster = s; Logbook.log("cluster: $s") }
+                clusterBrief(text, self, staleOwn)?.let(app.myspoti.spotify.report.Refusal402::cluster)
+                Logbook.fact("devices", s)
+                // Debug builds: which devices these are, as short hashes (a ghost left by a
+                // previous start shows under the hash its own start logged).
+                if (debuggable) runCatching {
+                    val c = JSONObject(text).let { j -> j.optJSONObject("cluster") ?: j }
+                    Logbook.log("cluster devices: " + c.getJSONObject("devices").keys().asSequence().joinToString(" ") { k -> "#${shortHash(k)}" })
+                }
+            }
         if (debuggable && registration) Logbook.log("registration answered: ${text.take(500)}")
         if (debuggable && AD_MARK.containsMatchIn(text)) keepAdSample(method, url, body, text)
         // An ad in the queue Spotify sends: the song before it goes on to the next song
         // instead, before the page sees the queue (see AdBlock.withoutAds).
         val given = if (url.contains("/track-playback/")) app.myspoti.spotify.bridge.AdBlock.withoutAds(text) else null
-        given?.second?.forEach { note -> Logbook.log("ad left out: $note") }
+        given?.second?.forEach { note -> Logbook.log("ad left out: $note"); ADS_LEFT_OUT.incrementAndGet(); app.myspoti.spotify.report.Refusal402.adStateLeftOut() }
+        // Marked as holding an ad, yet left as it was: why (which marker, what kept it), once per reason.
+        if (given == null && url.contains("/track-playback/") && AD_MARK.containsMatchIn(text))
+            app.myspoti.spotify.bridge.AdBlock.whyKept(text)?.takeIf { it != lastAdKept }?.let { why -> lastAdKept = why; Logbook.log("ad kept in the queue: $why") }
         val sent = given?.first ?: text
         // The songs' media manifests, for extensions to read (spotify.media).
         if (it.code in 200..299 && url.contains("/track-playback/")) app.myspoti.spotify.bridge.MediaManifests.record(sent)
@@ -324,25 +379,75 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
             if (app.myspoti.spotify.bridge.AdBlock.ahead.value != a) Logbook.log("ad ahead: ${a.nextUri} is played before the end")
             app.myspoti.spotify.bridge.AdBlock.ahead.value = a
         }
-        reply(id, it.code, out.toString(), sent)
+        reply(id, doc, it.code, out.toString(), sent)
     }
 
-    private fun reply(id: Int, status: Int, headersJson: String, body: String) {
+    private fun reply(id: Int, doc: String, status: Int, headersJson: String, body: String) {
         val posted = android.os.SystemClock.uptimeMillis()
-        main.post { replyNow(id, status, headersJson, body, posted) }
+        // Quoted here, on the network thread: a large reply (a track-playback state machine) was
+        // quoted on the main thread, which also draws the app and runs every tap behind it.
+        val script = "window.__mspNetDone && window.__mspNetDone($id, $status, ${JSONObject.quote(headersJson)}, ${JSONObject.quote(body)}, ${JSONObject.quote(doc)})"
+        main.post { replyNow(id, script, posted) }
     }
 
-    private fun replyNow(id: Int, status: Int, headersJson: String, body: String, posted: Long) {
+    private fun replyNow(id: Int, script: String, posted: Long) {
         val waited = android.os.SystemClock.uptimeMillis() - posted
         if (waited > 30) Logbook.log("relay reply #$id waited $waited ms for the main thread")
-        view.evaluateJavascript(
-            "window.__mspNetDone && window.__mspNetDone($id, $status, ${JSONObject.quote(headersJson)}, ${JSONObject.quote(body)})",
-            null,
-        )
+        view.evaluateJavascript(script, null)
     }
+
+    /** The last page's playback device, kept across starts (see [PlayerDeviceRecord]). */
+    private val devices = PlayerDeviceRecord(java.io.File(view.context.filesDir, "spotify/player-device"))
+
+    /** The page's own goodbye for a device it left: the same DELETE, with that page's headers' twin. */
+    private fun sayGoodbye(registrationUrl: String, headers: Headers, old: String, seq: Long) {
+        val request = Request.Builder()
+            .url(PlayerDeviceRecord.deviceUrl(registrationUrl, old))
+            .headers(headers)
+            .delete(PlayerDeviceRecord.goodbye(seq).toByteArray().toRequestBody(null))
+            .build()
+        http.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = Logbook.log("previous player device: goodbye failed: ${e.message}")
+            override fun onResponse(call: Call, response: Response) = response.use {
+                Logbook.log("previous player device${if (debuggable) " #${shortHash(old)}" else ""} taken off -> ${it.code}")
+                if (it.code >= 400) Logbook.log("goodbye error body: ${it.body.string().take(200)}")
+            }
+        })
+    }
+
+    private fun shortHash(id: String) = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(id.toByteArray()).take(3).joinToString("") { "%02x".format(it) }
 
     /** This page's playback device id, read from its registration: never logged, only compared. */
     @Volatile private var self: String? = null
+
+    /** The device id the previous start left registered (see [PlayerDeviceRecord]): only compared. */
+    @Volatile private var staleOwn: String? = null
+
+    @Volatile private var lastCluster: String? = null
+    /** The last reason an ad-marked reply was left as it was (logged once per reason). */
+    @Volatile private var lastAdKept: String? = null
+
+    /**
+     * A refused command another route answered 2xx: whether the page's media really plays 10 s
+     * later (a 2xx alone proved nothing: the page path's 200s were all dropped, 402-ANALYSIS fact 2).
+     */
+    private fun checkAudio(route: String) = main.postDelayed({
+        view.evaluateJavascript(PLAYING) { r ->
+            val started = r == "true"
+            Logbook.log("audio after the $route retry: ${if (started) "playing" else "nothing played"} within 10 s")
+            app.myspoti.spotify.report.Refusal402.audioAfterRetry(route, started)
+        }
+    }, 10_000)
+
+    /** The 402 matrix's rows once its relay part is done, while the page's own fetch is awaited. */
+    @Volatile private var matrixRows = ""
+    @Volatile private var matrixPage = false
+    @Volatile private var matrixPageLine: String? = null
+
+    /** The ads mode, for the 402 report: what this app does to ads (it has no setting for it). */
+    private fun adsMode() = "blocked (page ad managers off, ${app.myspoti.spotify.bridge.AdBlock.blockedHosts.size} ad hosts blocked, " +
+        "ad states left out this session=${ADS_LEFT_OUT.get()}, ad ahead=${app.myspoti.spotify.bridge.AdBlock.ahead.value != null})"
     @Volatile private var commandHeaders: String? = null
 
     private val debuggable = view.context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -386,6 +491,39 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
 
     companion object {
         /**
+         * No cookie jar: the real Web Player's requests to spclient carry no cookie (its `fetch` is
+         * cross-origin with the default `credentials: same-origin`; 02-playback capture). The WebView's
+         * cookies the relay sent from 2.0.2-beta.9 on (sp_dc, sp_t, sp_key...) were a shape no
+         * browser's command has.
+         *
+         * Chrome's Accept-Encoding ([ACCEPT_ENCODING]) comes from [DECODING], which also decodes the
+         * answer (Spotify answers track-playback in zstd, connect-state in gzip or br).
+         *
+         * One client for every relay (a page rebuilt after a renderer crash gets a new relay, not a
+         * new pool), so that [resetConnections] reaches the one in use. A dead connection fails in
+         * seconds: with a 30 s read timeout, a command sent on one (the phone moving between Wi-Fi
+         * and mobile data, a connection the mobile network dropped while idle) waited that long
+         * before anything tried again. Spotify answers these requests in well under a second, so
+         * 10 s without a byte is a dead connection; the ping finds one before a command does.
+         */
+        private val http: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .pingInterval(15, TimeUnit.SECONDS)
+                .addInterceptor(DECODING)
+                .eventListener(RelayEvents)
+                .build()
+        }
+
+        /**
+         * The phone moved to another network: the idle connections belong to the old one, and the
+         * next request opens a fresh one instead of waiting on them. Not from the main thread
+         * (closing a socket can write to it).
+         */
+        fun resetConnections() = http.connectionPool.evictAll()
+
+        /**
          * The page's own API calls. Every request the WebView makes carries
          * "X-Requested-With: <our package>" — no browser does that, and it was measured on the wire
          * riding on the telemetry and on the audio files themselves. Relaying through OkHttp is what
@@ -420,8 +558,143 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
 
         fun isRelayed(url: String) = (RELAYED.containsMatchIn(url) || REPORTS.containsMatchIn(url)) && !NOT_RELAYED.containsMatchIn(url)
 
-        /** The route kept for this session, shared by every page and WebView of the process. */
-        private val ROUTES = RelayRoutes(engineAvailable = android.os.Build.VERSION.SDK_INT >= 34)
+        /**
+         * The route kept for this session, shared by every page and WebView of the process. The
+         * Chromium stack a refusal goes to first: the platform's on Android 14+, else Cronet once
+         * Play services has installed it.
+         */
+        private val ROUTES = RelayRoutes {
+            when {
+                android.os.Build.VERSION.SDK_INT >= 34 -> RelayRoute.HTTP_ENGINE
+                CronetStack.available -> RelayRoute.CRONET
+                else -> null
+            }
+        }
+
+        /** The 402 matrix runs once per process, on the first refused command. */
+        private val MATRIX_RUN = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** Ad states [app.myspoti.spotify.bridge.AdBlock.withoutAds] left out this session. */
+        private val ADS_LEFT_OUT = java.util.concurrent.atomic.AtomicInteger(0)
+
+        /** A route's name in the 402 summary. */
+        internal fun shortRoute(route: RelayRoute) = when (route) {
+            RelayRoute.DEFAULT -> "okhttp"
+            RelayRoute.IPV4 -> "okhttp-v4"
+            RelayRoute.IPV6 -> "okhttp-v6"
+            else -> route.name
+        }
+
+        /** Whether one of the page's media elements plays (the same test as the page script's `plays`). */
+        private const val PLAYING = "(() => { const m = window.__mspMedia; return !!m && [...m].some(e => !e.paused && !e.ended && e.readyState > 2); })()"
+
+        /** Relayed requests that run all along (play reports, playback state, volume): their 2xx answers are rate-limited. */
+        private val STEADY = Regex("^/melody/v1/msg/batch|^/track-playback/v1/devices/…/(state|volume)$")
+
+        /** A command's kind for the 402 summary: "transfer", or its endpoint. */
+        internal fun commandKind(url: String, body: String?): String =
+            if (url.contains("/connect/transfer/")) "transfer"
+            else runCatching { (JSONObject(body ?: "").optJSONObject("command") ?: JSONObject(body ?: "")).optString("endpoint") }
+                .getOrNull()?.takeIf { it.isNotEmpty() && it.length <= 40 } ?: "command"
+
+        /**
+         * The cluster for the 402 summary: how many devices, their types, what each is to this
+         * player (self, stale-own, foreign-webplayer, foreign) and whether a player state exists.
+         */
+        internal fun clusterBrief(text: String, self: String?, staleOwn: String?): String? {
+            val full = clusterSummary(text, self, staleOwn) ?: return null
+            val c = runCatching { JSONObject(text).let { j -> j.optJSONObject("cluster") ?: j } }.getOrNull() ?: return null
+            val devices = c.optJSONObject("devices") ?: return null
+            val ownSoftware = self?.let { devices.optJSONObject(it)?.optString("device_software_version") }?.takeIf { it.isNotEmpty() }
+            val types = sortedMapOf<String, Int>()
+            val kinds = sortedMapOf<String, Int>()
+            devices.keys().forEach { id ->
+                val d = devices.optJSONObject(id) ?: JSONObject()
+                types.merge(d.optString("device_type").ifEmpty { "?" }, 1, Int::plus)
+                val kind = when {
+                    id == self -> "self"
+                    staleOwn != null && id == staleOwn -> "stale-own"
+                    ownSoftware != null && d.optString("device_software_version") == ownSoftware -> "foreign-webplayer"
+                    else -> "foreign"
+                }
+                kinds.merge(kind, 1, Int::plus)
+            }
+            val state = Regex("player_state=(absent|present\\([^)]*\\))").find(full)?.groupValues?.get(1) ?: "?"
+            val active = Regex("active=(\\w+)").find(full)?.groupValues?.get(1) ?: "?"
+            return "devices=${devices.length()} types=${types.entries.joinToString(",") { (k, v) -> "$k×$v" }} " +
+                "kinds=${kinds.entries.joinToString(",") { (k, v) -> "$k×$v" }} active=$active player_state=$state"
+        }
+
+        internal fun routeLabel(route: RelayRoute) = when (route) {
+            RelayRoute.DEFAULT -> "okhttp(no cookies, chrome headers)"
+            RelayRoute.IPV4 -> "okhttp-v4"
+            RelayRoute.IPV6 -> "okhttp-v6"
+            else -> route.name
+        }
+
+        /**
+         * Chrome's own Accept-Encoding on spclient (02-playback capture), in its order. OkHttp's
+         * transparent gzip covers gzip alone: [DECODING] sends this list and decodes each of them
+         * (Spotify answers track-playback in zstd, connect-state in gzip or br).
+         */
+        internal const val ACCEPT_ENCODING = "gzip, deflate, br, zstd"
+
+        /** HTTP's `deflate`: zlib-wrapped, as java.util.zip reads it by default. */
+        private object Deflate : CompressionInterceptor.DecompressionAlgorithm {
+            override val encoding = "deflate"
+            override fun decompress(compressedSource: BufferedSource): Source = InflaterSource(compressedSource, java.util.zip.Inflater())
+        }
+
+        /** Chrome's encodings, each with its decoder, in [ACCEPT_ENCODING]'s order. */
+        internal val DECODERS: List<CompressionInterceptor.DecompressionAlgorithm> = listOf(Gzip, Deflate, Brotli, Zstd)
+
+        /** A zstd frame of "ok": whether zstd's native decoder loads on this phone. */
+        private val ZSTD_PROBE = byteArrayOf(0x28, 0xb5.toByte(), 0x2f, 0xfd.toByte(), 0x04, 0x58, 0x11, 0x00, 0x00, 0x6f, 0x6b, 0xf9.toByte(), 0x5c, 0x14, 0x16)
+
+        /**
+         * The decoding interceptor: Chrome's list when zstd's native decoder loads, else the same
+         * list without zstd (an answer that could not be read is worse than a shorter list).
+         */
+        private val DECODING: CompressionInterceptor by lazy {
+            val zstd = runCatching {
+                okio.Buffer().write(ZSTD_PROBE).let { Zstd.decompress(it) }.let { okio.Buffer().apply { writeAll(it) } }.readUtf8() == "ok"
+            }.getOrElse { e -> Logbook.log("relay: zstd decoder unavailable (${e.javaClass.simpleName}): Accept-Encoding without zstd"); false }
+            CompressionInterceptor(*DECODERS.filter { zstd || it !== Zstd }.toTypedArray())
+        }
+
+        /** Header names OkHttp or the page's `fetch` must not carry over (transport, cookies, the WebView's mark). */
+        private val NOT_CARRIED = setOf("host", "content-length", "connection", "accept-encoding", "x-requested-with", "cookie")
+
+        /**
+         * The headers a relayed request carries: the page's own (its token, client token, app
+         * version...), then what Chrome adds by itself, which the page's `fetch` cannot set
+         * (forbidden names in JS) and OkHttp does not add either. [page] is the identity the page
+         * presents (user agent, languages, client hints); the fallbacks only stand in for it until
+         * it arrives. Matched against desktop Chrome's command request in ControlRelayTest.
+         */
+        internal fun relayHeaders(given: JSONObject, page: JSONObject?, userAgent: String, language: String, secChUa: String): Headers {
+            val headers = Headers.Builder()
+            given.keys().forEach { key ->
+                if (key.lowercase() !in NOT_CARRIED) runCatching { headers.add(key, given.getString(key)) }
+            }
+            fun fromPage(name: String, fallback: String) = page?.optString(name)?.takeIf { it.isNotEmpty() } ?: fallback
+            headers["User-Agent"] = fromPage("userAgent", userAgent)
+            headers["Origin"] = "https://open.spotify.com"
+            headers["Referer"] = "https://open.spotify.com/"
+            if (headers["Accept"] == null) headers["Accept"] = "*/*"
+            // RFC 9218: what Chromium sends with a fetch() from a page.
+            if (headers["Priority"] == null) headers["Priority"] = "u=1, i"
+            headers["Sec-Fetch-Site"] = "same-site"
+            headers["Sec-Fetch-Mode"] = "cors"
+            headers["Sec-Fetch-Dest"] = "empty"
+            // Values taken from the page, not written by hand: whichever language and client hints it
+            // presents, the relayed request presents the same.
+            headers["Accept-Language"] = fromPage("acceptLanguage", language)
+            headers["sec-ch-ua"] = fromPage("brands", secChUa)
+            headers["sec-ch-ua-mobile"] = fromPage("mobile", "?0")
+            headers["sec-ch-ua-platform"] = "\"${fromPage("platform", "Linux")}\""
+            return headers.build()
+        }
 
         private val COMMAND = Regex("/connect-state/v1/(player/command|connect/transfer)/")
 
@@ -456,16 +729,29 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
          * The cluster without ids or names: each device's type, license, whether it may play and
          * take commands, which one is this player (`self`) and which one is active; then the
          * player state's restrictions that hold a reason. Null when the body is not a cluster.
+         *
+         * 402 diagnostics: whether the cluster holds a player state at all (the failing accounts'
+         * clusters had none, 402-ANALYSIS fact 4), and what each other device is: `stale-own` when
+         * it is the device the previous start left ([staleOwn], from PlayerDeviceRecord),
+         * `foreign-webplayer` for another device running this player's software (an older ghost of
+         * this app, or the user's own Web Player in a browser), else `foreign`.
          */
-        internal fun clusterSummary(text: String, self: String?): String? = runCatching {
+        internal fun clusterSummary(text: String, self: String?, staleOwn: String? = null): String? = runCatching {
             val j = JSONObject(text)
             val c = j.optJSONObject("cluster") ?: j
             val devices = c.optJSONObject("devices") ?: return null
             val active = c.optString("active_device_id")
+            val ownSoftware = self?.let { devices.optJSONObject(it)?.optString("device_software_version") }?.takeIf { it.isNotEmpty() }
             val list = devices.keys().asSequence().sortedBy { if (it == self) "" else it }.map { id ->
                 val d = devices.optJSONObject(id) ?: JSONObject()
                 val caps = d.optJSONObject("capabilities")
-                val marks = listOfNotNull("self".takeIf { id == self }, "active".takeIf { id == active && active.isNotEmpty() })
+                val kind = when {
+                    id == self -> "self"
+                    staleOwn != null && id == staleOwn -> "stale-own"
+                    ownSoftware != null && d.optString("device_software_version") == ownSoftware -> "foreign-webplayer"
+                    else -> "foreign"
+                }
+                val marks = listOfNotNull(kind.takeIf { self != null || it != "foreign" }, "active".takeIf { id == active && active.isNotEmpty() })
                 val facts = listOfNotNull(
                     d.optString("device_type").ifEmpty { "?" },
                     "license=${d.optString("license").ifEmpty { "-" }}",
@@ -490,7 +776,16 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
                     else "${k.removePrefix("disallow_").removeSuffix("_reasons")}=${(0 until reasons.length()).joinToString("|") { i -> reasons.optString(i) }}"
                 }.joinToString(",")
             }.orEmpty()
-            ("devices=${list.size} active=$activeWhere self_listed=${self != null && devices.has(self)} " +
+            val state = c.optJSONObject("player_state")
+            val playerState = when {
+                state == null || state.length() == 0 -> "absent"
+                else -> {
+                    val context = state.optString("context_uri").split(':').getOrNull(1)?.takeIf { it.isNotEmpty() } ?: "none"
+                    val track = state.optJSONObject("track")?.optString("uri")?.isNotEmpty() == true
+                    "present(context=$context track=${if (track) "yes" else "no"} restrictions=${if (restrictions.isEmpty()) "none" else "some"})"
+                }
+            }
+            ("devices=${list.size} active=$activeWhere self_listed=${self != null && devices.has(self)} player_state=$playerState " +
                 list.joinToString("; ", "[", "]") +
                 (if (restrictions.isNotEmpty()) " restrictions: $restrictions" else "")).take(700)
         }.getOrNull()
@@ -520,14 +815,15 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
                 }}));
               } catch (e) { /* the host keeps its fallback identity */ }
               // The player's media elements, often never added to the document: the bridge
-              // silences them during an ad ("media.mute"); one started then starts silent.
+              // silences them during an ad ("media.mute") or while the song is unheard here
+              // ("media.hush"); one started then starts silent.
               // Silent is a tiny volume, never muted: Chromium pauses muted media of a hidden page.
               const media = new Set();
               window.__mspMedia = media;
               const play = HTMLMediaElement.prototype.play;
               HTMLMediaElement.prototype.play = function () {
                 media.add(this);
-                if (window.__mspMuted) { this.muted = false; this.volume = 0.001; }
+                if (window.__mspMuted || window.__mspHushed) { this.muted = false; this.volume = 0.001; }
                 return play.apply(this, arguments);
               };
               const relayed = /^https:\/\/([a-z0-9-]+\.)*spotify\.com\/(connect-state|track-playback)\/v1\//;
@@ -539,6 +835,10 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
               let registered = false;
               const pending = new Map();
               let seq = 0;
+              // This document's own mark on its requests: ids start again at 1 in every page, and an
+              // answer relayed for the page before a reload must not resolve the new page's request
+              // of the same id.
+              const doc = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
               const original = window.fetch;
               const command = /player\/command|connect\/transfer/;
               // A refused play or transfer (free accounts in some countries): the app tries another way.
@@ -577,7 +877,11 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
                 }, 10000);
               };
               const direct = (url, init) => original.call(window, url, init).then(r => { tell(r.status, url, false, init && init.body); return r; });
-              window.__mspNetDone = (id, status, headers, body) => {
+              window.__mspNetDone = (id, status, headers, body, from) => {
+                if (from !== doc) {
+                  try { window.MyspotiNet.postMessage(JSON.stringify({ type: 'stale', id })); } catch (e) { /* host gone */ }
+                  return;
+                }
                 const p = pending.get(id);
                 if (!p) return;
                 pending.delete(id);
@@ -612,7 +916,7 @@ internal class ControlRelay(private val view: WebView, private val fingerprint: 
                 return new Promise((resolve, reject) => {
                   const id = ++seq;
                   pending.set(id, { resolve, reject, url, init, method });
-                  window.MyspotiNet.postMessage(JSON.stringify({ id, url, method, headers, body: body == null ? null : body }));
+                  window.MyspotiNet.postMessage(JSON.stringify({ id, doc, url, method, headers, body: body == null ? null : body }));
                 });
               };
             })();

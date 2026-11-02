@@ -118,7 +118,7 @@ fun EpisodeOptionsSheet(
     // The + / ✓ follows Spotify's library: ask once for this episode's saved state.
     androidx.compose.runtime.LaunchedEffect(song.url) { SongPlayer.requestSaved(song.spotifyUri) }
     val saved = SongPlayer.library[song.spotifyUri] == true
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Sheet) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = Sheet) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(20.dp, 4.dp, 20.dp, 16.dp)) {
                 GlideImage(
@@ -246,7 +246,7 @@ fun speedLabel(speed: Double): String =
 @Composable
 fun PodcastSpeedSheet(onDismiss: () -> Unit) {
     val current = SongPlayer.speed.value
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Sheet) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = Sheet) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 20.dp)) {
             Text(
                 stringResource(R.string.playback_speed),

@@ -1,10 +1,12 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.components.secondaryClick
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 import com.music.spotui.ui.theme.AppMuted
 
 import kotlinx.coroutines.launch
+import com.music.spotui.ui.components.SearchClearButton
 import com.music.spotui.ui.components.pressable
 import androidx.compose.ui.res.stringResource
 
@@ -154,7 +156,12 @@ fun SumUpSearchScreen(
         )
     }
 
+    // A tap on a result puts the keyboard away; the query and the list stay as they are.
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val dismissKeyboard = { keyboard?.hide(); focusManager.clearFocus() }
     val recordRecent: (com.music.spotui.data.preferences.RecentItem) -> Unit = { item ->
+        dismissKeyboard()
         com.music.spotui.data.preferences.addRecentItem(context, item)
         recents = com.music.spotui.data.preferences.getRecentItems(context).filter { com.music.spotui.data.api.Features.PODCASTS || it.type != "show" }
     }
@@ -258,7 +265,7 @@ fun SumUpSearchScreen(
                                         durationMs = item.durationMs,
                                     )
                                     searchViewModel.startRadioFromSong(song)
-                                    SongPlayer.playSong(song.url, context, songs = listOf(song))
+                                    SongPlayer.playSong(song.url, context, songs = listOf(song), alone = true)
                                     searchViewModel.updateSongState(
                                         song.coverUri, song.title, song.singer, true, song.id, 0, song.album)
                                 }
@@ -317,6 +324,7 @@ fun SumUpSearchScreen(
                 items(profiles.size) { i ->
                     val u = profiles[i]
                     SearchProfileRow(u.title, u.images.firstOrNull()?.url) {
+                        dismissKeyboard()
                         navController.navigate(com.music.spotui.ui.navigation.profileRoute(u.uri.substringAfterLast(':'), u.title))
                     }
                 }
@@ -541,7 +549,7 @@ fun RecentItemRow(
                 "playlist" -> stringResource(R.string.assisted_curation_search_playlist) + (if (item.singer.isNotBlank()) " • ${item.singer}" else "")
                 else -> ""
             }
-            Text(text = subtitle, color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(text = subtitle, color = AppMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         Icon(
             imageVector = Icons.Default.Close,
@@ -574,6 +582,8 @@ fun SearchSongRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp, 8.dp)
+            // A mouse's right click opens the same menu as the long press (DeX, tablets).
+            .secondaryClick(onLongClick)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -583,7 +593,7 @@ fun SearchSongRow(
                     // Start a radio from the tapped track (queue = this song + Spotify
                     // recommendations) rather than queuing the whole search list.
                     searchViewModel.startRadioFromSong(song)
-                    SongPlayer.playSong(song.url, context, songs = listOf(song))
+                    SongPlayer.playSong(song.url, context, songs = listOf(song), alone = true)
                     searchViewModel.updateSongState(
                         song.coverUri,
                         song.title,
@@ -617,7 +627,7 @@ fun SearchSongRow(
                 Text(text = song.title, color = currentPlayingIndicatorColor, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
                     if (song.explicit) { com.music.spotui.ui.screens.ExplicitBadge(); androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp)) }
-                    Text(text = stringResource(R.string.assisted_curation_search_song) + " • ${song.singer}", color = Color.Gray, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(text = stringResource(R.string.assisted_curation_search_song) + " • ${song.singer}", color = AppMuted, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             }
         }
@@ -666,7 +676,7 @@ fun SearchShowRow(show: com.music.spotui.data.entity.PodcastModel, onClick: () -
             Text(text = show.name, color = AppText, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             Text(
                 text = stringResource(R.string.album_type_podcast) + (if (show.publisher.isNotBlank()) " • ${show.publisher}" else ""),
-                color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                color = AppMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }
@@ -696,7 +706,7 @@ fun SearchArtistRow(artist: com.music.spotui.data.entity.ArtistsModel, onClick: 
         )
         Column {
             Text(text = artist.name, color = AppText, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Text(text = stringResource(R.string.artist_subtitle), color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(text = stringResource(R.string.artist_subtitle), color = AppMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -725,7 +735,7 @@ fun SearchAlbumRow(album: com.music.spotui.data.entity.AlbumsModel, onClick: () 
         )
         Column {
             Text(text = album.name, color = AppText, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Text(text = stringResource(R.string.album) + " • ${album.artists}", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(text = stringResource(R.string.album) + " • ${album.artists}", color = AppMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -750,7 +760,7 @@ fun SearchPlaylistRow(playlist: com.music.spotui.data.entity.LibraryEntry, onCli
             Text(text = playlist.name, color = AppText, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             Text(text = stringResource(R.string.assisted_curation_search_playlist) +
                 (if (playlist.subtitle.isNotBlank()) " • ${playlist.subtitle}" else ""),
-                color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                color = AppMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -781,7 +791,9 @@ fun BrowseAllSection(onCategoryClick: (genre: String, title: String) -> Unit) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 8.dp),
         )
-        tiles.chunked(2).forEach { rowItems ->
+        // Large windows: more tiles per row (two on phones).
+        val cols = com.music.spotui.ui.components.windowSize().columns(2, 220.dp)
+        tiles.chunked(cols).forEach { rowItems ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -791,8 +803,8 @@ fun BrowseAllSection(onCategoryClick: (genre: String, title: String) -> Unit) {
                 rowItems.forEach { t ->
                     BrowseCategoryTile(t.title, t.color, t.image, Modifier.weight(1f)) { onCategoryClick(t.key, t.title) }
                 }
-                // Keep a half-width spacer if the last row has a single tile.
-                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                // Keep the tiles' width on a last row that is not full.
+                repeat(cols - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -865,6 +877,9 @@ fun SearchStickyBar(
     onTextChange: (String) -> Unit,
 ) {
 
+    // The field is always attached to a requester, so the clear button can put the cursor back in it.
+    val ownFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val fieldFocus = focusRequester ?: ownFocus
     Row(verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
@@ -882,7 +897,7 @@ fun SearchStickyBar(
         TextField(
             enabled = true,
             modifier = Modifier
-                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .focusRequester(fieldFocus)
                 .onFocusChanged { onFocusChange(it.isFocused) },
             value = text,
             textStyle = TextStyle.Default.copy(fontSize = 16.sp, color = Color.Black, fontWeight = FontWeight(500)),
@@ -905,7 +920,10 @@ fun SearchStickyBar(
                     text = stringResource(R.string.search_header_field_hint)
 
                 )
-            }
+            },
+            trailingIcon = if (text.isEmpty()) null else {
+                { SearchClearButton(fieldFocus, Color.Black) { onTextChange("") } }
+            },
         )
     }
 }

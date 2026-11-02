@@ -146,4 +146,5 @@
     <string name="find_in_context_edit_text_liked_songs_hint" formatted="false">在已点赞的歌曲中查找</string>
     <string name="find_in_context_edit_text_playlist_hint" formatted="false">在歌单中查找</string>
     <string name="assisted_curation_search_empty_view_no_result_title" formatted="false">找不到“%1$s”</string>
+    <string name="mr_user_route_category_name" formatted="false">设备</string>
 </resources>

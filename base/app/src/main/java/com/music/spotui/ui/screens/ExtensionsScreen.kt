@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -47,6 +46,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -71,6 +72,7 @@ import app.myspoti.extensions.StoreAction
 import com.music.spotui.extensions.ExtensionStore
 import com.music.spotui.extensions.Extensions
 import com.music.spotui.extensions.InstalledExtension
+import com.music.spotui.ui.components.SearchClearButton
 import com.music.spotui.ui.navigation.Routes
 import com.music.spotui.ui.theme.AppAccent
 import com.music.spotui.ui.theme.AppMuted
@@ -81,6 +83,9 @@ import kotlinx.coroutines.launch
 internal fun installedRoute(id: String) = "${Routes.Extension.route}/${Uri.encode(id)}"
 internal fun storeRoute(id: String) = "${Routes.ExtensionEntry.route}/${Uri.encode(id)}"
 
+/** A store row's page: the installed extension's own page when that id is installed (whatever its source), else the store's page. */
+internal fun rowRoute(id: String, installed: Boolean) = if (installed) installedRoute(id) else storeRoute(id)
+
 // ── The list: Store and Installed tabs, search, categories ──
 
 @Composable
@@ -90,6 +95,7 @@ fun ExtensionsScreen(navController: NavController) {
     val registry by Extensions.registry.collectAsState()
     val errors by Extensions.errors.collectAsState()
     val statuses by Extensions.statuses.collectAsState()
+    val signIns by Extensions.signIns.collectAsState()
     val repos by ExtensionStore.repos.collectAsState()
     val busy by ExtensionStore.busy.collectAsState()
     val pickFile = rememberPackagePicker()
@@ -134,7 +140,7 @@ fun ExtensionsScreen(navController: NavController) {
                 repo.catalog?.extensions?.filter { Store.matches(it, query, category) }?.forEach { entry ->
                     shown++
                     StoreRow(url, entry, Store.action(entry, installedCodes[entry.id], appVersion), entry.id in busy, registry,
-                        onOpen = { navController.navigate(storeRoute(entry.id)) },
+                        onOpen = { navController.navigate(rowRoute(entry.id, entry.id in installedCodes)) },
                         onInstall = { scope.launch { installFromStore(ctx, url, entry) } },
                         onInstalled = { navController.navigate(installedRoute(entry.id)) })
                 }
@@ -147,7 +153,7 @@ fun ExtensionsScreen(navController: NavController) {
                     val entry = r.item
                     shown++
                     StoreRow(app.myspoti.extensions.Discovery.SOURCE, entry, Store.action(entry, installedCodes[entry.id], appVersion), entry.id in busy, registry,
-                        onOpen = { navController.navigate(storeRoute(entry.id)) },
+                        onOpen = { navController.navigate(rowRoute(entry.id, entry.id in installedCodes)) },
                         onInstall = { scope.launch { installFromStore(ctx, app.myspoti.extensions.Discovery.SOURCE, entry) } },
                         onInstalled = { navController.navigate(installedRoute(entry.id)) },
                         rating = r.rating, hidden = app.myspoti.extensions.Ranking.hidden(r, blocks, System.currentTimeMillis()) != null)
@@ -174,6 +180,20 @@ fun ExtensionsScreen(navController: NavController) {
                     Text(stringResource(R.string.extensions_browse_store), color = AppText)
                 }
             }
+            // A source that said its account needs a sign-in: its page, where the extension offers it.
+            signIns.forEach { (id, detail) ->
+                val name = registry.find(id)?.name ?: id
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Text(stringResource(R.string.extension_sign_in_needed, name), color = AppText, fontSize = 14.sp)
+                    if (detail.isNotBlank()) Text(detail, color = AppMuted, fontSize = 12.sp)
+                    Row {
+                        OutlinedButton(onClick = { navController.navigate(installedRoute(id)) }, border = BorderStroke(1.dp, AppMuted.copy(alpha = 0.6f))) {
+                            Text(stringResource(R.string.extension_sign_in), color = AppText)
+                        }
+                        androidx.compose.material3.TextButton(onClick = { Extensions.dismissSignIn(id) }) { Text(stringResource(R.string.extension_sign_in_later), color = AppMuted) }
+                    }
+                }
+            }
             // By area: the extensions acting there, in order; an area without any is not listed.
             val grouped = remember(registry) { Extensions.byArea() }
             grouped.forEach { (area, list) ->
@@ -193,12 +213,13 @@ fun ExtensionsScreen(navController: NavController) {
         downloading = true
         scope.launch {
             // A GitHub repository's address: its newest release (or default branch), kept on the phone and updated from there.
-            val gitHub = app.myspoti.extensions.GitHubRepo.parse(url)?.takeIf { !url.endsWith(".zip") && (url.contains("github.com/") || !url.contains("://")) }
+            // (GitHub, GitLab or Codeberg; `gitlab:group/name` and `codeberg:owner/name` work too.)
+            val gitHub = app.myspoti.extensions.GitHubRepo.parse(url)?.takeIf { !url.endsWith(".zip") }
             runCatching {
                 if (gitHub != null) com.music.spotui.extensions.ExtensionUpdates.fromGitHub(gitHub)
                 else Extensions.downloadPackage(url).let { (zip, p) -> com.music.spotui.extensions.ExtensionUpdates.Fetched(zip, p, null) }
             }
-                .onSuccess { f -> offer(ctx, f.zip, f.origin?.let { "https://github.com/${it.repo}" } ?: url, f.origin) }
+                .onSuccess { f -> offer(ctx, f.zip, f.origin?.page() ?: url, f.origin) }
                 .onFailure { toastError(ctx, it) }
             downloading = false
         }
@@ -214,6 +235,15 @@ fun ExtensionsScreen(navController: NavController) {
 /** "Store" and "Installed", the latter with the number of updates waiting. */
 @Composable
 private fun Tabs(selected: Int, updates: Int, onSelect: (Int) -> Unit) {
+    if (com.music.spotui.ui.navigation.isImmersive()) {
+        val installed = stringResource(R.string.extensions_installed)
+        com.music.spotui.ui.immersive.pages.ImmersiveSegmentedControl(
+            options = listOf(stringResource(R.string.extensions_tab_store), if (updates > 0) "$installed ($updates)" else installed),
+            selectedIndex = selected, onSelect = onSelect,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        return
+    }
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         listOf(R.string.extensions_tab_store, R.string.extensions_installed).forEachIndexed { i, label ->
             Column(
@@ -238,17 +268,26 @@ private fun Tabs(selected: Int, updates: Int, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun SearchField(query: String, onChange: (String) -> Unit) {
+    val focus = remember { FocusRequester() }
+    if (com.music.spotui.ui.navigation.isImmersive()) {
+        com.music.spotui.ui.immersive.components.ImmersiveSearchField(
+            query = query, onQueryChange = onChange, onSubmit = {},
+            placeholder = stringResource(R.string.extensions_search),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        return
+    }
     OutlinedTextField(
         value = query, onValueChange = onChange, singleLine = true,
         placeholder = { Text(stringResource(R.string.extensions_search), color = AppMuted) },
         leadingIcon = { Icon(Icons.Default.Search, null, tint = AppMuted) },
-        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Default.Clear, stringResource(R.string.extensions_cancel), tint = AppMuted) } },
+        trailingIcon = if (query.isEmpty()) null else { { SearchClearButton(focus, AppMuted) { onChange("") } } },
         shape = RoundedCornerShape(24.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = AppText, unfocusedTextColor = AppText, focusedBorderColor = AppAccent, unfocusedBorderColor = tone(0xFF3E3E3E),
             focusedContainerColor = tone(0xFF1E1E1E), unfocusedContainerColor = tone(0xFF1E1E1E), cursorColor = AppAccent,
         ),
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp).heightIn(min = 48.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp).heightIn(min = 48.dp).focusRequester(focus),
     )
 }
 
@@ -256,11 +295,14 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
 @Composable
 private fun CategoryChips(categories: List<Category>, selected: Category?, onSelect: (Category?) -> Unit) {
     if (categories.isEmpty()) return
+    val immersive = com.music.spotui.ui.navigation.isImmersive()
+    val chipOn = if (immersive) com.music.spotui.ui.immersive.Immersive.Accent else AppAccent
+    val chipOff = if (immersive) com.music.spotui.ui.immersive.Immersive.Raised else tone(0xFF2A2A2A)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         (listOf<Category?>(null) + categories).forEach { c ->
             val on = c == selected
-            Text(stringResource(categoryLabel(c)), color = if (on) Color.Black else AppText, fontSize = 13.sp, maxLines = 1,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) AppAccent else tone(0xFF2A2A2A))
+            Text(stringResource(categoryLabel(c)), color = if (on) (if (immersive) Color.White else Color.Black) else AppText, fontSize = 13.sp, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) chipOn else chipOff)
                     .clickable { onSelect(if (on) null else c) }.padding(horizontal = 14.dp, vertical = 7.dp))
         }
     }
@@ -347,7 +389,7 @@ private fun StoreRow(
                 VersionPill(e.version)
             }
             if (action == StoreAction.INCOMPATIBLE) Text(incompatibleLine(e), color = Warning, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            else Text(e.description.ifBlank { e.author }, color = AppMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            else Text(e.description.ifBlank { authorLine(e.author, e.repo) }, color = AppMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             incompatibleWith(e, registry)?.let { Text(it, color = Warning, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             if (e.repo != null) RatingLine(rating, hidden)
             ActionIcons(e.preview().asks())
@@ -399,7 +441,8 @@ private fun AreaSection(
                         color = if (active) AppAccent else AppMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (list.size >= 2) Row {
+            // Sources are ordered per action, in Settings (see the hint under them).
+            if (list.size >= 2 && area != Area.AUDIO) Row {
                 IconButton(onClick = { Extensions.movePriority(area, e.id, -1) }, enabled = i > 0, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.extensions_move_up), tint = if (i > 0) AppText else AppMuted.copy(alpha = 0.3f))
                 }
@@ -409,6 +452,8 @@ private fun AreaSection(
             }
         }
     }
+    if (area == Area.AUDIO && list.size >= 2) Text(stringResource(R.string.sources_order_hint), color = AppMuted, fontSize = 12.sp,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
     // Who did what here lately.
     val recent = remember(activity, area) { activity.filter { it.area == area }.takeLast(3).asReversed() }
     if (recent.isNotEmpty()) {
@@ -431,6 +476,8 @@ private fun InstalledRow(e: InstalledExtension, error: String?, status: app.mysp
     val pkg = remember(e.id, e.sha256) { Extensions.pkg(e.id) }
     val m = pkg?.manifest
     val state = stateLine(e, error, status)
+    var askUninstall by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 20.dp, vertical = 10.dp),
@@ -449,17 +496,40 @@ private fun InstalledRow(e: InstalledExtension, error: String?, status: app.mysp
             when {
                 state != null -> Text(state.first, color = state.second, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 !e.enabled -> Text(stringResource(R.string.extension_off), color = AppMuted, fontSize = 12.sp)
-                else -> Text(m?.description?.ifBlank { null } ?: e.author, color = AppMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                else -> Text(m?.description?.ifBlank { null } ?: authorLine(e.author, e.origin?.repo), color = AppMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             m?.let { ActionIcons(it.asks().filter { a -> a.key in e.granted }) }
             extra()
         }
+        IconButton(onClick = { askUninstall = true }) {
+            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.extension_uninstall), tint = AppMuted)
+        }
         Switch(checked = e.enabled, onCheckedChange = { enable(e.id, it) })
     }
+    if (askUninstall) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { askUninstall = false },
+        containerColor = tone(0xFF282828),
+        text = { Text(stringResource(R.string.extension_uninstall_confirm, e.name), color = AppText) },
+        confirmButton = {
+            TextButton(onClick = {
+                askUninstall = false
+                scope.launch { Extensions.uninstall(e.id) }
+            }) { Text(stringResource(R.string.extension_uninstall), color = Warning) }
+        },
+        dismissButton = { TextButton(onClick = { askUninstall = false }) { Text(stringResource(R.string.extensions_cancel), color = AppText) } },
+    )
 }
 
 @Composable
 private fun InstallButtons(onRepo: (() -> Unit)?, onFile: () -> Unit, onUrl: () -> Unit) {
+    if (com.music.spotui.ui.navigation.isImmersive()) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onRepo?.let { com.music.spotui.ui.immersive.components.ImmersiveButton(stringResource(R.string.extensions_repository_add), it) }
+            com.music.spotui.ui.immersive.components.ImmersiveButton(stringResource(R.string.extensions_install_file), onFile)
+            com.music.spotui.ui.immersive.components.ImmersiveButton(stringResource(R.string.extensions_install_url), onUrl)
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         val border = BorderStroke(1.dp, AppMuted.copy(alpha = 0.5f))
         onRepo?.let { OutlinedButton(onClick = it, border = border) { Text(stringResource(R.string.extensions_repository_add), color = AppText, fontSize = 13.sp) } }

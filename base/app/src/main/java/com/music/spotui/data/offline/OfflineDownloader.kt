@@ -27,8 +27,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import com.music.spotui.extensions.MediaHttp
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -106,37 +105,48 @@ object OfflineDownloader {
 
     /** Re-queues what was waiting when the app last stopped. */
     fun resumePending() {
-        val saved = runCatching {
-            val a = JSONArray(OfflineStore.pendingFile.readText())
-            (0 until a.length()).map { Request.fromJson(a.getJSONObject(it)) }
-        }.getOrDefault(emptyList())
-        if (saved.isNotEmpty()) enqueueAll(saved)
+        // Read off the main thread (the app is already drawing): the queue fills a moment later.
+        scope.launch {
+            val saved = runCatching {
+                val a = JSONArray(OfflineStore.pendingFile.readText())
+                (0 until a.length()).map { Request.fromJson(a.getJSONObject(it)) }
+            }.getOrDefault(emptyList())
+            if (saved.isNotEmpty()) enqueueAll(saved)
+        }
     }
 
     /**
      * Downloads [songs] in [quality] (asked when the setting is "ask each time"), else in
      * the quality chosen in Settings.
      */
+    /**
+     * Whether a download can start now, said in a toast when not: downloads switched off in
+     * Settings (instead of a list of failed songs), or no extension giving download files (where to
+     * get one, for a download the user asked for). A list is only marked downloaded when this holds.
+     */
+    fun ready(auto: Boolean = false): Boolean {
+        if (!isDownloadsEnabled(Graph.app)) {
+            scope.launch(Dispatchers.Main) {
+                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.downloads_off_toast, android.widget.Toast.LENGTH_LONG).show()
+            }
+            return false
+        }
+        if (!com.music.spotui.extensions.Extensions.hasDownloadSource()) {
+            if (!auto) scope.launch(Dispatchers.Main) {
+                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.downloads_need_source, android.widget.Toast.LENGTH_LONG).show()
+            }
+            return false
+        }
+        return true
+    }
+
     fun enqueue(
         songs: List<SongsModel>,
         quality: com.music.spotui.data.preferences.DownloadQuality? = null,
         /** Started by the app (a downloaded list keeping in step), not by a tap. */
         auto: Boolean = false,
     ) {
-        // Downloads switched off in Settings: say so, instead of a list of failed songs.
-        if (!isDownloadsEnabled(Graph.app)) {
-            scope.launch(Dispatchers.Main) {
-                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.downloads_off_toast, android.widget.Toast.LENGTH_LONG).show()
-            }
-            return
-        }
-        // No extension gives download files: say where to get one, instead of a list of failures.
-        if (!com.music.spotui.extensions.Extensions.hasDownloadSource()) {
-            if (!auto) scope.launch(Dispatchers.Main) {
-                android.widget.Toast.makeText(Graph.app, app.myspoti.engine.R.string.downloads_need_source, android.widget.Toast.LENGTH_LONG).show()
-            }
-            return
-        }
+        if (!ready(auto)) return
         if (auto) {
             // Automatic downloads wait for Wi-Fi (never the user's mobile data): the next sync takes them.
             if (com.music.spotui.data.DataSaver.metered || !OfflineStore.isOnline(Graph.app)) { OfflineCollections.waitForWifi(); return }
@@ -166,6 +176,20 @@ object OfflineDownloader {
         }
         start()
         added.forEach { queue.trySend(it) }
+    }
+
+    /**
+     * The account's downloads are put away (sign-out, another account signing in): the queue is
+     * dropped from memory only (its file goes with the account's folder) and the running downloads
+     * stop, waited for a moment so none finishes into the next account's folder.
+     */
+    internal suspend fun forgetSession() {
+        synchronized(pending) { pending.clear() }
+        val jobs = running.values.toList()
+        running.clear()
+        jobs.forEach { it.cancel() }
+        kotlinx.coroutines.withTimeoutOrNull(5_000) { jobs.forEach { it.join() } }
+        withContext(Dispatchers.Main) { requests.clear() }
     }
 
     /** Stops a queued or running download (and forgets a failed one). */
@@ -220,7 +244,7 @@ object OfflineDownloader {
         runCatching {
             val a = JSONArray()
             pending.values.forEach { a.put(it.toJson()) }
-            OfflineStore.pendingFile.writeText(a.toString())
+            com.music.spotui.data.writeTextSafely(OfflineStore.pendingFile, a.toString())
         }
     }
 
@@ -249,6 +273,10 @@ object OfflineDownloader {
             } catch (e: Unavailable) {
                 Log.i(TAG, "${r.title}: ${e.message}")
                 OfflineStatus.Unavailable
+            } catch (e: com.music.spotui.extensions.Extensions.NotAnswering) {
+                // Failed, not unavailable: the source could not answer, so a tap on the song tries it again.
+                Log.i(TAG, "${r.title}: download source not answering: ${e.message}")
+                OfflineStatus.Failed
             } catch (t: Throwable) {
                 Log.w(TAG, "${r.title} failed", t)
                 OfflineStatus.Failed
@@ -309,6 +337,7 @@ object OfflineDownloader {
                     albumId = meta.albumId, durationMs = meta.durationMs, coverUrl = meta.coverUrl,
                     file = out.name, cover = cover, source = file.provider, verified = file.isrcMatched,
                     bytes = out.length(), addedAt = System.currentTimeMillis(), providerId = file.extensionId,
+                    extensionQuality = com.music.spotui.extensions.Extensions.qualityLine(file.extensionId, app.myspoti.extensions.SettingSection.DOWNLOADS),
                 )
             }
         } finally {
@@ -347,6 +376,9 @@ object OfflineDownloader {
             .copy(isrc = meta.isrc)
         val (extensionId, extension, files) = com.music.spotui.extensions.Extensions.downloadFiles(track, queryQuality(quality))
             ?: throw Unavailable("no download source has this song")
+        // The last error of a file that could not be fetched (not refused or failed a check): the song is then
+        // a download that failed and can be tried again, not a recording that was not found.
+        var fetchError: Exception? = null
         for (file in files) {
             currentCoroutineContext().ensureActive()
             setStatus(r.trackId, OfflineStatus.Downloading(-1f))
@@ -357,11 +389,24 @@ object OfflineDownloader {
                         DashFlacRemux.download("data:application/dash+xml;base64,${file.manifest}", out, file.headers)
                     }
                     else -> fetchWithProgress(r.trackId, file.url!!, out, file.headers)
-                } && out.length() >= 10_000
+                } && out.length() >= 10_000 && runInterruptible(Dispatchers.IO) {
+                    file.transform?.let { spec ->
+                        val staged = File.createTempFile("download-transform-", ".partial", out.parentFile)
+                        try {
+                            out.inputStream().use { input -> staged.outputStream().use { output ->
+                                app.myspoti.extensions.PatternedBlowfish.transform(input, output, spec)
+                            } }
+                            if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("transform cancelled")
+                            java.nio.file.Files.move(staged.toPath(), out.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        } finally { staged.delete() }
+                    }
+                    true
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "${meta.title}: $label ${file.format}: ${e.message}")
+                if (e !is app.myspoti.extensions.ExtensionMediaHttp.Refused && !app.myspoti.extensions.SafeNet.isRefusal(e)) fetchError = e
                 false
             }
             if (!ok) continue
@@ -376,6 +421,7 @@ object OfflineDownloader {
             Log.i(TAG, "${meta.title}: saved FLAC from $label")
             return Fetched(label, file.isrcMatched, extensionId)
         }
+        fetchError?.let { throw IOException("none of the ${files.size} files from $extension could be fetched: ${it.message}", it) }
         throw Unavailable("none of the ${files.size} files from $extension could be used")
     }
 
@@ -410,7 +456,17 @@ object OfflineDownloader {
         } finally {
             extractor.release()
         }
-        if (seconds > 0) checkLength(seconds, meta)
+        // No length in the track's header (some MP3 streams): the file's own metadata is asked next.
+        val known = seconds.takeIf { it > 0 } ?: runCatching {
+            android.media.MediaMetadataRetriever().let { r ->
+                try {
+                    r.setDataSource(file.path)
+                    r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.div(1000)
+                } finally { r.release() }
+            }
+        }.getOrNull()?.takeIf { it > 0 }
+        if (known != null) checkLength(known, meta)
+        else Log.w(TAG, "${meta.title}: length of the file unknown, not compared with the song's")
     }
 
     private fun checkLength(seconds: Long, meta: Meta) {
@@ -489,43 +545,46 @@ object OfflineDownloader {
                 while (true) {
                     attempt++
                     val position = output.length()
-                    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 20_000
-                        readTimeout = 60_000
-                        instanceFollowRedirects = true
-                        setRequestProperty("User-Agent", DownloadUa)
-                        headers.forEach { (k, v) -> setRequestProperty(k, v) }
-                        setRequestProperty("Range", "bytes=$position-$end")
-                    }
+                    // The safe client (see MediaHttp): redirects followed by hand and re-checked, the headers kept on their own host only.
                     try {
-                        val code = conn.responseCode
-                        // Asked past the end of a file whose size was unknown: it is complete.
-                        if (code == 416 && total <= 0 && position > 0) { done = true; break }
-                        if (code !in 200..299) throw IOException("stream HTTP $code")
-                        val full = code != 206 // server ignored Range → the whole body, from byte 0
-                        if (full) output.setLength(0)
-                        if (total <= 0) total = contentRangeTotal(conn.getHeaderField("Content-Range")) ?: -1L
-                        output.seek(output.length())
-                        val expected = if (full) -1L else end - position + 1
-                        var got = 0L
-                        conn.inputStream.use { input ->
-                            val buf = ByteArray(256 * 1024)
-                            while (true) {
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                output.write(buf, 0, n)
-                                got += n
+                        MediaHttp.open(url, headers = headers, fixed = mapOf("User-Agent" to DownloadUa, "Range" to "bytes=$position-$end"), timeoutMs = 60_000).use { conn ->
+                            val code = conn.response.code
+                            // Asked past the end of a file whose size was unknown: it is complete.
+                            if (code == 416 && total <= 0 && position > 0) { done = true; return@use }
+                            if (code !in 200..299) throw IOException("stream HTTP $code")
+                            val full = code != 206 // server ignored Range → the whole body, from byte 0
+                            if (full) output.setLength(0)
+                            // A part must be the one asked for: bytes from elsewhere in the file would be
+                            // written at the wrong place and make a file that plays wrong.
+                            if (!full) {
+                                val span = contentRangeSpan(conn.response.header("Content-Range"))
+                                if (span == null || span.first != position || span.last > end)
+                                    throw IOException("stream sent ${conn.response.header("Content-Range") ?: "no Content-Range"} for bytes $position-$end")
                             }
+                            if (total <= 0) total = contentRangeTotal(conn.response.header("Content-Range")) ?: -1L
+                            output.seek(output.length())
+                            val expected = if (full) -1L else end - position + 1
+                            var got = 0L
+                            conn.response.body.byteStream().use { input ->
+                                val buf = ByteArray(256 * 1024)
+                                while (true) {
+                                    val n = input.read(buf)
+                                    if (n < 0) break
+                                    // Never more than the part asked for, whatever the server sends after it.
+                                    val keep = if (expected >= 0) minOf(n.toLong(), expected - got).toInt() else n
+                                    output.write(buf, 0, keep)
+                                    got += keep
+                                    if (expected in 0..got) break
+                                }
+                            }
+                            if (full) done = true
+                            // A short chunk with the size still unknown is the end of the stream.
+                            else if (total <= 0 && got < expected) done = true
                         }
-                        if (full) done = true
-                        // A short chunk with the size still unknown is the end of the stream.
-                        else if (total <= 0 && got < expected) done = true
                         break
                     } catch (e: IOException) {
-                        if (attempt >= 3) throw e
+                        if (attempt >= 3 || e is app.myspoti.extensions.ExtensionMediaHttp.Refused || app.myspoti.extensions.SafeNet.isRefusal(e)) throw e
                         Log.w(TAG, "chunk at ${output.length()} failed (attempt $attempt): ${e.message}")
-                    } finally {
-                        conn.disconnect()
                     }
                 }
                 if (done) break
@@ -553,18 +612,8 @@ object OfflineDownloader {
 
     private fun contentLength(url: String, headers: Map<String, String> = emptyMap()): Long =
         runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = "HEAD"
-                connectTimeout = 15_000
-                readTimeout = 15_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", DownloadUa)
-                headers.forEach { (k, v) -> setRequestProperty(k, v) }
-            }
-            try {
-                conn.contentLengthLong.takeIf { it > 0 } ?: -1L
-            } finally {
-                conn.disconnect()
+            MediaHttp.open(url, "HEAD", headers, mapOf("User-Agent" to DownloadUa)).use { conn ->
+                conn.response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0 } ?: -1L
             }
         }.getOrDefault(-1L)
 
@@ -599,6 +648,14 @@ object OfflineDownloader {
     }
 
     /** "bytes 0-99/1234" → 1234; null when absent or "*". */
+    /** "bytes 100-199/1234" → 100..199; null when absent or not that shape. */
+    fun contentRangeSpan(header: String?): LongRange? {
+        val m = Regex("""^\s*bytes\s+(\d+)-(\d+)/(\d+|\*)\s*$""", RegexOption.IGNORE_CASE).find(header ?: return null) ?: return null
+        val first = m.groupValues[1].toLongOrNull() ?: return null
+        val last = m.groupValues[2].toLongOrNull() ?: return null
+        return if (last >= first) first..last else null
+    }
+
     fun contentRangeTotal(header: String?): Long? =
         header?.substringAfterLast('/', "")?.trim()?.toLongOrNull()?.takeIf { it > 0 }
 

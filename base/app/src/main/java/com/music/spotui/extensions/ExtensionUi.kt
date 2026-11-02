@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Home
@@ -66,6 +67,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Web
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material3.DropdownMenu
@@ -137,6 +139,7 @@ private fun shielded(): Boolean = SurfaceGuard.app.state.collectAsState().value.
 fun actionIcon(a: Action?): ImageVector = when (a) {
     Action.PLAYBACK_CONTROL -> Icons.Rounded.PlayCircle
     Action.PLAYBACK_QUEUE -> Icons.AutoMirrored.Rounded.QueueMusic
+    Action.PLAYBACK_MIRROR -> Icons.Rounded.VolumeOff
     Action.PLAYBACK_EVENTS -> Icons.Rounded.GraphicEq
     Action.LYRICS_PROVIDE -> Icons.Rounded.Lyrics
     Action.TRACKINFO_PROVIDE -> Icons.Rounded.Info
@@ -157,12 +160,14 @@ fun actionIcon(a: Action?): ImageVector = when (a) {
     Action.WEBVIEW_PAGE -> Icons.Rounded.Web
     Action.WEBVIEW_AUTH -> Icons.Rounded.Key
     Action.STORAGE -> Icons.Rounded.Save
+    Action.ATTEST -> Icons.Rounded.Fingerprint
     null -> Icons.Rounded.Extension
 }
 
 fun actionLabel(a: Action?): Int = when (a) {
     Action.PLAYBACK_CONTROL -> R.string.action_playback_control
     Action.PLAYBACK_QUEUE -> R.string.action_playback_queue
+    Action.PLAYBACK_MIRROR -> R.string.action_playback_mirror
     Action.PLAYBACK_EVENTS -> R.string.action_playback_events
     Action.LYRICS_PROVIDE -> R.string.action_lyrics_provide
     Action.TRACKINFO_PROVIDE -> R.string.action_trackinfo_provide
@@ -183,6 +188,7 @@ fun actionLabel(a: Action?): Int = when (a) {
     Action.WEBVIEW_PAGE -> R.string.action_webview_page
     Action.WEBVIEW_AUTH -> R.string.action_webview_auth
     Action.STORAGE -> R.string.action_storage
+    Action.ATTEST -> R.string.action_attest
     null -> R.string.action_unknown
 }
 
@@ -429,6 +435,14 @@ private fun MenuEntryRow(owner: String, b: Block.MenuEntry, showOwner: Boolean =
 }
 
 // ── The player ──
+
+/** "Spotify mirrored by <extension>" while an extension keeps Spotify muted (playback.mirror). */
+@Composable
+fun MirrorIndicator() {
+    val by = Extensions.mirrorBy.collectAsState().value ?: return
+    Text(stringResource(R.string.mirror_indicator, by), color = AppMuted, fontSize = 12.sp,
+        modifier = androidx.compose.ui.Modifier.padding(top = 6.dp))
+}
 
 /** The extensions' buttons under the player's own controls: a few on screen, the rest behind ⋯. */
 @Composable

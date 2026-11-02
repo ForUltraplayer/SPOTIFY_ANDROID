@@ -113,7 +113,7 @@ fun SavedInSheet(
         onDismiss()
     }
 
-    ModalBottomSheet(
+    com.music.spotui.ui.components.LookSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = tone(0xFF1A1A1A),

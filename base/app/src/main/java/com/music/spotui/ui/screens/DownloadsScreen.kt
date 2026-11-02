@@ -1,5 +1,7 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.components.widePressable
+import com.music.spotui.ui.theme.AppDestructive
 import com.music.spotui.ui.theme.headerTint
 import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +67,7 @@ import com.music.spotui.data.offline.OfflineStore
 import com.music.spotui.di.LocalPlayer
 import com.music.spotui.di.SongPlayer
 import com.music.spotui.ui.components.DownloadBadge
+import com.music.spotui.ui.components.animatedRow
 import com.music.spotui.ui.components.pressable
 import com.music.spotui.ui.theme.AppBackground
 
@@ -73,21 +77,34 @@ import com.music.spotui.ui.theme.AppBackground
 fun DownloadsScreen(navController: NavController) {
     val context = LocalContext.current
     val title = stringResource(R.string.collection_downloaded)
-    // Snapshot reads: the list follows downloads as they finish.
-    val tracks = OfflineStore.tracks.values.sortedByDescending { it.addedAt }
+    // Snapshot reads: the list follows downloads as they finish. Derived, so a progress tick (which
+    // changes no list) leaves the sorted lists and the counts alone instead of rebuilding them.
+    val tracks by remember { derivedStateOf { OfflineStore.tracks.values.sortedByDescending { it.addedAt } } }
     // Shown by where they were downloaded from: each album or playlist downloaded as a whole is one
     // row (its songs are on its own page), newest first; the songs downloaded on their own follow.
-    val lists = com.music.spotui.data.offline.OfflineCollections.collections.values.mapNotNull { c ->
-        val mine = tracks.filter { it.trackId in c.trackIds }
-        if (mine.isEmpty()) null else c to mine
-    }.sortedByDescending { (_, mine) -> mine.maxOf { it.addedAt } }
-    val inLists = lists.flatMapTo(HashSet()) { (_, mine) -> mine.map { it.trackId } }
-    val singles = tracks.filter { it.trackId !in inLists }
-    val waiting = OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) }
+    val lists by remember {
+        derivedStateOf {
+            com.music.spotui.data.offline.OfflineCollections.collections.values.mapNotNull { c ->
+                val mine = tracks.filter { it.trackId in c.trackIds }
+                if (mine.isEmpty()) null else c to mine
+            }.sortedByDescending { (_, mine) -> mine.maxOf { it.addedAt } }
+        }
+    }
+    val singles by remember {
+        derivedStateOf {
+            val inLists = lists.flatMapTo(HashSet()) { (_, mine) -> mine.map { it.trackId } }
+            tracks.filter { it.trackId !in inLists }
+        }
+    }
+    val waiting by remember { derivedStateOf { OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) } } }
     // A25: only queued or running songs can be stopped; a failed one has nothing left to cancel.
-    val stoppable = waiting.count {
-        val s = OfflineStore.status[it.trackId]
-        s == OfflineStatus.Queued || s is OfflineStatus.Downloading
+    val stoppable by remember {
+        derivedStateOf {
+            waiting.count {
+                val s = OfflineStore.status[it.trackId]
+                s == OfflineStatus.Queued || s is OfflineStatus.Downloading
+            }
+        }
     }
     val np by SongPlayer.nowPlaying
     val playingHere = LocalPlayer.active.value && LocalPlayer.contextName == title
@@ -122,7 +139,7 @@ fun DownloadsScreen(navController: NavController) {
                         painterResource(R.drawable.downloads_cover), null,
                         modifier = Modifier.align(Alignment.CenterHorizontally).size(200.dp).clip(RoundedCornerShape(6.dp)),
                     )
-                    Text(title, color = AppText, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
+                    Text(title, color = AppText, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 20.dp))
                     val n = tracks.size
                     val size = Formatter.formatShortFileSize(context, OfflineStore.totalBytes())
                     Text(pluralStringResource(R.plurals.local_files_count, n, n) + " · " + stringResource(R.string.downloads_size, size),
@@ -186,7 +203,7 @@ fun DownloadsScreen(navController: NavController) {
                 val problem = status == OfflineStatus.Failed || status == OfflineStatus.Unavailable
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = animatedRow().fillMaxWidth()
                         .pressable(0.97f) { if (status == OfflineStatus.Failed) OfflineDownloader.retry(r.trackId) }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
@@ -203,7 +220,7 @@ fun DownloadsScreen(navController: NavController) {
                             OfflineStatus.Failed -> stringResource(R.string.download_badge_error_content_description) + " · " + stringResource(R.string.download_retry)
                             else -> stringResource(R.string.download_notification_downloading)
                         }
-                        Text(line, color = if (problem) Color(0xFFE22134) else AppMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(line, color = if (problem) AppDestructive else AppMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     DownloadBadge(status, size = 20.dp)
                     Spacer(Modifier.width(16.dp))
@@ -220,7 +237,7 @@ fun DownloadsScreen(navController: NavController) {
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().pressable(0.97f) {
+                    modifier = animatedRow().fillMaxWidth().pressable(0.97f) {
                         val id = c.uri.substringAfterLast(":")
                         navController.navigate(when (c.type) {
                             "album" -> com.music.spotui.ui.navigation.albumRoute(c.name, mine.first().artist, id)
@@ -254,7 +271,7 @@ fun DownloadsScreen(navController: NavController) {
                 val current = LocalPlayer.active.value && np.uri == "spotify:track:${t.trackId}"
                 com.music.spotui.ui.components.SwipeToRemove(t.trackId, onRemove = {
                     val gone = com.music.spotui.data.offline.OfflineCollections.removeSong(t.trackId)
-                    android.widget.Toast.makeText(context, context.getString(if (gone) R.string.toast_undownload else R.string.download_kept_by_list), android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, if (gone) context.getString(R.string.toast_undownload) else com.music.spotui.data.offline.OfflineCollections.keptMessage(context, t.trackId), android.widget.Toast.LENGTH_SHORT).show()
                 }) { Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().pressable(0.97f) { play(i) }.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -281,8 +298,8 @@ fun DownloadsScreen(navController: NavController) {
         }
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.statusBarsPadding().padding(12.dp).size(40.dp).clip(CircleShape)
-                .background(AppBackground.copy(alpha = 0.4f)).pressable { navController.navigateUp() },
+            modifier = Modifier.statusBarsPadding().padding(12.dp).widePressable { navController.navigateUp() }
+                .size(40.dp).clip(CircleShape).background(AppBackground.copy(alpha = 0.4f)),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.accessibility_navigate_back), tint = AppText)
         }

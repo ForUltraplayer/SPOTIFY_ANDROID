@@ -34,6 +34,12 @@ data class Manifest(
      * `[{ "name": "lyrics.provide", "why": "Synced lyrics from LRCLIB" }, { "name": "network", "hosts": ["lrclib.net"], "why": "…" }]`.
      */
     val actions: List<ActionRequest> = emptyList(),
+    /**
+     * `media`: the hosts its audio and download addresses (and block images) may point at, apart
+     * from its `network` hosts: `{ "hosts": ["*.audio.example.com"] }`. Shown in the install prompt.
+     * Absent (an older extension): audio and download addresses may name any public host, as before.
+     */
+    val media: Media? = null,
     /** Old format (before [actions]): the hooks it takes over. Still read, mapped to actions. */
     val provides: List<String> = emptyList(),
     /** Old format: what it reaches. Still read, mapped to actions. */
@@ -98,6 +104,9 @@ data class Manifest(
         .mapNotNull { w -> runCatching { w.trim().split(Regex("\\s+"), 2).let { (m, u) -> RawRequest.offer(RawRequest.check(m, u), u) } }.getOrNull() }
         .distinct()
 
+    /** The hosts `media` lists, or null when the manifest has no `media` (an older one: see [media]). */
+    fun mediaHosts(): List<String>? = media?.hosts
+
     /** The hosts `network` lists. */
     fun hosts(): List<String> = declared().firstOrNull { it.name == Action.NETWORK.key }?.hosts.orEmpty()
 
@@ -105,7 +114,7 @@ data class Manifest(
     fun asks(): List<Ask> = declared().mapNotNull { r ->
         val a = Action.of(r.name) ?: return@mapNotNull null
         if (a == Action.NETWORK && r.hosts.any { it == "*" }) Ask(Action.NETWORK_ANY, Level.CRITICAL, r.why, r.hosts, a)
-        else Ask(a.key, a.level, r.why, r.hosts + if (a == Action.SPOTIFY_RAW) declaredWrites().map { it.toString() } else emptyList(), a)
+        else Ask(a.key, a.level, r.why, r.hosts + (if (a == Action.AUDIO_SOURCE || a == Action.DOWNLOAD_SOURCE) media?.hosts.orEmpty() else emptyList()) + if (a == Action.SPOTIFY_RAW) declaredWrites().map { it.toString() } else emptyList(), a)
     }
 
     /** True when the user is shown the warning and has to tick that they accept the risk. */
@@ -180,6 +189,10 @@ data class Manifest(
                 }
             }
         }
+        media?.let { m ->
+            if (m.hosts.size > 20) add("media: 20 hosts at most")
+            m.hosts.filter { it == "*" || !HOST.matches(it) }.forEach { add("media host \"$it\": a host name or *.domain (not *)") }
+        }
         if (actions.size != actions.map { it.name }.toSet().size) add("actions: an action listed twice")
         if (settings.isNotEmpty() && actions.none { it.name == Action.SETTINGS_PAGE.key }) add("settings: add the settings.page action (with its why) to have a settings page")
     }
@@ -202,6 +215,43 @@ data class Manifest(
         if (permissions.size != permissions.map { it.name }.toSet().size) add("permissions: a name listed twice")
         asks().filter { it.level == Level.CRITICAL && it.why.trim().length < 15 }
             .forEach { add("\"${it.key}\" is a critical action: say why the extension needs it in \"why\" (15 to 80 characters), the user reads it before installing") }
+    }
+
+    /** Its settings shown in [section] of the app's Settings, in the manifest's order. */
+    fun settingsIn(section: SettingSection): List<Setting> = settings.filter { it.sectionOf == section }
+
+    /** Its quality for [section] (`role: quality`), the first if it lists more (the check refuses that). */
+    fun qualitySetting(section: SettingSection): Setting? = settingsIn(section).firstOrNull { it.isQuality }
+
+    /**
+     * The keys of its per-network settings whose value differs between Wi-Fi and mobile data:
+     * the ones a network change changes, for the `setting` event `{ key, network: true }`.
+     */
+    fun networkKeys(stored: (String) -> String?): List<String> =
+        settings.filter { it.splitsByNetwork && it.value(stored, false) != it.value(stored, true) }.map { it.key }
+
+    /**
+     * What is wrong with the settings' `section`, `role` and `perNetwork`, for `myspoti-ext check`.
+     * Never a reason to refuse the package: the app shows such a setting on its page only, as one value.
+     */
+    fun settingFieldProblems(): List<String> = buildList {
+        settings.forEach { s ->
+            if (s.role == Setting.ROLE_QUALITY && s.type != "choice") add("setting \"${s.key}\": role quality is a choice (its options are the qualities)")
+            if (s.role == Setting.ROLE_QUALITY && s.section == null) add("setting \"${s.key}\": role quality needs a section (playback or downloads)")
+            if (s.perNetwork && s.type !in Setting.NETWORK_TYPES) add("setting \"${s.key}\": perNetwork is for ${Setting.NETWORK_TYPES.joinToString()}, not ${s.type}")
+        }
+        SettingSection.entries.forEach { sec ->
+            if (settingsIn(sec).count { it.role == Setting.ROLE_QUALITY } > 1) add("settings: one role quality per section at most (${sec.key} has more)")
+        }
+    }
+
+    /** Values of `section` and `role` this Myspoti does not know, and a section the extension can never lead: told, not refused. */
+    fun settingFieldWarnings(): List<String> = buildList {
+        settings.forEach { s ->
+            if (s.section != null && s.sectionOf == null) add("setting \"${s.key}\": section \"${s.section}\" unknown (known: ${SettingSection.entries.joinToString { it.key }}), shown on the extension's page only")
+            if (s.role != null && s.role !in Setting.ROLES) add("setting \"${s.key}\": role \"${s.role}\" unknown (known: ${Setting.ROLES.joinToString()}), ignored")
+            s.sectionOf?.let { sec -> if (sec.action !in actionSet()) add("setting \"${s.key}\": section ${sec.key} is shown only for an extension with ${sec.action.key}, which this one does not ask") }
+        }
     }
 
     /** Where the store files it: the declared category if its actions fit it, else [Category.OTHER]. */
@@ -236,6 +286,10 @@ data class Manifest(
 @Serializable
 data class Welcome(val message: String = "", val steps: List<String> = emptyList())
 
+/** `media`: where audio, downloads and block images may come from, besides the `network` hosts. */
+@Serializable
+data class Media(val hosts: List<String> = emptyList())
+
 @Serializable
 data class PermissionRequest(
     /** A [Permission] key, or a [Hook] key to give the reason for a takeover. */
@@ -259,9 +313,61 @@ data class Setting(
     val default: JsonElement? = null,
     /** choice only. */
     val options: List<String> = emptyList(),
+    /**
+     * `playback` or `downloads`: also shown in that section of the app's Settings, under the
+     * extension's name, while it is the first source there ([SettingSection]). Absent: its page only.
+     * Any other value: its page only too (`myspoti-ext check` warns).
+     */
+    val section: String? = null,
+    /** `quality` (a choice): the extension's quality, shown in the place of the app's own. Any other value is ignored. */
+    val role: String? = null,
+    /** One value on Wi-Fi and one on mobile data (choice, toggle, number, text); `get` gives the current network's. */
+    val perNetwork: Boolean = false,
 ) {
+    /** The section of Settings it is also shown in, or null (none, or one this Myspoti does not know). */
+    val sectionOf: SettingSection? get() = SettingSection.of(section)
+
+    /** It is the extension's quality for its section: `role: quality` on a choice. */
+    val isQuality: Boolean get() = role == ROLE_QUALITY && type == "choice" && sectionOf != null
+
+    /** It has a Wi-Fi and a mobile data value: `perNetwork` on a type that has a value to split. */
+    val splitsByNetwork: Boolean get() = perNetwork && type in NETWORK_TYPES
+
+    /**
+     * The value `myspoti.settings.get` reads, as JSON text: on mobile data ([metered]) the mobile
+     * value of a [splitsByNetwork] setting, else (and while it has none) the Wi-Fi one, which is
+     * the one any setting has; else [default]. As the app's own streaming quality: mobile data
+     * follows Wi-Fi until it is set.
+     */
+    fun value(stored: (String) -> String?, metered: Boolean): String? =
+        (if (metered && splitsByNetwork) stored(cellKey(key)) else null) ?: stored(key) ?: default?.toString()
+
     companion object {
         val TYPES = listOf("text", "secret", "toggle", "number", "choice", "button")
+        const val ROLE_QUALITY = "quality"
+        val ROLES = listOf(ROLE_QUALITY)
+        /** The types `perNetwork` splits: a secret or a button has no value per network. */
+        val NETWORK_TYPES = listOf("choice", "toggle", "number", "text")
+        /** Suffix of the stored mobile data value; never in a declared key (letters, digits, _). */
+        private const val CELL = "@cell"
+
+        /** Where the mobile data value of [key] is kept, next to its Wi-Fi value (kept under [key]). */
+        fun cellKey(key: String) = key + CELL
+
+        /** The declared key a stored key belongs to ([cellKey] undone). */
+        fun baseKey(stored: String) = stored.removeSuffix(CELL)
+    }
+}
+
+/** `section` of a setting: the section of the app's Settings it is also shown in, and the source order that decides. */
+enum class SettingSection(val key: String, val action: Action) {
+    /** Settings → Playback, while the extension is the first source of the audio order (above Spotify). */
+    PLAYBACK("playback", Action.AUDIO_SOURCE),
+    /** Settings → Downloads, while it is the first extension of the download order. */
+    DOWNLOADS("downloads", Action.DOWNLOAD_SOURCE);
+
+    companion object {
+        fun of(key: String?) = entries.firstOrNull { it.key == key }
     }
 }
 

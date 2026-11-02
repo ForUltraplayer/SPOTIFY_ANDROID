@@ -6,48 +6,95 @@ import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import java.util.zip.ZipInputStream
 
+/** The code hosts an extension can be installed from. */
+@Serializable
+enum class CodeHost(val key: String, val domain: String, val label: String) {
+    GITHUB("github", "github.com", "GitHub"),
+    GITLAB("gitlab", "gitlab.com", "GitLab"),
+    CODEBERG("codeberg", "codeberg.org", "Codeberg");
+
+    companion object {
+        fun ofDomain(d: String): CodeHost? = entries.firstOrNull { it.domain == d.lowercase().removePrefix("www.") }
+    }
+}
+
 /**
- * A GitHub repository an extension is installed from: `owner/name`. Everything is fetched from
- * GitHub's file hosts (`raw.githubusercontent.com`, `codeload.github.com`, release downloads),
- * never from its API, which allows 60 calls an hour without an account: the API is only used
- * for the store's search (see [Discovery]), once per visit and cached.
+ * A repository an extension is installed from, on [host]: [owner] and [name] (GitLab's owner may
+ * be a group path, `group/sub`). Everything is fetched from the host's file addresses (GitHub:
+ * `raw.githubusercontent.com`, `codeload.github.com`, release downloads; GitLab: `/-/raw`,
+ * `/-/archive`; Codeberg: `/raw`, `/archive`), never from an API, except the store's search (see
+ * [Discovery]), once per visit and cached. The [slug] is `owner/name` on GitHub (as it always was),
+ * `gitlab:group/name` or `codeberg:owner/name` elsewhere. (Named after GitHub, where it began.)
  */
 @Serializable
-data class GitHubRepo(val owner: String, val name: String) {
-    val slug: String get() = "$owner/$name"
+data class GitHubRepo(val owner: String, val name: String, val host: CodeHost = CodeHost.GITHUB) {
+    val slug: String get() = if (host == CodeHost.GITHUB) "$owner/$name" else "${host.key}:$owner/$name"
+
+    private val base: String get() = "https://${host.domain}/$owner/$name"
 
     /** A file of the repository at [ref] (a tag, a branch, or `HEAD` for the default branch). */
-    fun raw(ref: String, path: String) = "https://raw.githubusercontent.com/$owner/$name/$ref/$path"
+    fun raw(ref: String, path: String) = when (host) {
+        CodeHost.GITHUB -> "https://raw.githubusercontent.com/$owner/$name/$ref/$path"
+        CodeHost.GITLAB -> "$base/-/raw/$ref/$path"
+        CodeHost.CODEBERG -> "$base/raw/$ref/$path"
+    }
 
     /** The whole repository at [ref], zipped: a tag when [tag], else a branch (`HEAD`: the default one). */
-    fun archive(ref: String, tag: Boolean) =
-        if (ref == HEAD) "https://codeload.github.com/$owner/$name/zip/HEAD"
-        else "https://codeload.github.com/$owner/$name/zip/refs/${if (tag) "tags" else "heads"}/$ref"
+    fun archive(ref: String, tag: Boolean) = when (host) {
+        CodeHost.GITHUB ->
+            if (ref == HEAD) "https://codeload.github.com/$owner/$name/zip/HEAD"
+            else "https://codeload.github.com/$owner/$name/zip/refs/${if (tag) "tags" else "heads"}/$ref"
+        CodeHost.GITLAB -> "$base/-/archive/$ref/$name-${ref.replace('/', '-')}.zip"
+        CodeHost.CODEBERG -> "$base/archive/$ref.zip"
+    }
 
     /** Redirects to the newest release's page (`…/releases/tag/<tag>`); 404 without a release. */
-    val latestRelease: String get() = "https://github.com/$owner/$name/releases/latest"
+    val latestRelease: String get() = when (host) {
+        CodeHost.GITLAB -> "$base/-/releases/permalink/latest"
+        else -> "$base/releases/latest"
+    }
 
-    /** The package attached to the release [tag], when the author attached one ([GitHub.ASSET]). */
-    fun releaseAsset(tag: String) = "https://github.com/$owner/$name/releases/download/$tag/${GitHub.ASSET}"
+    /** The package attached to the release [tag], when the author attached one ([GitHub.ASSET]); GitLab's release links are not looked for. */
+    fun releaseAsset(tag: String): String? = when (host) {
+        CodeHost.GITLAB -> null
+        else -> "$base/releases/download/$tag/${GitHub.ASSET}"
+    }
 
-    val page: String get() = "https://github.com/$owner/$name"
+    val page: String get() = base
+
+    /** Codeberg's file addresses want a branch name: its API tells the default one. */
+    val defaultBranchApi: String? get() = if (host == CodeHost.CODEBERG) "https://codeberg.org/api/v1/repos/$owner/$name" else null
 
     companion object {
         const val HEAD = "HEAD"
         private val PART = Regex("^[A-Za-z0-9_.-]{1,100}$")
 
-        /** `owner/name`, `github.com/owner/name` or `https://github.com/owner/name(.git)(/…)`; null otherwise. */
+        /** A repository by its host's path (`group/sub/name`); null when it is not one. */
+        fun of(host: CodeHost, path: String): GitHubRepo? {
+            val parts = path.trim('/').split('/').map { it.removeSuffix(".git") }
+            if (parts.size < 2 || parts.any { !PART.matches(it) || it == "." || it == ".." }) return null
+            val usable = if (host == CodeHost.GITLAB) parts else parts.take(2)
+            return GitHubRepo(usable.dropLast(1).joinToString("/"), usable.last(), host)
+        }
+
+        /**
+         * `owner/name` (GitHub), `gitlab:group/name`, `codeberg:owner/name`, `github.com/owner/name`,
+         * `https://gitlab.com/group/sub/name(.git)(/-/…)`, `https://codeberg.org/owner/name(/…)`; null otherwise.
+         */
         fun parse(text: String): GitHubRepo? {
             var s = text.trim().removeSuffix("/")
+            CodeHost.entries.firstOrNull { s.startsWith(it.key + ":") }?.let { return of(it, s.removePrefix(it.key + ":")) }
             s = s.removePrefix("https://").removePrefix("http://").removePrefix("www.")
-            if (s.startsWith("github.com/")) s = s.removePrefix("github.com/")
-            else if (s.contains("://") || s.contains('.') && s.substringBefore('/').contains('.')) return null
+            val host = CodeHost.ofDomain(s.substringBefore('/'))
+            if (host != null && s.contains('/')) {
+                var path = s.substringAfter('/').substringBefore('?').substringBefore('#')
+                if (host == CodeHost.GITLAB) path = path.substringBefore("/-/")
+                return of(host, path)
+            }
+            if (s.contains("://") || s.contains('.') && s.substringBefore('/').contains('.')) return null
             val parts = s.split('/')
             if (parts.size < 2) return null
-            val owner = parts[0]
-            val name = parts[1].removeSuffix(".git")
-            if (!PART.matches(owner) || !PART.matches(name) || name == "." || name == "..") return null
-            return GitHubRepo(owner, name)
+            return of(CodeHost.GITHUB, parts[0] + "/" + parts[1])
         }
     }
 }
@@ -64,8 +111,14 @@ data class Origin(
     val tag: Boolean = false,
     val commit: String? = null,
     val asset: Boolean = false,
+    /** The host's numeric ids of the repository and its owner, pinned when installed (null: not read yet). */
+    val repoId: String? = null,
+    val ownerId: String? = null,
 ) {
     fun gitHub(): GitHubRepo? = GitHubRepo.parse(repo)
+
+    /** The repository's page on its host. */
+    fun page(): String? = gitHub()?.page
 
     /** "v1.2.0 · 3f2a9c1" for the details. */
     fun label(): String = listOfNotNull(ref.takeIf { it != GitHubRepo.HEAD }, commit?.take(7)).joinToString(" · ").ifEmpty { ref }
@@ -88,9 +141,10 @@ object GitHub {
     /** The tag a `releases/latest` redirect points to (`…/releases/tag/v1.2.0` → `v1.2.0`); null otherwise. */
     fun tagFromLocation(location: String?): String? {
         val l = location ?: return null
-        val i = l.indexOf("/releases/tag/")
-        if (i < 0) return null
-        return java.net.URLDecoder.decode(l.substring(i + "/releases/tag/".length).substringBefore('?').substringBefore('#'), "UTF-8").takeIf { it.isNotBlank() }
+        // GitHub and Codeberg: …/releases/tag/<tag>; GitLab: …/-/releases/<tag>.
+        val marker = listOf("/releases/tag/", "/-/releases/").firstOrNull { l.contains(it) } ?: return null
+        val tag = java.net.URLDecoder.decode(l.substring(l.indexOf(marker) + marker.length).substringBefore('?').substringBefore('#'), "UTF-8")
+        return tag.takeIf { it.isNotBlank() && it != "permalink" && !it.startsWith("permalink/") }
     }
 
     /**
@@ -100,6 +154,7 @@ object GitHub {
      */
     fun repoOf(url: String?): String? {
         val u = runCatching { java.net.URI(url ?: return null) }.getOrNull() ?: return null
+        if (u.host == "gitlab.com" || u.host == "codeberg.org") return GitHubRepo.parse("https://${u.host}${u.path.orEmpty()}")?.slug
         if (u.host !in setOf("github.com", "codeload.github.com", "raw.githubusercontent.com")) return null
         val parts = u.path.orEmpty().trim('/').split('/')
         if (parts.size < 2) return null
@@ -116,7 +171,7 @@ object GitHub {
         append("https://github.com/").append(OFFICIAL_REPO).append("/issues/new?template=report-extension.yml&labels=report")
         append("&title=").append(enc("Report: $id"))
         append("&extension=").append(enc(id)).append("&version=").append(enc(version))
-        repo?.let { append("&source=").append(enc("https://github.com/$it")) }
+        repo?.let { append("&source=").append(enc(GitHubRepo.parse(it)?.page ?: "https://github.com/$it")) }
         sha256?.let { append("&sha256=").append(enc(it)) }
     }
 

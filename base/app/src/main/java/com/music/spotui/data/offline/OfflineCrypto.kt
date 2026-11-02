@@ -136,12 +136,18 @@ object OfflineCrypto {
         private var uri: Uri? = null
         private var left = 0L
         private var usingOther = false
+        /** The address an extension gave is read through the safe client, never through [other] (see [MediaDataSource]). */
+        private val net = com.music.spotui.extensions.MediaDataSource()
+        /** Which of [other] and [net] is open when [usingOther]. */
+        private var active: DataSource = other
         /** An extension's DASH answer, read as one file (see [DashLive]). */
         private var dash: DashLive? = null
         private var dashAt = 0L
         /** The song's first bytes read ahead ([StreamHead]), served before [other] goes on from their end. */
         private var head: ByteArray? = null
         private var headAt = 0
+        private var transformed: java.io.InputStream? = null
+        private var transformedLeft = C.LENGTH_UNSET.toLong()
 
         override fun open(dataSpec: DataSpec): Long {
             uri = dataSpec.uri
@@ -149,20 +155,39 @@ object OfflineCrypto {
             // player's loading thread, then read from where it says with its headers. An address
             // the server refuses (expired or gone: 401, 403, 404, 410) is asked for once more.
             if (dataSpec.uri.scheme == com.music.spotui.extensions.ExtensionAudio.SCHEME) {
-                val length = com.music.spotui.extensions.AudioRoute.openStream(
-                    ask = { again -> com.music.spotui.extensions.ExtensionAudio.resolve(dataSpec.uri, again) },
-                    open = { stream ->
-                        try {
-                            if (stream.manifest != null) openDash(dataSpec, stream) else openUrl(dataSpec, stream)
-                        } catch (e: IOException) {
-                            // Closed before it is opened again (it keeps the source that failed).
-                            runCatching { other.close() }
-                            throw e
-                        }
-                    },
-                    status = { (it as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode },
-                )
+                val status = { t: Throwable -> (t as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode }
+                // How its address opened, for the song's play attempt ("Why this source?").
+                val trackId = dataSpec.uri.lastPathSegment
+                val t0 = android.os.SystemClock.elapsedRealtime()
+                var tried: app.myspoti.extensions.AudioStream? = null
+                val length = try {
+                    com.music.spotui.extensions.AudioRoute.openStream(
+                        ask = { again -> com.music.spotui.extensions.ExtensionAudio.resolve(dataSpec.uri, again) },
+                        open = { stream ->
+                            tried = stream
+                            try {
+                                if (stream.manifest != null) openDash(dataSpec, stream) else openUrl(dataSpec, stream)
+                            } catch (e: IOException) {
+                                // Closed before it is opened again (it keeps the source that failed).
+                                runCatching { net.close() }
+                                throw e
+                            }
+                        },
+                        status = status,
+                    )
+                } catch (e: IOException) {
+                    val code = generateSequence<Throwable>(e) { it.cause }.take(8).mapNotNull(status).firstOrNull()
+                    com.music.spotui.extensions.Extensions.noteAttempt(trackId) {
+                        it.copy(open = app.myspoti.extensions.PlayAttempt.Open(false, android.os.SystemClock.elapsedRealtime() - t0, code, e.message ?: e.javaClass.simpleName, tried?.url?.ifBlank { null }))
+                    }
+                    throw e
+                }
                 usingOther = dash == null
+                val code = if (dash == null && dataSpec.position == 0L) net.responseCode.takeIf { it > 0 } else null
+                com.music.spotui.extensions.Extensions.noteAttempt(trackId) {
+                    if (it.open?.ok == true && dataSpec.position != 0L) it
+                    else it.copy(open = app.myspoti.extensions.PlayAttempt.Open(true, android.os.SystemClock.elapsedRealtime() - t0, code, null, tried?.url?.ifBlank { null } ?: "dash manifest"))
+                }
                 return length
             }
             // A YouTube link kept in a phone list: its audio address is asked here, waited for while
@@ -184,6 +209,7 @@ object OfflineCrypto {
             val file = dataSpec.uri.takeIf { it.scheme == "file" }?.path?.let(::File)
             if (file == null || !isEncrypted(file)) {
                 usingOther = true
+                active = other
                 return other.open(dataSpec)
             }
             transferInitializing(dataSpec)
@@ -202,23 +228,44 @@ object OfflineCrypto {
 
         /** The address an extension gave; from its start read ahead when there is one (else as usual). */
         private fun openUrl(dataSpec: DataSpec, stream: app.myspoti.extensions.AudioStream): Long {
+            active = net
             val spec = dataSpec.buildUpon().setUri(Uri.parse(stream.url))
                 .setHttpRequestHeaders(dataSpec.httpRequestHeaders + stream.headers).build()
+            stream.transform?.let { transform ->
+                val aligned = dataSpec.position / transform.segmentBytes * transform.segmentBytes
+                val skip = dataSpec.position - aligned
+                val available = net.open(spec.buildUpon().setPosition(aligned).setLength(C.LENGTH_UNSET.toLong()).build())
+                val input = object : java.io.InputStream() {
+                    override fun read(): Int {
+                        val b = ByteArray(1)
+                        return if (net.read(b,0,1) < 0) -1 else b[0].toInt() and 255
+                    }
+                    override fun read(b: ByteArray, off: Int, len: Int) = net.read(b,off,len)
+                }
+                val decoded = app.myspoti.extensions.PatternedBlowfish.open(input,transform,aligned)
+                var leftToSkip = skip
+                while (leftToSkip-- > 0) if (decoded.read() < 0) throw java.io.EOFException("transform: seek past end")
+                transformed = decoded
+                val rest = if (available == C.LENGTH_UNSET.toLong()) available else (available-skip).coerceAtLeast(0)
+                transformedLeft = if (dataSpec.length == C.LENGTH_UNSET.toLong()) rest else
+                    if (rest == C.LENGTH_UNSET.toLong()) dataSpec.length else minOf(rest,dataSpec.length)
+                return transformedLeft
+            }
             val ahead = if (dataSpec.position == 0L && dataSpec.length == C.LENGTH_UNSET.toLong())
                 StreamHead.take(dataSpec.uri.lastPathSegment.orEmpty(), stream.url) else null
             if (ahead != null) {
                 try {
-                    val rest = other.open(spec.buildUpon().setPosition(ahead.bytes.size.toLong()).build())
+                    val rest = net.open(spec.buildUpon().setPosition(ahead.bytes.size.toLong()).build())
                     head = ahead.bytes
                     headAt = 0
                     android.util.Log.d(LOG, "stream: opened from its read-ahead start (${ahead.bytes.size} bytes), ${if (rest == C.LENGTH_UNSET.toLong()) "length unknown" else "${ahead.bytes.size + rest} bytes"}")
                     return if (rest == C.LENGTH_UNSET.toLong()) rest else ahead.bytes.size + rest
                 } catch (e: IOException) {
                     // The rest could not be had from there: the whole file, as without a head.
-                    runCatching { other.close() }
+                    runCatching { net.close() }
                 }
             }
-            return other.open(spec).also { n ->
+            return net.open(spec).also { n ->
                 android.util.Log.d(LOG, "stream: opened at ${dataSpec.position}, ${if (n == C.LENGTH_UNSET.toLong()) "length unknown" else "$n bytes"}")
             }
         }
@@ -236,6 +283,14 @@ object OfflineCrypto {
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            transformed?.let { decoded ->
+                if (length == 0) return 0
+                if (transformedLeft == 0L) return C.RESULT_END_OF_INPUT
+                val want = if (transformedLeft == C.LENGTH_UNSET.toLong()) length else minOf(length.toLong(),transformedLeft).toInt()
+                val n = decoded.read(buffer,offset,want)
+                if (n > 0 && transformedLeft != C.LENGTH_UNSET.toLong()) transformedLeft -= n
+                return n
+            }
             head?.let { h ->
                 if (headAt < h.size) {
                     if (length == 0) return 0
@@ -246,7 +301,7 @@ object OfflineCrypto {
                 }
                 head = null
             }
-            if (usingOther) return other.read(buffer, offset, length)
+            if (usingOther) return active.read(buffer, offset, length)
             dash?.let { live ->
                 if (length == 0) return 0
                 if (left == 0L) return C.RESULT_END_OF_INPUT
@@ -267,11 +322,12 @@ object OfflineCrypto {
             return n
         }
 
-        override fun getUri(): Uri? = if (usingOther) other.uri else uri
+        override fun getUri(): Uri? = if (usingOther) active.uri else uri
 
         override fun close() {
             head = null
-            if (usingOther) { usingOther = false; other.close(); return }
+            transformed?.close(); transformed = null
+            if (usingOther) { usingOther = false; active.close(); return }
             if (dash != null) { dash = null; if (uri != null) { uri = null; transferEnded() }; return }
             raf?.close(); raf = null; cipher = null
             if (uri != null) { uri = null; transferEnded() }

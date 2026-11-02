@@ -23,4 +23,5 @@
     <string name="account_page_title">Λογαριασμός Spotify</string>
     <string name="account_page_detail">Πρόγραμμα, απόρρητο και συσκευές, στο spotify.com</string>
     <string name="player_source_downloaded">Έχει ληφθεί</string>
+    <string name="extension_change_write">Μπορεί πλέον να στέλνει και στο Spotify: %1$s</string>
 </resources>

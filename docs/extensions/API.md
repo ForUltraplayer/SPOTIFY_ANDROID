@@ -11,6 +11,10 @@ API it unlocks; the user sees them as icons, each with your reason, before insta
 This page documents what the build ships (API version 1). Nothing here is a promise about
 anything else.
 
+Feature-gated media transforms and concurrent source resolution are described in
+[SOURCE-PIPELINES.md](SOURCE-PIPELINES.md). Providers and recording matching remain
+extension responsibilities; the host keeps its existing safe media transport.
+
 ## 1. A minimal extension
 
 `manifest.json`:
@@ -94,8 +98,8 @@ switch and action icons, in the user's order (arrows; installation order until m
 is the one the area asks them in (section 3) and the one the playback arbiter uses. The Built-in row says in
 one plain sentence what the app already does there; an area no extension acts in says "No
 extension — the app already does: …". Nothing is ever installed without the install prompt, and
-the samples in `docs/extensions/samples` are for authors only. An exclusive
-action shows which extension is **Active** and which are **Idle**. Under each area, the last things
+the samples in `docs/extensions/samples` are for authors only. Audio and download sources are
+ordered in Settings (Playback, Downloads). Under each area, the last things
 extensions did there ("Lyrics of X from Y", "Skipped by Z") with a one-tap Turn off.
 
 ## 2. Manifest
@@ -138,7 +142,7 @@ An action entry: `{ "name": "...", "why": "...", "hosts": [...] }`.
 **Old manifests** (before actions: `provides` + `permissions`) still load and install, mapped to
 actions (section 4.1); `myspoti-ext check` says so. `actions` cannot be mixed with them.
 
-A setting: `{ "key", "type", "label", "description", "default", "options" }`.
+A setting: `{ "key", "type", "label", "description", "default", "options", "section"?, "role"?, "perNetwork"? }`.
 
 - `key`: letters, digits, `_`, 1 to 40 characters.
 - `type`: `text` (default), `secret` (a password field, never logged), `toggle`, `number`, `choice`, `button`.
@@ -149,6 +153,35 @@ A setting: `{ "key", "type", "label", "description", "default", "options" }`.
   Pressing it sends the `setting` event with `pressed: true` (section 3). Typical uses: pair again
   with a server, clear a cache, sign in again.
 - Read it with `myspoti.settings.get(key)`: the user's value, else `default`, else `undefined`.
+- `section` (optional): `"playback"` or `"downloads"`. The setting is also shown in the app's
+  Settings → Playback or Settings → Downloads, in a card headed "<your extension's name> settings",
+  drawn as on your page (same value: changing it in one place changes it in the other). Only the
+  **first source** of the user's order shows its settings there:
+  - Playback: the first source of the audio order (section 3, `audio-source`), when it is your
+    extension, above Spotify, and turned on. Spotify's own Wi-Fi and mobile data quality then leave
+    that screen (they keep their value, and Spotify still uses it for the songs it plays); moving
+    Spotify back to the top brings them back and your settings stay on your page only.
+  - Downloads: the first extension of the download order, turned on. The app's own download
+    quality leaves that screen only for your `role: quality` setting; the app still sends its own
+    value as `quality` to every extension in `download-source`.
+  An extension below the first one, turned off or not installed shows nothing there. Without
+  `section`, a setting is on your page only, as always. An unknown value is ignored (your page only);
+  `myspoti-ext check` warns. A section is only ever shown for an extension that asks the matching
+  action (`audio.source`, `download.source`).
+- `role` (optional): `"quality"`, on a `choice` with a `section`, one per section at most: your
+  extension's quality. Shown first-class in that section (in the place of the app's), and its value
+  when the song was played or downloaded is cited in "Why this source?" and in Stats for nerds
+  ("Quality: FLAC", your label and option). Any other value is ignored (check warns).
+- `perNetwork` (optional, `true`; for `choice`, `toggle`, `number`, `text`): one value on Wi-Fi and
+  one on mobile data, both shown ("<label> · Wi-Fi", "<label> · Mobile data").
+  `myspoti.settings.get(key)` still gives one plain value: the one of the network the phone is on,
+  by the app's own rule for Spotify's streaming quality (a metered network is mobile data, Wi-Fi
+  otherwise). Until the user sets the mobile data value it is the Wi-Fi one, then `default`. When
+  the phone changes network and the value `get` gives changes with it, the `setting` event comes
+  with `{ key, network: true }` (section 3). Ignored on `secret` and `button` (check refuses it).
+
+`myspoti.features` contains `settings.section` on a Myspoti that knows these three fields; an older
+one ignores them (the setting is on your page, one value), so a manifest using them stays valid there.
 
 Settings are shown on the extension's page. Every installed extension that declares settings is also
 listed in the app's Settings screen, in the section "Extensions", and each row opens its page.
@@ -159,6 +192,39 @@ A downloader with a quality choice and a button (its manifest also lists `settin
 "settings": [
   { "key": "quality", "type": "choice", "label": "Quality", "options": ["FLAC", "MP3 320", "AAC 256"], "default": "FLAC" },
   { "key": "pair", "type": "button", "label": "Pair again with the server" }
+]
+```
+
+A sound source (actions `audio.source` and `settings.page`) that shows its quality, one per
+network, and a switch in Settings → Playback while it is above Spotify:
+
+```json
+"settings": [
+  { "key": "quality", "type": "choice", "label": "Quality", "options": ["Hi-Res", "FLAC", "AAC 256"],
+    "default": "FLAC", "section": "playback", "role": "quality", "perNetwork": true },
+  { "key": "gapless", "type": "toggle", "label": "Gapless albums", "default": true, "section": "playback" },
+  { "key": "token", "type": "secret", "label": "Account token" }
+]
+```
+
+```js
+myspoti.provide('audio-source', function (t) {
+  var q = myspoti.settings.get('quality'); // "FLAC" on Wi-Fi, "AAC 256" on mobile data if the user set so
+  // ...
+});
+myspoti.on('setting', function (e) {
+  if (e.key === 'quality') myspoti.log((e.network ? 'network changed: ' : '') + 'quality ' + myspoti.settings.get('quality'));
+});
+```
+
+A downloader (actions `download.source` and `settings.page`) whose quality replaces the app's in
+Settings → Downloads while it is the first downloader:
+
+```json
+"settings": [
+  { "key": "format", "type": "choice", "label": "Format", "options": ["FLAC 24-bit", "FLAC 16-bit", "MP3 320"],
+    "default": "FLAC 16-bit", "section": "downloads", "role": "quality" },
+  { "key": "folder", "type": "text", "label": "Album folder name", "section": "downloads" }
 ]
 ```
 
@@ -188,10 +254,13 @@ player.buttons action in the manifest`):
 
 The lyrics, song details, Home, search, menu and player hooks are **additive**: every extension is
 asked, the answers merged in the area's order (lyrics: the best, ties to the higher one). Audio and
-downloads are **exclusive**: only the active extension of the area is asked (section 4.2). Registering twice replaces. Returning
-`null`/`undefined` means "no answer": the app goes on without this extension. A throw or a timeout
-is a failure (recorded as the extension's last error, shown on its page). Calls are synchronous:
-return the answer, do not return a promise.
+downloads are **ordered**: asked one after the other in the user's order until one answers (section 4.2). Registering twice replaces. Returning
+`null`/`undefined` means "no answer": the app goes on without this extension. A throw is a
+failure (recorded as the extension's last error, shown on its page; 3 in a row turn it off). A
+timeout, or an `http` error your script did not catch (DNS, connection, timeout), is a **network**
+error: logged, never counted as a failure, so a slow or rate-limited server never turns an extension
+off. `lyrics`, `audio-source` and `download-source` may also say why they have nothing with an
+outcome (section 3, "Outcomes"). Calls are synchronous: return the answer, do not return a promise.
 
 The input of every hook, and of the `track` event, is this track:
 
@@ -213,8 +282,14 @@ Asked among the app's own lyrics sources. Return one of:
     { time: 1500,                   // ms from the start; missing = 0
       end: 4000,                    // optional ms
       text: 'line',                 // 500 characters at most
-      words: [ { time: 1500, end: 1900, text: 'word' } ]   // optional, `time` required, 200 at most
-    } ] }
+      words: [ { time: 1500, end: 1900, text: 'word' } ],  // optional, `time` required, 200 at most
+      translation: 'translated line',   // optional, in `translationLanguage`
+      romanization: 'line in latin letters',  // optional
+      voice: 2,                         // optional: who sings, 1 = first singer, 2 = second..., 0 = together
+      background: 'ooh'                 // optional: backing vocals sung over the line, 500 characters at most
+    } ],
+  translationLanguage: 'en'             // optional: the language of the `translation`s ('en', 'pt-BR')
+}
 ```
 
 or `{ provider?, plain: 'text\nof the song' }` for unsynced lyrics (one line per row; used only
@@ -222,13 +297,22 @@ when `lines` is absent). At most 3000 lines (more is an error). Times are number
 strings, in milliseconds. Lyrics with no non-blank text count as no answer. Word-by-word display
 needs `synced` and at least one line with `words`.
 
+`translation`, `romanization`, `voice`, `background` and `translationLanguage` are optional and
+additive: leave them out and nothing changes, and one of the wrong type (a number for a text, a
+`voice` that is not a number, `"v2"` or `"2"`) is ignored, never an error. A `translation` is shown in
+place of Myspoti's machine translation only when `translationLanguage` is sent and is the language
+the reader asked for (the first part of the tag decides: `en` covers `en-US`); lines without one are
+machine translated. `voice` marks a duet when at least two different singers appear; `romanization`
+is for scripts that are not Latin (Japanese, Korean, Chinese, Cyrillic...). An older Myspoti
+simply does not read these fields.
+
 Action: `lyrics.provide` (normal). Usually you also need `network`.
 
 ### `audio-source`
 
 Where the audio of a song is. The song then plays in Myspoti's own player, like a download;
-Spotify's player does not play it. Action: `audio.source` (critical, exclusive: one active
-extension).
+Spotify's player does not play it. Action: `audio.source` (critical, ordered: the sources are
+asked in the user's order, Spotify included; the ones under Spotify are not asked).
 
 ```js
 { url: 'https://cdn.example.com/a.m4a',   // http or https, not a local address; required
@@ -304,7 +388,7 @@ what you hand over: it downloads the file, runs the same checks on any file what
 recording: if you want that check (an official preview, a fingerprint), do it in the extension
 before answering, and say `isrcMatched` only for a file you found by the song's ISRC. Without an
 extension providing this hook, downloads tell the user to install one. Action: `download.source`
-(critical, exclusive: one active extension).
+(critical, ordered: asked in the user's order until one has the song).
 
 The input is the track of this section plus `quality`, what the user asked for:
 
@@ -338,8 +422,8 @@ a real FLAC file (its header is read), an `m4a` or `mp3` must hold an audio trac
 read, and the length must be the song's (Spotify's duration): not shorter by more than 5 s
 (previews are refused) nor longer by more than 15 s (another version). `m4a` and `mp3` are kept as
 served. A format outside the list, a private address or a missing `format` is an error. The
-extensions are asked at once; the first one installed that answers wins. Time limit: 30 s (the
-desktop runner: the same).
+extensions are asked in the user's order for downloads (section 4.2); the first one that answers
+wins. Time limit: 30 s (the desktop runner: the same).
 
 ### `status`
 
@@ -368,6 +452,43 @@ myspoti.provide('status', function () {
   start): the extension stays in use, and its log says the probe had no answer.
 - Without a `status` hook an extension is always live. Check
   `myspoti.features.indexOf('status') >= 0`: an older Myspoti never asks it.
+
+### Outcomes (`results`)
+
+`lyrics`, `audio-source` and `download-source` may answer **why** they have nothing instead of
+`null`, when `myspoti.features.indexOf('results') >= 0` (an older Myspoti reads such an answer as no
+answer, or as a malformed one: check the feature first):
+
+```js
+myspoti.provide('audio-source', function (track) {
+  var r = myspoti.http.get('https://api.example.com/find?isrc=' + track.isrc);
+  var results = myspoti.features && myspoti.features.indexOf('results') >= 0;
+  if (r.status === 429 && results) return { outcome: 'rate-limited', retryAfterMs: 1000 * Number(r.headers['retry-after'] || 60) };
+  if (r.status === 401 && results) return { outcome: 'sign-in', detail: 'Sign in again in the settings' };
+  if (!r.ok) return null;
+  return { url: r.json().url };
+});
+```
+
+| `outcome` | Fields | What the app does |
+|---|---|---|
+| `not-found` | | Same as `null`. |
+| `sign-in` | `detail?` | A notice "sign in to keep using its source" with a **Sign in** button that opens your extension's page (offer the sign-in there: a setting button, your page). Gone at your next answer with audio, or after a sign-in page reached its callback. |
+| `rate-limited` | `retryAfterMs?` | Your source is set aside (not asked) for `retryAfterMs`, bounded to 30 s – 15 min (60 s without it). |
+| `server-down` | `untilMs?` (wall-clock ms) or `retryAfterMs?` | Set aside until then, bounded to 30 s – 15 min (5 min without either). |
+| `quality-unavailable` | `available?: ["cd", …]` | Logged and shown in "Why this source?"; the next source is asked. |
+| `network` | `detail?` | A network error you caught: logged, not counted. |
+| `error` | `detail?` | A failure you caught: logged, not counted (an uncaught throw is). |
+
+Every field is optional; `detail` is trimmed to 120 characters. An unknown `outcome` is a failure.
+Every outcome, the ones the app classifies itself too (`found`, `not-found`, `network` for a timeout
+or an `http` error, `bug` for a throw), is written to your extension's log with its time. Three
+network errors in a row also set a source aside (30 s, doubling up to 15 min). While a source is set
+aside the next one is asked, or the song plays from Spotify. The player's sound quality sheet has
+**Why this source?**: for the song playing, each source asked with its outcome and time, the ones
+skipped and why, the one chosen, how its address opened (time, HTTP status, error), the quality it
+announced and the one the player's decoder reports (its input, not proof of a bit-perfect output).
+Addresses are shown without their query string.
 
 ### `track` event
 
@@ -553,6 +674,9 @@ extension's settings (section 2):
 - `{ key }` when a setting changed. For a text field, it comes once the user stops typing for a
   moment. Read the new value with `myspoti.settings.get(key)`. The event carries only the key.
 - `{ key, pressed: true }` when the user presses a `button` setting.
+- `{ key, network: true }` when the phone went from Wi-Fi to mobile data or back and a `perNetwork`
+  setting's value (what `myspoti.settings.get(key)` gives) changed with it. Changing either of its
+  two values by hand sends `{ key }`, as any setting.
 
 It needs `settings.page` in the manifest (checked when you call `on`). Time limit 30 s per delivery.
 
@@ -568,7 +692,7 @@ myspoti.on('setting', function (e) {
 The closed catalogue. The icon is the Material Rounded icon the app draws; the user sees the icon,
 the label and your `why`. **Critical** actions are shown in the warning colour and explained; the
 app frames them at run time (destructive Spotify writes are confirmed one by one, section 6; audio
-and downloads are exclusive; pages are locked down, sign-in pages have their own profile). The sandbox enforces exactly what the manifest
+and downloads are asked in the user's order; pages are locked down, sign-in pages have their own profile). The sandbox enforces exactly what the manifest
 declares: a call outside it throws (`"x is not in this extension's manifest (actions)"`). The user
 cannot untick single actions: installing grants all of them. An extension installed by an older
 Myspoti that let the user untick some stays off, with a "Waits for your OK" card on its page,
@@ -581,8 +705,8 @@ until the user accepts them all with the same tick.
 | `playback.events` | GraphicEq | Know what you play | normal | shared | `myspoti.player.current()`, `myspoti.on('track' \| 'playback')`, `spotify.player` state, queue, volume, media (`myspoti.spotify.media`) |
 | `lyrics.provide` | Lyrics | Provide lyrics | normal | additive, takeover | `lyrics` hook |
 | `trackinfo.provide` | Info | Add song details | normal | additive, takeover | `trackinfo` hook |
-| `audio.source` | Headphones | Play audio from elsewhere | **critical** | exclusive, takeover | `audio-source` hook |
-| `download.source` | Download | Provide downloads | **critical** | exclusive, takeover | `download-source` hook |
+| `audio.source` | Headphones | Play audio from elsewhere | **critical** | ordered, takeover | `audio-source` hook |
+| `download.source` | Download | Provide downloads | **critical** | ordered, takeover | `download-source` hook |
 | `home.sections` | Dashboard | Add Home sections | normal | additive, takeover | `home` hook |
 | `search.provide` | ManageSearch | Add search results | normal | additive, takeover | `search` hook |
 | `menu.items` | MoreHoriz | Add menu entries | normal | additive, takeover | `menu` hook |
@@ -598,6 +722,7 @@ until the user accepts them all with the same tick.
 | `webview.page` | Web | Its own web page | **critical** | takeover | `page` and `message` hooks, `myspoti.page.post` |
 | `webview.auth` | Key | Sign in on a website | **critical** | takeover | `myspoti.auth.open`, `auth` event |
 | `storage` | Save | Keep its own data | normal | shared | `myspoti.storage` (512 KB) |
+| `attest` | Fingerprint | Prove this is Myspoti | normal | shared | `myspoti.attest` (section 10) |
 
 ### 4.1 Old manifests
 
@@ -616,10 +741,10 @@ migrated the same way when the app starts.
 
 - **Additive** actions (lyrics, song details, Home, search, menus, player): every extension adds;
   answers are merged in the area's order, duplicates dropped, quotas per extension (section 3).
-- **Exclusive** actions (`audio.source`, `download.source`): one extension acts per action, the one
-  the user made active (else the first in the area). Installing or turning on a second says
-  "Replaces *song audio*, currently provided by Y" and the user picks; the other stays installed,
-  idle, and can be made active again from the Installed tab.
+- **Ordered** actions (`audio.source`, `download.source`): every source is asked in the order the
+  user sets in Settings (Playback, Downloads), each action its own order, until one answers. A new
+  source goes last; installing a second one asks nothing. For audio, Spotify has its place in the
+  order too (last until moved): the sources under it are not asked.
 - `conflictsWith` / `replaces`: "Incompatible with X (installed)" / "Replaces X (installed)" in the
   store, and the install or turn-on prompt asks which to keep; the one not kept is turned off (or the
   new one installs turned off).
@@ -667,7 +792,7 @@ A script that throws while loading fails to load, with `file:line` in the messag
 |---|---|
 | `myspoti.apiVersion` | `1`. |
 | `myspoti.extension` | `{ id, name, version }` from the manifest. |
-| `myspoti.features` | What this Myspoti understands beyond the first API: `audio.manifest`, `audio.expires`, `audio.quality`, `audio.ahead` (section 3, `audio-source`), `http.all`, `status` (section 3). Missing on an older Myspoti: test `myspoti.features && myspoti.features.indexOf(name) >= 0`. |
+| `myspoti.features` | What this Myspoti understands beyond the first API: `audio.manifest`, `audio.expires`, `audio.quality`, `audio.ahead` (section 3, `audio-source`), `http.all`, `status` (section 3), `results` (section 3, "Outcomes"), `settings.section` (section 2: a setting's `section`, `role`, `perNetwork`), `attest` (section 10, only when the user granted it). Missing on an older Myspoti: test `myspoti.features && myspoti.features.indexOf(name) >= 0`. |
 | `myspoti.provide(hook, fn)` | Section 3. |
 | `myspoti.on('track' \| 'playback', fn)` | Section 3. Needs `playback.events`. |
 | `myspoti.on('auth', fn)` | Section 3, sign in. Needs `webview.auth`. |
@@ -687,6 +812,7 @@ A script that throws while loading fails to load, with `file:line` in the messag
 | `myspoti.ui.refresh(place)` | Section 3, blocks. The place's action. |
 | `myspoti.page.post(data)` | Section 3, pages. `webview.page`. |
 | `myspoti.spotify.<area>.<method>(...)` | Section 6. |
+| `myspoti.attest.enroll(challenge)` / `.publicKey()` / `.sign(text)` / `.reset()` | Section 10. A signing key of its own in the phone's hardware keystore, with its key attestation, to prove requests to your own server. Needs `attest`. |
 | `myspoti.notify(text)` | A short message on screen, 200 characters, with your extension's name. `notify`. |
 | `myspoti.log(...)`, `console.log/info/warn/error(...)` | Same thing: arguments joined by spaces, objects as JSON, 2000 characters at most. |
 | `myspoti.util.base64Encode(s)` / `base64Decode(s)` | UTF-8 text. Decode throws on bad input. |
@@ -854,6 +980,7 @@ type means optional/nullable. Returns of "—" mean `null`.
 | `skipTo(item: {uri,uid?})` | — | write |  |
 | `moveInQueue(item: {uri,uid?}, target: {uri,uid?}, after = false)` | — | write |  |
 | `setVolume(level: number)` | — | write |  |
+| `setLocalMute(on: boolean)` | `playback.mirror` (critical) | write | Keeps Spotify playing unheard on this phone (`myspoti.features` has `player.localMute` only when the user granted `playback.mirror`). It can keep Spotify playing silently and counts listens on the user's Spotify account, so the user ticks the accept-risk box. Host rules, whatever the script does: honoured only while Myspoti's own local / extension player is playing; one extension at a time; at most one enable per 20 s; cleared by itself on track change, local pause or stop, the local track's duration, and when the extension is disabled, uninstalled, blocked or crashes. Refused while Myspoti's own Connect mirror (Settings, "Count extension plays on Spotify", on by default) plays the song on the page itself, and an extension's mirror ends when that one starts. Both players show "Spotify mirrored by <extension>", and the Activity log and Logbook record each enable and clear. Existing installs do not have it until the user accepts the action through the update / consent flow. |
 | `setSpeed(speed: number)` | — | write |  |
 
 `media(trackUri)` (also `myspoti.spotify.media(trackUri)`) returns the media manifest Spotify sent the
@@ -1115,14 +1242,16 @@ is. `playlists.setCover` takes a JPEG as base64.
 | What | Limit |
 |---|---|
 | Loading the script (its top level; compiling it is not counted) | 3 s |
-| A hook call | Set by the app per call (the app and the desktop runner: 8 s for `lyrics`, 15 s for `audio-source`, 30 s for `download-source`) |
+| A hook call | One table for the app and the desktop runner (`HookBudgets`): 8 s for `lyrics`, 15 s for `audio-source`, 30 s for `download-source`, 3 s for blocks hooks, `tap` and `message`, 5 s for `page` and `status` |
 | A `track` or `playback` event | 3 s |
-| A `setting` event | 30 s |
+| A `setting` or `online` event | 30 s |
+| An `auth` event | 10 s |
 | Script work | Checked every 5000 instructions against the call's time; a loop cannot hold the thread. A call that runs over is abandoned, and it cannot be caught by `try/catch`. The next call waits behind it on the extension's own thread, never on the app's. |
 | Recursion | 800 interpreter frames |
 | Time spent waiting for the user to confirm | Not counted |
 | `myspoti.http` | 120 requests/min, 5 MB per response, 20 s per request, https only; `http.all`: 4 at once |
 | `myspoti.spotify` | 60 calls/min, 256 KB of arguments, 1000 items per list, 2 MB per answer |
+| `myspoti.attest` | `sign` 120/min and 64 KB of text; `enroll` 5/hour and a challenge of 128 bytes |
 | Storage | 512 KB (keys and values together) |
 | Sign-in page | One at a time |
 | `myspoti.work.whenOnline()` | 30 s |
@@ -1146,14 +1275,15 @@ to the confirmation prompt below. Give absolute paths.)
 
 | Command | Does |
 |---|---|
-| `check <folder>` | Prints the manifest's problems (`✗ ...`, e.g. a missing or too long `why`), says when it is an old manifest, loads the script, prints each action as the user sees it (icon name, label, level, why), then asks each blocks hook it provides once with a sample and checks the blocks (and the page). Exit 1 on a problem. |
+| `check <folder\|zip>` | Package validity only: prints the manifest's problems (`✗ ...`, e.g. a missing or too long `why`), says when it is an old manifest, loads the script, prints the hooks it provides and each action as the user sees it (icon name, label, level, why). It never calls a hook. Exit 1 on a problem. |
+| `test <folder\|zip> --scenario file.json [--state file.json]` | Runs a scenario (below): hook calls, events and page messages in order with the app's time limits, requests answered or broken by rules, storage kept across steps. Prints each step (`✓`/`✗`, outcome, time); exit 1 when a step failed. |
 | `run <folder\|zip> lyrics --title T --artist A [options]` | Calls the hook and prints what it answered, parsed the way the app parses it (lines, `synced`, `word by word`, or the audio URL and headers). |
 | `run <folder\|zip> audio-source ...` | Same for the audio hook. |
 | `run <folder\|zip> download-source ... [--quality hi-res\|cd\|small]` | Same for the download hook: prints the files, best first, as the app reads them (default quality `cd`). |
 | `run <folder\|zip> audio-source ... [--ahead true]` | Asks for a song's audio (with `ahead: true` when given) and prints the answer as the app reads it: address or manifest, `expiresInMs`, quality. |
 | `run <folder\|zip> home\|search\|menu\|player\|trackinfo ...` | Calls a blocks hook (`--query Q` for search, `--kind track\|album\|playlist\|artist` for menu) and prints the blocks as the app reads them. |
 | `run <folder\|zip> page\|message\|tap ...` | The page hook (prints title and HTML), a page message (`--data JSON`), a tap (`--action ID`). |
-| `run <folder\|zip> status --title T` | Asks `status` as the app does (5 s) and prints live, or inactive and why (`check` prints it too). |
+| `run <folder\|zip> status --title T` | Asks `status` as the app does (5 s) and prints live, or inactive and why. |
 | `run <folder\|zip> track ...` | Delivers the `track` event. |
 | `run <folder\|zip> playback ... [--played MS] [--leave skip\|end\|stop]` | Delivers a play of the song as `playback` events, at once, with the times they would have had: `start`, a `progress` every 10 s up to `--played` (default 40000), then `skip` (forward), `end` (finished) or `end` (stop). Also `--context URI`, `--shuffle true`, `--source local\|spotify`, `--origin spotify\|download\|audio-source\|local-file` and `--provider ID` (also for `track`). |
 | `pack <folder> [out-folder]` | Checks, builds `<id>-<version>.zip`, prints its sha256 and its index entry. |
@@ -1162,9 +1292,19 @@ to the confirmation prompt below. Give absolute paths.)
 `run` options: `--title T` (required), `--artist "A, B"` (comma-separated; the first one is
 `artist`), `--album B`, `--duration MS`, `--id SPOTIFY_ID` (also sets `uri`), `--isrc ISRC`,
 `--set key=value` (a setting; repeat; `true`, `false` and numbers are passed as such, anything else
-as text; unset ones use the manifest `default`).
+as text; unset ones use the manifest `default`; `--set key@cell=value` is a `perNetwork` setting's
+mobile data value), `--network cell` (the phone is on mobile data, for `perNetwork` settings; default
+Wi-Fi).
 
-What the runner does: every right the manifest asks is granted. Storage is in memory for the run.
+`check` also checks `section`, `role` and `perNetwork`: `role: quality` on a non-`choice`, without
+a section or twice in a section, and `perNetwork` on a `secret` or `button` are problems (✗, exit 1);
+an unknown `section` or `role`, or a section the extension's actions can never lead, are warnings (!).
+The app itself never refuses such a package: it shows the setting on its page, as one value.
+
+What the runner does: every right the manifest asks is granted. Each hook and event gets the app's
+own time limit (section 7). An answer `{ outcome }` is printed as the app reads it. Storage is in
+memory for the run (`test --state` keeps it in a file).
+`myspoti.attest` works with a software key kept between runs (section 10).
 `log`, `console`, `notify` and failures go to stderr as `[id] message`. `player` controls print
 `player: <action>` and answer `true`. `myspoti.player.current()` returns the `--title` track.
 `http` is real (same host rules as the app).
@@ -1197,6 +1337,47 @@ rights granted. A bug inside `provide('lyrics', ...)`, a wrong response shape, a
 or a `myspoti.spotify` call fail only under `run`. A top-level call to `myspoti.spotify` fails in
 `check`. `run ... track` prints `delivered` even if the listener threw: read the `failed: ...` line
 on stderr.
+
+### 8.1 Scenarios (`test`)
+
+A scenario is a JSON file:
+
+```json
+{
+  "offline": true,
+  "settings": { "region": "eu" },
+  "track": { "title": "Papaoutai", "artist": "Stromae", "isrc": "BEUM71300139" },
+  "http": [ { "match": "api.example.com/find", "body": { "url": "https://cdn.example.com/a.flac" } } ],
+  "steps": [
+    { "hook": "audio-source", "expect": { "outcome": "found", "maxMs": 2000 } },
+    { "http": [ { "match": "api.example.com", "status": 429, "retryAfter": 30 } ] },
+    { "hook": "audio-source", "expect": { "outcome": "rate-limited", "retryAfterMs": 30000 } },
+    { "http": [ { "match": "*", "latencyMs": 20000 } ] },
+    { "hook": "audio-source", "cancelAtMs": 500, "expect": { "outcome": "cancelled" } },
+    { "event": "online" },
+    { "message": { "type": "hello" }, "expect": { "posted": 1, "contains": "hi" } },
+    { "storage": { "lastIsrc": "BEUM71300139" } }
+  ]
+}
+```
+
+- **`http` rules** (at the top, or as a step that replaces them from then on): a request whose URL
+  contains `match` (`*`: all) waits `latencyMs` (past the request's timeout: a timeout), then fails
+  with `dns: true` (no such host) or `reset: true` (connection reset), or answers `status` (200 by
+  default; 429 when only `retryAfter` is given, in seconds, sent as `Retry-After`), `headers` and
+  `body` (text, or JSON written as text). `times: n` applies a rule to n requests only. Requests no
+  rule matches go to the network, or fail as a DNS error with `"offline": true`.
+- **Steps**: `{ hook, input?, track?, quality?, ahead?, data?, action?, query?, cancelAtMs? }` calls
+  a hook (the input is built as the app builds it unless `input` is given); `cancelAtMs` ends the
+  call at that time (outcome `cancelled`). `{ event, input? }` delivers an event. `{ message }` is
+  your page posting to you; what you answer or post back is the page's. `{ wait: ms }` waits.
+  `{ storage: { key: value \| null } }` checks your storage.
+- **`expect`**: `outcome` (`found`, `not-found`, `sign-in`, `rate-limited`, `quality-unavailable`,
+  `server-down`, `network`, `bug`, `skipped`, `cancelled`; `live`/`inactive`/`unknown` for `status`),
+  `maxMs`, `minMs`, `retryAfterMs`, `contains` (a text the answer contains), `posted` (messages posted
+  to the page). A hook call over the app's time limit fails too.
+- **`--state file.json`**: your storage is read from it before the run and written back after, so
+  a run can start where the last one ended (a token, a cache).
 
 ## 9. GitHub: install, updates, store, publishing
 
@@ -1302,3 +1483,112 @@ the extension to `blocked.json` (turned off on every phone, with the reason) or 
 from the store); see `POLICY.md` and `REPORTING.md` in that repository. The same repository can also
 list "verified" extensions in its `index.json` (optional, the owner's choice; the app shows it in the
 store only when it lists at least one).
+
+
+### `raw.request` "Always allow" is per operation
+
+A write the user allows for good is a grant on method + host + path pattern. On a multiplexed endpoint (GraphQL / pathfinder, or any request whose JSON body carries `operationName` or a persisted-query `sha256Hash`) the grant also names that operation: it never covers another one. If no operation can be determined from the body on such an endpoint, "Always allow" is not offered and the user is asked each time. The consent shows the real operation, and the revocation list shows it too (`POST https://host/path [operation name]`). Grants stored before this change on such endpoints without an operation were dropped (the user is asked again). Writes declared in the manifest (`writes`) on a multiplexed path cannot cover operations; the user is asked.
+
+## 10. Prove a request comes from a genuine install (`attest`)
+
+Optional and generic: any extension that talks to **its author's own server** can use it, so that
+the server can tell a request comes from a Myspoti install running that extension, and not from a
+script that pulled a key out of the zip (there is nothing secret in a zip: anyone can read it).
+Action `attest` (normal, "Prove this is Myspoti"): the user sees it at install like the others.
+Without it, every `myspoti.attest` call throws `"attest is not in this extension's manifest
+(actions)"`. No key exists until the extension calls `enroll`. The app makes no request of its own
+for this: your script sends what it gets to your server.
+
+| Call | Does |
+|---|---|
+| `myspoti.attest.enroll(challenge)` | `challenge`: a string from your server, 1 to 128 bytes (UTF-8). Creates, or replaces, an EC P-256 signing key for **this extension** in the Android hardware keystore (StrongBox when the phone has one, else the TEE) with `challenge` as the attestation challenge. Returns `{ publicKey, certChain }`: `publicKey` is the base64 SPKI (DER), `certChain` the base64 DER certificates of the Android key attestation, leaf first. At most 5 an hour. Throws if the phone cannot make such a key. |
+| `myspoti.attest.publicKey()` | The current key's base64 SPKI, or `null` before `enroll`. |
+| `myspoti.attest.sign(text)` | The base64 DER ECDSA-SHA256 signature of the UTF-8 `text` (64 KB at most), made with this extension's key. Throws `"attest.sign: not enrolled ..."` before `enroll`. 120 a minute. |
+| `myspoti.attest.reset()` | Deletes this extension's key. Uninstalling the extension does it too. |
+
+`myspoti.features` has `attest` when the user granted it. The key's alias holds the extension's id
+(`myspoti.ext.attest.<id>`), so an extension can only ever use its own key, never another's. The key
+cannot be exported: it signs only, and only for the extension that owns it, only while the app runs
+that extension. No device identifier (serial number, IMEI) is requested: the chain says what app
+made the key and how the phone's keystore and boot state look.
+
+### What it proves, and what it does not
+
+It proves that the key lives in Android hardware (the attestation's security level is
+StrongBox or TrustedEnvironment, never Software), that **the app package made it** (the attestation
+extension, `attestationApplicationId`, holds the package name and the SHA-256 digest of the
+certificate that signed the app: `app.myspoti` or `app.myspoti.beta`, signed by the key you pin),
+and that your server asked for it (the challenge). Every later signature then comes from that key.
+
+It does **not** prove that the build is untouched: on a rooted phone, or with a patched official
+build that keeps its signature, code can still ask the app to sign things. It does not prove who
+the user is, that the content of a request is true (the extension reports what it saw), or that
+one phone is not signing in a loop for someone: use a per-key rate limit. It is a barrier against
+scripts that copy a key out of a package and against builds signed by anyone else, not against a
+determined owner of a phone.
+
+### It is optional
+
+For the author: your server can still serve clients that did not enrol, or serve them less; Myspoti
+never requires it. For the user: it is one more line in the install prompt, the extension works
+without it for everything else, nothing is sent anywhere by the app, and the key is theirs to lose
+by uninstalling.
+
+### On the server
+
+1. **Challenge.** Give a fresh random challenge (at most 128 bytes) to each enrolment, remember it
+   against the session, accept it once and for a few minutes.
+2. **Verify the chain.** Parse `certChain` (leaf first), check each certificate is signed by the
+   next, and that the last one is one of Google's hardware attestation roots (published in the
+   Android documentation, "Verify hardware-backed key pairs with Key Attestation"). Check none is
+   on Google's revocation list. Check the leaf's public key is the `publicKey` that was sent.
+3. **Read the attestation.** The leaf holds the extension `1.3.6.1.4.1.11129.2.1.17` (key
+   description): check `attestationChallenge` equals your challenge, `attestationSecurityLevel` is
+   StrongBox or TrustedEnvironment, and in the authorization lists that the key is an EC P-256 key
+   with purpose `SIGN`, with no `ALL_APPLICATIONS` and no software-only part.
+4. **Check the app.** In `attestationApplicationId`: the package name is `app.myspoti` (or
+   `app.myspoti.beta` if you accept the beta), and one of the signing certificate digests is the
+   SHA-256 of the release certificate **you choose to pin** (`apksigner verify --print-certs` on
+   the official APK). Optionally also read the root of trust (verified boot, locked bootloader).
+5. **Store** the key against the account or install, with the time and the level you saw.
+6. **Verify each request.** Sign a canonical string that leaves nothing to interpretation:
+   method, path (with the query), a timestamp in seconds, a random nonce and the SHA-256 of the
+   body, one per line. The server rebuilds it from the request it received, verifies the
+   ECDSA-SHA256 DER signature with the stored key, accepts a timestamp within about 60 seconds of
+   its own clock, and keeps each `(key, nonce)` for twice that window to refuse a replay. A key it
+   does not know, or a signature that fails, is refused like any bad credential.
+
+The extension's side:
+
+```js
+var API = 'https://api.example.com';
+
+function enrol() {
+  var c = myspoti.http.get(API + '/attest/challenge').json();            // { challenge }
+  var e = myspoti.attest.enroll(c.challenge);
+  myspoti.http.post(API + '/attest/enrol', { challenge: c.challenge, publicKey: e.publicKey, certChain: e.certChain });
+}
+
+function signedPost(path, body) {
+  if (!myspoti.attest.publicKey()) enrol();
+  var text = JSON.stringify(body);
+  var ts = String(Math.floor(Date.now() / 1000));
+  var nonce = myspoti.util.sha256(ts + Math.random() + text).slice(0, 32);
+  var canonical = ['POST', path, ts, nonce, myspoti.util.sha256(text)].join('\n');
+  return myspoti.http.post(API + path, text, { headers: {
+    'Content-Type': 'application/json',
+    'X-Key': myspoti.util.sha256(myspoti.attest.publicKey()),
+    'X-Timestamp': ts,
+    'X-Nonce': nonce,
+    'X-Signature': myspoti.attest.sign(canonical),
+  } });
+}
+```
+
+(manifest: `"actions": [{ "name": "attest", "why": "Lets my server know this is a real Myspoti" }, { "name": "network", "hosts": ["api.example.com"], "why": "Talks to my server" }]`.)
+
+On a computer, `myspoti-ext` gives each extension a **software** EC P-256 key kept in
+`~/.myspoti-ext/attest/` (or under `$MYSPOTI_EXT_HOME`), and a one-certificate self-signed
+"chain" that says `TEST-ONLY` and carries the challenge in an extension of a private OID. It is
+there to test your signatures and your enrolment flow; a server that verifies the chain as in
+step 2 must refuse it, since it is not hardware-backed and not Google's.

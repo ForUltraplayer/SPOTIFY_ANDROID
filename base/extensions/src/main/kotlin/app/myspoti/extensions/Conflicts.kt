@@ -6,13 +6,15 @@ package app.myspoti.extensions
  * [Mode.ADDITIVE]: every extension's answer is used, merged and de-duplicated in the area's
  * priority order (lyrics: the best one; blocks: all, quotas per extension). [Mode.EXCLUSIVE]: one
  * active extension per action (the user picks; the others stay installed and idle).
- * [Mode.SHARED]: reach (network, storage…), nothing to share out.
+ * [Mode.ORDERED]: each is asked in the user's order for that action until one answers (audio and
+ * download sources: Tidal first, then Qobuz, then Spotify). [Mode.SHARED]: reach (network,
+ * storage…), nothing to share out.
  */
-enum class Mode { ADDITIVE, EXCLUSIVE, SHARED }
+enum class Mode { ADDITIVE, EXCLUSIVE, ORDERED, SHARED }
 
 val Action.mode: Mode
     get() = when (this) {
-        Action.AUDIO_SOURCE, Action.DOWNLOAD_SOURCE -> Mode.EXCLUSIVE
+        Action.AUDIO_SOURCE, Action.DOWNLOAD_SOURCE -> Mode.ORDERED
         Action.LYRICS_PROVIDE, Action.TRACKINFO_PROVIDE, Action.HOME_SECTIONS, Action.SEARCH_PROVIDE,
         Action.MENU_ITEMS, Action.PLAYER_BUTTONS -> Mode.ADDITIVE
         else -> Mode.SHARED

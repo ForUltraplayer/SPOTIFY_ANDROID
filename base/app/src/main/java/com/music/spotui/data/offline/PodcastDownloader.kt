@@ -148,6 +148,20 @@ object PodcastDownloader {
     }
 
     /** Stops a queued or running download (and forgets a refused one). */
+    /**
+     * The account's downloads are put away (sign-out, another account signing in): the queue is
+     * dropped from memory only (its file goes with the account's folder) and the running downloads
+     * stop, waited for a moment so none finishes into the next account's folder.
+     */
+    internal suspend fun forgetSession() {
+        synchronized(pending) { pending.clear() }
+        val jobs = running.values.toList()
+        running.clear()
+        jobs.forEach { it.cancel() }
+        kotlinx.coroutines.withTimeoutOrNull(5_000) { jobs.forEach { it.join() } }
+        withContext(Dispatchers.Main) { requests.clear() }
+    }
+
     fun cancel(trackId: String) {
         synchronized(pending) { if (pending.remove(trackId) != null) savePending() }
         running.remove(trackId)?.cancel()
@@ -170,7 +184,7 @@ object PodcastDownloader {
         runCatching {
             val a = JSONArray()
             pending.values.forEach { a.put(it.toJson()) }
-            OfflineStore.podcastPendingFile.writeText(a.toString())
+            com.music.spotui.data.writeTextSafely(OfflineStore.podcastPendingFile, a.toString())
         }
     }
 

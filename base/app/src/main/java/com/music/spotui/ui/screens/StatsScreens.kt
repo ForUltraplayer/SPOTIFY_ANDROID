@@ -1,5 +1,6 @@
 package com.music.spotui.ui.screens
 
+import com.music.spotui.ui.components.wideClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,7 +78,7 @@ import kotlinx.coroutines.withContext
 
 private val StatsSubtle: Color get() = AppMuted
 
-private val rangeLabels = listOf(
+internal val rangeLabels = listOf(
     TimeRange.SHORT_TERM to R.string.stats_range_short,
     TimeRange.MEDIUM_TERM to R.string.stats_range_medium,
     TimeRange.LONG_TERM to R.string.stats_range_long,
@@ -271,7 +272,7 @@ fun FriendActivityScreen(navController: NavController) {
     Column(Modifier.fillMaxSize().background(AppBackground).statusBarsPadding()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(8.dp, 12.dp, 8.dp, 8.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.accessibility_navigate_back), tint = AppText,
-                modifier = Modifier.size(40.dp).clip(CircleShape).clickable { navController.popBackStack() }.padding(8.dp))
+                modifier = Modifier.wideClickable(horizontal = 8.dp, vertical = 10.dp) { navController.popBackStack() }.size(40.dp).padding(8.dp))
             Text(stringResource(R.string.friends_title), fontWeight = FontWeight.Bold, color = AppText, fontSize = 22.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f))
             Icon(Icons.Filled.Refresh, stringResource(R.string.friends_refresh), tint = AppText,

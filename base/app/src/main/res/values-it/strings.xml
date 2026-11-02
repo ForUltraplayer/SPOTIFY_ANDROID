@@ -20,4 +20,5 @@
     <string name="video_fullscreen_enter">Schermo intero</string>
     <string name="video_fullscreen_exit">Esci dallo schermo intero</string>
     <string name="player_source_downloaded">Scaricato</string>
+    <string name="extension_change_write">Ora può anche inviare a Spotify: %1$s</string>
 </resources>

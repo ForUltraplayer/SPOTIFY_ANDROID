@@ -199,7 +199,15 @@ class SandboxTest {
     }
 
     @Test fun featuresNameWhatThisAppUnderstands() {
-        assertEquals("""{"v":"audio.manifest,audio.expires,audio.quality,audio.source,audio.ahead,http.all,status,raw.base64"}""", eval("return myspoti.features.join(',');"))
+        assertEquals("""{"v":"audio.manifest,audio.expires,audio.quality,audio.source,audio.ahead,http.all,status,raw.base64,results,download.transform,audio.transform,sources.race,settings.section"}""", eval("return myspoti.features.join(',');"))
+    }
+
+    @Test fun localMuteFeatureIsListedOnlyWhenMirrorIsGranted() {
+        val m = Manifest("io.github.test.ext", "Test", "1.0", author = "me",
+            actions = listOf(ActionRequest("lyrics.provide", "x"), ActionRequest("playback.mirror", "Mirrors a stream silently")))
+        val js = "myspoti.provide('lyrics', function (t) { return { v: myspoti.features.indexOf('player.localMute') >= 0 }; });"
+        assertEquals("""{"v":true}""", runtime(js, m, granted = setOf("lyrics.provide", "playback.mirror")).use { it.call(Hook.LYRICS, track.toJson(), 3_000) })
+        assertEquals("""{"v":false}""", runtime(js, m, granted = setOf("lyrics.provide")).use { it.call(Hook.LYRICS, track.toJson(), 3_000) })
     }
 
     @Test fun statusNeedsNoActionAndSaysWhetherTheSourceAnswers() {

@@ -3,6 +3,7 @@ package com.music.spotui.ui.components
 import com.music.spotui.ui.theme.AppText
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -49,6 +50,10 @@ fun SwipeToRemove(key: Any, onRemove: () -> Unit, content: @Composable () -> Uni
     val offset = remember(key) { Animatable(0f) }
     var armed by remember(key) { mutableStateOf(false) }
     var width by remember { mutableFloatStateOf(0f) }
+    // "Remove animations": the row goes back, or out, at once.
+    val reduce = com.music.spotui.ui.look.rememberReduceMotion()
+    val slideOut = if (reduce) snap<Float>() else tween(180)
+    val springBack = if (reduce) snap<Float>() else spring<Float>()
 
     Box(modifier = Modifier.fillMaxWidth().onSizeChanged { width = it.width.toFloat() }) {
         if (offset.value < 0f) {
@@ -69,14 +74,14 @@ fun SwipeToRemove(key: Any, onRemove: () -> Unit, content: @Composable () -> Uni
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             if (armed) scope.launch {
-                                offset.animateTo(-width.coerceAtLeast(threshold), tween(180))
+                                offset.animateTo(-width.coerceAtLeast(threshold), slideOut)
                                 onRemove()
-                            } else scope.launch { offset.animateTo(0f, spring()) }
+                            } else scope.launch { offset.animateTo(0f, springBack) }
                             armed = false
                         },
                         onDragCancel = {
                             armed = false
-                            scope.launch { offset.animateTo(0f, spring()) }
+                            scope.launch { offset.animateTo(0f, springBack) }
                         },
                     ) { change, dx ->
                         change.consume()

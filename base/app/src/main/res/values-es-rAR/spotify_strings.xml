@@ -134,4 +134,17 @@
     <string name="find_in_context_edit_text_liked_songs_hint" formatted="false">Buscar en Tus me gusta</string>
     <string name="find_in_context_edit_text_playlist_hint" formatted="false">Buscar en la playlist</string>
     <string name="assisted_curation_search_empty_view_no_result_title" formatted="false">No se pudo encontrar \"%1$s\"</string>
+    <string name="collection_liked_songs_title" formatted="false">Canciones que te gustan</string>
+    <string name="context_menu_sleep_timer" formatted="false">Temporizador</string>
+    <string name="context_menu_sleep_timer_turn_off" formatted="false">Desactivar el temporizador</string>
+    <string name="context_menu_sleep_timer_end_of_track" formatted="false">Fin de la canción</string>
+    <string name="context_type_description_play_queue" formatted="false">Reproduciendo desde la cola de reproducción</string>
+    <string name="context_type_description_collection_your_library" formatted="false">Reproduciendo desde Tu biblioteca</string>
+    <string name="context_type_description_playlist" formatted="false">Reproduciendo desde la playlist</string>
+    <string name="context_type_description_album" formatted="false">Reproduciendo desde el álbum</string>
+    <string name="context_type_description_artist" formatted="false">Reproduciendo desde el artista</string>
+    <string name="context_type_description_show" formatted="false">Reproduciendo desde el podcast</string>
+    <string name="context_type_description_search" formatted="false">Reproduciendo desde la búsqueda</string>
+    <string name="mr_user_route_category_name" formatted="false">Dispositivos</string>
+    <string name="local_files_title" formatted="false">Archivos locales</string>
 </resources>

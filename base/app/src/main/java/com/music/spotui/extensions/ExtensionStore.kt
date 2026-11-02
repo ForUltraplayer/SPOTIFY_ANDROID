@@ -4,6 +4,7 @@ import app.myspoti.extensions.Catalog
 import app.myspoti.extensions.Discovery
 import app.myspoti.extensions.ExtensionException
 import app.myspoti.extensions.GitHubAuth
+import app.myspoti.extensions.CodeHost
 import app.myspoti.extensions.Manifest
 import app.myspoti.extensions.Rating
 import app.myspoti.extensions.Ranking
@@ -51,12 +52,17 @@ object ExtensionStore {
         val urls = sources(userUrls)
         _repos.value = _repos.value.filterKeys { it in urls || it == Discovery.SOURCE }
         discover(force)
+        if (force) scope.launch {
+            // Refresh also re-reads the kill switch and looks for newer versions of the installed GitHub extensions.
+            runCatching { ExtensionUpdates.refreshBlocks(force = true) }
+            Extensions.registry.value.extensions.filter { it.origin != null }.forEach { runCatching { ExtensionUpdates.check(it.id, manual = false) } }
+        }
         urls.forEach { url ->
             val now = _repos.value[url]
             if (now?.loading == true || (!force && now?.catalog != null)) return@forEach
             _repos.value = _repos.value + (url to (now ?: Repo(url)).copy(loading = true, error = null))
             scope.launch {
-                val r = runCatching { Extensions.catalog(url) }
+                val r = runCatching { Extensions.catalog(url, fresh = force) }
                 _repos.value = _repos.value + (url to Repo(url, r.getOrNull() ?: now?.catalog, r.exceptionOrNull()?.let { it.message ?: it.toString() }))
             }
         }
@@ -83,12 +89,21 @@ object ExtensionStore {
     /** Per repository (`owner/name`), its 👍 / 👎 (no account needed to read them). */
     val ratings = MutableStateFlow<Map<String, Rating>>(emptyMap())
 
+    /** Per repository slug, the ids the hosts' searches gave it: compared with those pinned at install ([identityChanged]). */
+    val identities = MutableStateFlow<Map<String, app.myspoti.extensions.RepoIds>>(emptyMap())
+
+    /** Whether the discovery shows another repository or owner id under the slug [e] was installed from. */
+    fun identityChanged(e: InstalledExtension): Boolean {
+        val pinned = e.accepted ?: return false
+        val seen = e.origin?.repo?.let { identities.value[it] } ?: return false
+        return pinned.repoId != null && pinned.repoId != seen.repo || pinned.ownerId != null && pinned.ownerId != seen.owner
+    }
+
     /** Per repository, the downloads of its release's package, read on its store page. */
     val downloads = MutableStateFlow<Map<String, Long>>(emptyMap())
 
     /**
-     * The repositories with the topic: one search (cached 6 hours, [force]: Refresh, still
-     * within the cache's age for GitHub's sake), their manifests from raw.githubusercontent.com
+     * The repositories with the topic: one search (cached 6 hours; [force]: Refresh, bypasses the cache), their manifests from the hosts' raw file addresses
      * (8 at a time, cached alike), one search for the ratings issues. A repository whose manifest
      * is missing or refused is left out.
      */
@@ -97,26 +112,36 @@ object ExtensionStore {
         if (now?.loading == true || (!force && now?.catalog != null)) return
         _repos.value = _repos.value + (Discovery.SOURCE to (now ?: Repo(Discovery.SOURCE)).copy(loading = true, error = null))
         scope.launch {
+            val failed = mutableListOf<String>()
             val r = runCatching {
-                val found = Discovery.parseSearch(ExtensionUpdates.cached(Discovery.SEARCH_URL, Discovery.CACHE_MS, MAX_SEARCH) ?: throw ExtensionException("GitHub search answered 404"))
+                // One search per host: one failing (offline host, rate limit) leaves the others' results.
+                val found = CodeHost.entries.flatMap { h ->
+                    runCatching {
+                        Discovery.parse(h, ExtensionUpdates.cached(Discovery.searchUrl(h), Discovery.CACHE_MS, MAX_SEARCH, force) ?: throw ExtensionException("${h.label} search answered 404"))
+                    }.getOrElse { failed += "${h.label}: ${it.message ?: it}"; emptyList() }
+                }
+                if (failed.size == CodeHost.entries.size) throw ExtensionException(failed.joinToString("; "))
+                identities.value = found.mapNotNull { f -> f.ids?.let { f.repo!!.slug to it } }.toMap()
                 val gate = Semaphore(8)
                 val entries = withContext(Dispatchers.IO) {
                     found.map { f ->
                         async {
                             gate.withPermit {
                                 runCatching {
-                                    val text = f.manifestUrl()?.let { ExtensionUpdates.cached(it, Discovery.CACHE_MS) } ?: return@runCatching null
+                                    val text = f.manifestUrl()?.let { ExtensionUpdates.cached(it, Discovery.CACHE_MS, force = force) } ?: return@runCatching null
                                     Manifest.parse(text).takeIf { it.problems().isEmpty() }?.let { Discovery.entry(f, it) }
                                 }.getOrNull()
                             }
                         }
                     }.awaitAll().filterNotNull()
                 }
-                runCatching { ExtensionUpdates.cached(Discovery.RATINGS_URL, Discovery.CACHE_MS, MAX_SEARCH) }.getOrNull()
-                    ?.let { ratings.value = Discovery.parseRatings(it, found.map { f -> f.fullName }.toSet()) }
-                Catalog(name = "GitHub", extensions = entries.distinctBy { it.id })
+                // Ratings are GitHub issues' reactions: GitHub's repositories only.
+                runCatching { ExtensionUpdates.cached(Discovery.RATINGS_URL, Discovery.CACHE_MS, MAX_SEARCH, force) }.getOrNull()
+                    ?.let { ratings.value = Discovery.parseRatings(it, found.filter { f -> f.host == CodeHost.GITHUB }.map { f -> f.fullName }.toSet()) }
+                Catalog(name = "Community", extensions = entries.distinctBy { it.id })
             }
-            _repos.value = _repos.value + (Discovery.SOURCE to Repo(Discovery.SOURCE, r.getOrNull() ?: now?.catalog, r.exceptionOrNull()?.let { it.message ?: it.toString() }))
+            _repos.value = _repos.value + (Discovery.SOURCE to Repo(Discovery.SOURCE, r.getOrNull() ?: now?.catalog,
+                r.exceptionOrNull()?.let { it.message ?: it.toString() } ?: failed.takeIf { it.isNotEmpty() }?.joinToString("; ")))
         }
     }
 

@@ -83,6 +83,57 @@ object RawRequest {
     fun isSpotifyHost(host: String): Boolean =
         host == "spotify.com" || host.endsWith(".spotify.com") || host == "spotifycdn.com" || host.endsWith(".spotifycdn.com")
 
+    /**
+     * The operation a request body names, for endpoints that multiplex many operations on one
+     * path (GraphQL): `operationName`, else the persisted query's hash (`sha256:...`). A JSON
+     * list (a batch) gives all of them joined by ",". Null when none can be determined.
+     */
+    fun operationOf(body: String?): String? {
+        if (body.isNullOrBlank()) return null
+        val root = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(body) }.getOrNull() ?: return null
+        fun one(e: JsonElement): String? {
+            val o = e as? JsonObject ?: return null
+            (o["operationName"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }?.let { return it.take(120) }
+            val hash = (((o["extensions"] as? JsonObject)?.get("persistedQuery") as? JsonObject)?.get("sha256Hash") as? JsonPrimitive)
+                ?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+            return hash?.let { "sha256:" + it.take(64) }
+        }
+        if (root is JsonArray) {
+            if (root.isEmpty() || root.size > 16) return null
+            val ops = root.map { one(it) ?: return null }
+            return ops.distinct().sorted().joinToString(",")
+        }
+        return one(root)
+    }
+
+    /** Whether the path itself is a multiplexed endpoint (GraphQL / pathfinder / generic query). */
+    fun isMultiplexedPath(path: String): Boolean {
+        val p = path.lowercase()
+        return "pathfinder" in p || "graphql" in p || p.trimEnd('/').endsWith("/query")
+    }
+
+    /** The text of a request's body argument, as [bytes] decodes it; null without one. */
+    fun bodyText(a: SpotifyArgs): String? {
+        val e = if (a.size > 2) a.json(2, "body").takeUnless { it is JsonNull } else null
+        return when (e) {
+            null -> null
+            is JsonPrimitive -> if (e.isString) e.content else e.toString()
+            else -> e.toString()
+        }
+    }
+
+    /**
+     * What "always allow" would grant for this write, or null when it must be asked each time:
+     * on a multiplexed endpoint ([isMultiplexedPath], or any body naming an operation) the grant
+     * names the operation, and without a determinable operation there is no grant to offer.
+     */
+    fun offerFor(method: String, url: String, body: String?): RawGrant? {
+        val op = operationOf(body)
+        val base = offer(method, url, op)
+        if (op == null && isMultiplexedPath(java.net.URI(url).rawPath.orEmpty())) return null
+        return base
+    }
+
     /** Up to this many segments in a path a grant covers. */
     private const val MAX_SEGMENTS = 16
 
@@ -91,18 +142,25 @@ object RawRequest {
      * segment that names one thing (an id, a number, a uri) as `*`, so the same kind of request on
      * another song or playlist is covered and nothing else.
      */
-    fun offer(method: String, url: String): RawGrant {
+    fun offer(method: String, url: String, op: String? = null): RawGrant {
         val uri = java.net.URI(url)
         val segments = uri.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }.take(MAX_SEGMENTS)
-        return RawGrant(method.uppercase(), uri.host.lowercase(), "/" + segments.joinToString("/") { if (isNameOfOne(it)) "*" else it })
+        return RawGrant(method.uppercase(), uri.host.lowercase(), "/" + segments.joinToString("/") { if (isNameOfOne(it)) "*" else it }, op.orEmpty())
     }
 
-    /** Whether one of [grants] covers [method] on [url] (the query is not looked at). */
-    fun covered(grants: List<RawGrant>, method: String, url: String): Boolean {
+    /**
+     * Whether one of [grants] covers [method] on [url] (the query is not looked at). On a
+     * multiplexed request (its path, or an operation in the [body]) only a grant naming that very
+     * operation covers it; one without an operation never does.
+     */
+    fun covered(grants: List<RawGrant>, method: String, url: String, body: String? = null): Boolean {
         val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
         val host = uri.host?.lowercase() ?: return false
         val segments = uri.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }
-        return grants.any { it.method == method.uppercase() && it.host == host && it.matches(segments) }
+        val op = operationOf(body)
+        val multiplexed = op != null || isMultiplexedPath(uri.rawPath.orEmpty())
+        if (multiplexed && op == null) return false
+        return grants.any { it.method == method.uppercase() && it.host == host && it.matches(segments) && (!multiplexed || it.op == op) }
     }
 
     private fun isNameOfOne(segment: String): Boolean =
@@ -115,13 +173,16 @@ object RawRequest {
  * extension's page and revocable there; a request it covers runs without asking.
  */
 @kotlinx.serialization.Serializable
-data class RawGrant(val method: String, val host: String, val path: String) {
+data class RawGrant(val method: String, val host: String, val path: String, val op: String = "") {
     fun matches(segments: List<String>): Boolean {
         val mine = path.split('/').filter { it.isNotEmpty() }
         return mine.size == segments.size && mine.zip(segments).all { (p, s) -> p == "*" || p == s }
     }
 
-    override fun toString() = "$method https://$host$path"
+    override fun toString() = "$method https://$host$path" + if (op.isNotEmpty()) " [operation $op]" else ""
+
+    /** An old grant on a multiplexed endpoint, without an operation: it covered every operation, so it is dropped. */
+    val tooBroad: Boolean get() = op.isEmpty() && RawRequest.isMultiplexedPath(path)
 }
 
 /** The user's answer to a write: no, this once, or always for the offered [RawGrant]. */
@@ -297,6 +358,7 @@ object SpotifyMethods {
         typed("player", "moveInQueue", QUEUE, "reorder the queue") { a -> player.moveInQueue(a.queueItem(0, "item"), a.queueItem(1, "target"), a.bool(2, "after", false)) }
         typed("player", "setVolume", CONTROL, "change the volume") { a -> player.setVolume(a.double(0, "level")) }
         typed("player", "setSpeed", CONTROL, "change the playback speed") { a -> player.setSpeed(a.double(0, "speed")) }
+        typed("player", "setLocalMute", Action.PLAYBACK_MIRROR, "keep playing unheard on this phone") { a -> player.setLocalMute(a.bool(0, "on")) }
 
         // ── search ──
         typed("search", "all", CATALOG) { a -> search.all(a.str(0, "query"), a.int(1, "limit", 10)) }
@@ -453,11 +515,7 @@ object SpotifyMethods {
             RawRequest.check(a.str(0, "method"), a.str(1, "url")) !in RawRequest.READS
         }) { b, a ->
             val method = RawRequest.check(a.str(0, "method"), a.str(1, "url"))
-            val body = when (val e = if (a.size > 2) a.json(2, "body").takeUnless { it is JsonNull } else null) {
-                null -> null
-                is JsonPrimitive -> if (e.isString) e.content else e.toString()
-                else -> e.toString()
-            }
+            val body = RawRequest.bodyText(a)
             val headers = if (a.size > 3) a.obj(3, "headers").mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: v.toString() } else emptyMap()
             raw(b).request(method, a.str(1, "url"), body?.let { RawRequest.bytes(it, a) }, headers)
         }

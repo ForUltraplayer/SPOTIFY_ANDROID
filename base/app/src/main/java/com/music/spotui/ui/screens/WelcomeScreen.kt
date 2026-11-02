@@ -4,6 +4,8 @@ import com.music.spotui.ui.theme.tone
 import com.music.spotui.ui.theme.AppText
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -135,8 +137,13 @@ fun WelcomeScreen(onLogin: () -> Unit) {
 /** A soft green light behind the logo, drifting slowly. */
 @Composable
 internal fun Glow(modifier: Modifier = Modifier, alpha: Float = 0.30f) {
-    val t = rememberInfiniteTransition(label = "glow")
-    val phase by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(16_000, easing = LinearEasing)), label = "phase")
+    // "Remove animations": the light stays where it starts.
+    val reduce = com.music.spotui.ui.look.rememberReduceMotion()
+    val phase = if (reduce) 0f else {
+        val t = rememberInfiniteTransition(label = "glow")
+        val p by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(16_000, easing = LinearEasing)), label = "phase")
+        p
+    }
     Canvas(modifier) {
         val c = Offset(size.width * (0.5f + 0.12f * sin(phase)), size.height * (0.30f + 0.05f * cos(phase)))
         val r = size.width * 1.05f
@@ -154,6 +161,7 @@ private fun Features() {
         stringResource(R.string.welcome_rotate_offline),
     )
     var index by remember { mutableIntStateOf(0) }
+    val reduce = com.music.spotui.ui.look.rememberReduceMotion()
     LaunchedEffect(Unit) {
         delay(1_200)
         while (true) { delay(2_400); index = (index + 1) % features.size }
@@ -164,7 +172,8 @@ private fun Features() {
         AnimatedContent(
             targetState = index,
             transitionSpec = {
-                (slideInVertically(tween(400, easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(400))) togetherWith
+                if (reduce) EnterTransition.None togetherWith ExitTransition.None
+                else (slideInVertically(tween(400, easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(400))) togetherWith
                     (slideOutVertically(tween(400, easing = FastOutSlowInEasing)) { -it / 2 } + fadeOut(tween(250)))
             },
             label = "feature",

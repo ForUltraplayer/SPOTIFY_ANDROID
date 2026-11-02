@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +31,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,7 +104,7 @@ fun ArtistChooserHost(navController: NavHostController) {
     val artists = ArtistChooser.artists
     if (artists.isEmpty()) return
     val dismiss = { ArtistChooser.artists = emptyList() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = tone(0xFF282828)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = dismiss, containerColor = tone(0xFF282828)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             Text(stringResource(R.string.choose_artist), color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(20.dp, 0.dp, 20.dp, 12.dp))
@@ -123,6 +129,48 @@ fun ArtistChooserHost(navController: NavHostController) {
                     Text(a.name, color = AppText, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+        }
+    }
+}
+
+/**
+ * The artist line of a song ([line], as shown) with each artist its own tap target, which calls
+ * [open] with that artist: the song's real artists (name and uri, see [ArtistChooser.artistsOf]),
+ * never the line cut at its commas ("Tyler, The Creator" is one artist). Null until they are
+ * known, or when they are not what the line shows (a crossfade's outgoing song, an extension's
+ * credit): the line is then a plain text, opened as before.
+ */
+@Composable
+fun rememberArtistCredit(trackId: String, line: String, color: androidx.compose.ui.graphics.Color, open: (ArtistRef) -> Unit): AnnotatedString? {
+    val artists by produceState<List<ArtistRef>?>(null, trackId) {
+        value = if (trackId.isBlank()) null else ArtistChooser.artistsOf(trackId, "").takeIf { list -> list.isNotEmpty() && list.all { it.uri.isNotBlank() } }
+    }
+    val onOpen by rememberUpdatedState(open)
+    return remember(artists, line, color) {
+        val list = artists ?: return@remember null
+        // The names keep the line's own colour (the theme would paint links in the accent); a press underlines one.
+        val styles = androidx.compose.ui.text.TextLinkStyles(
+            style = androidx.compose.ui.text.SpanStyle(color = color),
+            pressedStyle = androidx.compose.ui.text.SpanStyle(color = color, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+        )
+        // Each name, in order, with only separators between them.
+        var at = 0
+        val starts = IntArray(list.size)
+        for ((i, a) in list.withIndex()) {
+            val found = line.indexOf(a.name, at)
+            if (found < 0 || line.substring(at, found).any { it != ',' && it != '&' && it != '/' && !it.isWhitespace() }) return@remember null
+            starts[i] = found
+            at = found + a.name.length
+        }
+        if (line.substring(at).any { it != ',' && it != '&' && it != '/' && !it.isWhitespace() }) return@remember null
+        buildAnnotatedString {
+            var last = 0
+            for ((i, a) in list.withIndex()) {
+                append(line.substring(last, starts[i]))
+                withLink(LinkAnnotation.Clickable("artist", styles) { onOpen(a) }) { append(a.name) }
+                last = starts[i] + a.name.length
+            }
+            append(line.substring(last))
         }
     }
 }

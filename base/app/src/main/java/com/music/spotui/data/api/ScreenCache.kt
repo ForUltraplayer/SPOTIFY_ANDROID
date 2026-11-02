@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
- * The last home feed, library and Liked Songs (and a few playlist pages), kept on disk: after a restart the screens
+ * The last home feed, library and Liked Songs (and a few playlist and album pages), kept on disk: after a restart the screens
  * show them at once, while the hidden Web Player is still starting, then refresh.
  * Private app storage; cleared on logout ([clear]).
  */
@@ -33,6 +33,25 @@ object ScreenCache {
     val home = Entry("home", HomeFeedModel.serializer())
     val libraryRoot = Entry("library_root", ListSerializer(LibraryEntry.serializer()))
     val liked = Entry("liked", ListSerializer(SongsModel.serializer()))
+
+    /**
+     * When Liked Songs were last read in full from Spotify (not just their newest page): the list
+     * on storage is trusted for a day after that, see Api.getLikedPage. Null when never.
+     */
+    fun likedFullAt(): Long? = runCatching { File(dir, "liked_full.stamp").takeIf { it.exists() }?.readText()?.trim()?.toLong() }.getOrNull()
+
+    fun markLikedFull() { io.launch { runCatching { File(dir, "liked_full.stamp").writeText(System.currentTimeMillis().toString()) } } }
+
+    /** An album page opened before, one file per album: it opens whole at once, the network refreshing it behind. */
+    fun albumPage(id: String) = Entry("album_page_$id", com.music.spotui.data.entity.ContextPageModel.serializer())
+
+    /** Keeps the [keep] most recent album pages on storage and deletes the others. */
+    fun pruneAlbumPages(keep: Int) {
+        io.launch {
+            dir.listFiles { f -> f.name.startsWith("album_page_") && f.name.endsWith(".json") }
+                ?.sortedByDescending { it.lastModified() }?.drop(keep)?.forEach { it.delete() }
+        }
+    }
 
     /** A playlist page fetched ahead (see PagePrefetch), one file per playlist. */
     fun page(id: String) = Entry("page_$id", com.music.spotui.data.entity.ContextPageModel.serializer())

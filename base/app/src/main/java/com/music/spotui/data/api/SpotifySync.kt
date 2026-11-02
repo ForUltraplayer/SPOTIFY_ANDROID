@@ -40,7 +40,7 @@ object SpotifySync {
         scope.launch {
             val ok = runCatching { api.playlists.addTracks("spotify:playlist:$playlistId", listOf("spotify:track:$trackId")) }
                 .onFailure { Log.w(TAG, "add $trackId to $playlistId failed: ${it.message}") }.isSuccess
-            if (ok) membershipCache[playlistId]?.add(trackId)
+            if (ok) { membershipCache[playlistId]?.add(trackId); Api.invalidatePlaylist(playlistId) }
             if (ok) com.music.spotui.data.offline.OfflineCollections.refreshOne(context.applicationContext, "spotify:playlist:$playlistId")
             onDone(ok)
         }
@@ -57,7 +57,7 @@ object SpotifySync {
             val ok = runCatching { api.playlists.addTracks("spotify:playlist:$playlistId", uris) }
                 .onFailure { Log.w(TAG, "add ${uris.size} songs to $playlistId failed: ${it.message}") }.isSuccess
             // Part of it may be in even when refused: read the playlist again when asked.
-            membershipCache.remove(playlistId)
+            membershipCache.remove(playlistId); Api.invalidatePlaylist(playlistId)
             com.music.spotui.data.offline.OfflineCollections.refreshOne(context.applicationContext, "spotify:playlist:$playlistId")
             onDone(ok)
         }
@@ -78,7 +78,7 @@ object SpotifySync {
                 api.playlists.removeTracks(uri, listOf(uid))
             }.onFailure { Log.w(TAG, "remove row $rowUid ($trackId) from $playlistId failed: ${it.message}") }.isSuccess
             // The song may still be in the playlist through another row: read it again when asked.
-            if (ok) membershipCache.remove(playlistId)
+            if (ok) { membershipCache.remove(playlistId); Api.invalidatePlaylist(playlistId) }
             onDone(ok)
         }
     }
@@ -96,7 +96,7 @@ object SpotifySync {
                 check(uids.isNotEmpty()) { "track not in playlist" }
                 api.playlists.removeTracks(uri, uids)
             }.onFailure { Log.w(TAG, "remove $trackId from $playlistId failed: ${it.message}") }.isSuccess
-            if (ok) membershipCache[playlistId]?.remove(trackId)
+            if (ok) { membershipCache[playlistId]?.remove(trackId); Api.invalidatePlaylist(playlistId) }
             onDone(ok)
         }
     }

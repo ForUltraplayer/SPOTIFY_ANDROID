@@ -6,6 +6,7 @@ import com.music.spotui.ui.theme.AppText
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import com.music.spotui.ui.components.pressable
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Scaffold
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,11 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.music.spotui.ui.navigation.MainBottomNavigation
 import com.music.spotui.ui.navigation.MyNavHost
-import com.music.spotui.ui.navigation.Routes
+import com.music.spotui.ui.navigation.navigateSingleTop
 
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -43,20 +44,16 @@ fun App() {
     val bottomBarState = rememberSaveable { (mutableStateOf(true)) }
     val bottomBarPlayerState = rememberSaveable { (mutableStateOf(true)) }
     val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-
-    // Control TopBar and BottomBar: on a route change (writing state during composition
-    // forces an extra recomposition pass).
-    val route = navBackStackEntry?.destination?.route
-    LaunchedEffect(route) {
-        when (route) {
-            Routes.Home.route, Routes.Search.route, Routes.Library.route -> bottomBarState.value = true
-            Routes.Album.route -> bottomBarState.value = false
-        }
-    }
 
     // Debug and beta builds: `myspoti-cli nav <route>` (see CliReceiver).
     LaunchedEffect(Unit) { com.music.spotui.cli.CliReceiver.nav.collect { r -> runCatching { navController.navigate(r) } } }
+    // A page the onboarding asked for ("See the extensions").
+    LaunchedEffect(Unit) {
+        com.music.spotui.ui.screens.Setup.openAfter?.let { r -> com.music.spotui.ui.screens.Setup.openAfter = null; runCatching { navController.navigate(r) } }
+    }
+
+    // "See the extensions" in the dialog a download shows when no download extension is installed.
+    LaunchedEffect(Unit) { com.music.spotui.ui.components.DownloadAsk.openRoute.collect { r -> runCatching { navController.navigateSingleTop(r) } } }
 
     UpdatePrompt()
     SupportPrompt()
@@ -69,7 +66,7 @@ fun App() {
         val i = invite?.takeIf { !it.opened } ?: return@LaunchedEffect
         app.myspoti.host.android.MyspotiRuntime.api.ready.first { it }
         i.opened = true
-        navController.navigate(com.music.spotui.ui.navigation.playlistRoute(i.playlistId))
+        navController.navigateSingleTop(com.music.spotui.ui.navigation.playlistRoute(i.playlistId))
     }
 
     // A Blend invitation was opened (see InviteLinks): who invites, and "Join", over the app.
@@ -97,7 +94,7 @@ fun App() {
         val id = uri.substringAfterLast(':')
         com.music.spotui.ui.navigation.PlayerSheet.close()
         runCatching {
-            navController.navigate(when (uri.split(':')[1]) {
+            navController.navigateSingleTop(when (uri.split(':')[1]) {
                 "playlist" -> com.music.spotui.ui.navigation.playlistRoute(id)
                 "album" -> com.music.spotui.ui.navigation.albumRoute("", "", id)
                 "artist" -> com.music.spotui.ui.navigation.artistRoute("artist", id)
@@ -108,21 +105,75 @@ fun App() {
     val shareTarget by com.music.spotui.ui.components.SpotifyCode.request.collectAsState()
     shareTarget?.let { t -> com.music.spotui.ui.components.SpotifyCodeSheet(t) { com.music.spotui.ui.components.SpotifyCode.request.value = null } }
 
+    // The look (Settings > Display) switches the shell live. The nav host keeps one place in the
+    // tree in both looks, so a switch keeps the back stack, the pages' state and the playback.
+    val immersive = com.music.spotui.ui.navigation.isImmersive()
+    val haze = com.music.spotui.ui.immersive.shell.rememberImmersiveHazeState()
+    // Liquid Glass (Settings > Display): the pages record themselves for the glass to refract.
+    // Not provided while it is off or unsupported, so nothing is recorded for no reader.
+    val glassPage = com.music.spotui.ui.immersive.shell.rememberImmersiveBackdrop()
+    val liquidGlass = immersive && com.music.spotui.ui.immersive.shell.rememberLiquidGlassActive()
+    // Without it (Android 12+), the frost blurs the same recording, which follows page and tab
+    // transitions frame by frame where Haze lagged behind.
+    val frostPage = immersive && !liquidGlass && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    // The floating chrome's fold (iOS 26): pages scroll it through immersiveChromeScroll().
+    val chrome = com.music.spotui.ui.immersive.shell.rememberImmersiveChromeState()
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.music.spotui.ui.look.LocalReduceMotion provides com.music.spotui.ui.look.rememberReduceMotion(),
+        com.music.spotui.ui.immersive.shell.LocalImmersiveHaze provides if (immersive) haze else null,
+        com.music.spotui.ui.immersive.shell.LocalImmersiveBackdrop provides if (liquidGlass) glassPage else null,
+        com.music.spotui.ui.immersive.shell.LocalImmersiveFrostPage provides if (frostPage) glassPage else null,
+        com.music.spotui.ui.immersive.shell.LocalImmersiveChrome provides if (immersive) chrome else null,
+    ) {
+    // Large windows (tablets, foldables, DeX): Classic's tabs in a rail at the side, the
+    // Immersive tab bar on the left edge (ImmersiveBottomChrome); phones keep the bottom bars.
+    val large = com.music.spotui.ui.components.windowSize().large
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+      androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+        // Before the Scaffold, in a group of its own: the nav host keeps its place when the
+        // window grows or shrinks past the threshold (back stack and pages kept).
+        if (large && !immersive) com.music.spotui.ui.navigation.MainNavigationRail(navController)
         Scaffold(
-            modifier = Modifier,
+            modifier = Modifier.weight(1f),
             bottomBar = {
-                MainBottomNavigation(navController = navController, bottomBarState = bottomBarState, bottomBarPlayerState)
+                if (!immersive) MainBottomNavigation(navController = navController, bottomBarState = bottomBarState, bottomBarPlayerState)
             }
         ) {
-            MyNavHost(navHostController = navController, bottomBarState = bottomBarState, bottomBarPlayerState)
+            MyNavHost(
+                navHostController = navController, bottomBarState = bottomBarState, bottomBarPlayerState,
+                // Immersive: each page marks its own list as what the glass bars blur (a source on
+                // the whole host would hold the pages' own top bars too).
+                modifier = if (immersive) Modifier.background(com.music.spotui.ui.immersive.Immersive.Page) else Modifier,
+            )
         }
+      }
+        if (immersive) ImmersiveShell(navController)
         // Over the pages and the bottom bar: pulling it down shows them, already in place.
-        com.music.spotui.ui.navigation.PlayerOverlay(navController)
+        else com.music.spotui.ui.navigation.PlayerOverlay(navController)
+        // "Not interested" and its Undo, over the pages and the players.
+        com.music.spotui.ui.components.HiddenSongUndo()
+    }
     }
 }
 
 
+
+/**
+ * The Immersive look's floating chrome: the mini player capsule over the tab bar (both hidden
+ * on the full-screen routes; folded into one row while a page scrolls down), and its player over
+ * everything.
+ */
+@Composable
+private fun ImmersiveShell(navController: androidx.navigation.NavHostController) {
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        com.music.spotui.ui.immersive.shell.ImmersiveBottomChrome(
+            navController,
+            miniPlayer = { m -> com.music.spotui.ui.immersive.player.ImmersiveMiniPlayer(navController, m) },
+            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+        )
+        com.music.spotui.ui.immersive.player.ImmersivePlayerOverlay(navController)
+    }
+}
 
 /** The update card is on screen: the donation reminder waits for another launch. */
 private val updateCardOpen = mutableStateOf(false)
@@ -234,16 +285,28 @@ private fun SupportDialog(supporter: Boolean, onSupport: () -> Unit, onSponsor: 
     }
 }
 
-/** "New version" dialog: checked a few seconds after launch (not on the startup path). */
+/**
+ * "New version" dialog: checked at launch and on every return to the app (off the UI thread), shown as soon as the answer is
+ * known. "Later" hides it; Settings > About offers the update again.
+ */
 @Composable
 private fun UpdatePrompt() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var release by updateRelease
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        // Turned off in Settings: no check at launch. The manual check there still asks.
-        if (!com.music.spotui.data.preferences.AutoUpdateCheckPref.on) return@LaunchedEffect
-        kotlinx.coroutines.delay(5_000)
-        release = com.music.spotui.data.api.UpdateChecker.check(context)
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.LaunchedEffect(owner) {
+        // Each time the app comes to the foreground (the check itself skips when the last one is
+        // under an hour old), then every 6 h while it stays open. Turned off in Settings: no
+        // automatic check; the manual one there still asks.
+        owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) {
+                if (com.music.spotui.data.preferences.AutoUpdateCheckPref.on) {
+                    // The request runs on the IO dispatcher, nothing waits for it.
+                    com.music.spotui.data.api.UpdateChecker.check(context)?.let { release = it }
+                }
+                kotlinx.coroutines.delay(com.music.spotui.data.api.UpdateChecker.PERIODIC_MS)
+            }
+        }
     }
     updateCardOpen.value = release != null
     val r = release ?: return
@@ -308,7 +371,11 @@ private fun UpdateDialog(
     version: String, notes: String, status: String?, progress: Float?, button: String,
     onUpdate: () -> Unit, onLater: () -> Unit,
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onLater) {
+    // Only the buttons close it: a touch outside must not (the back gesture still means "Later").
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onLater,
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
+    ) {
         androidx.compose.foundation.layout.Column(
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             modifier = Modifier

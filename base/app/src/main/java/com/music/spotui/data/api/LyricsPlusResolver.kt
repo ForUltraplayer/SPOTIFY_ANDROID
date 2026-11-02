@@ -2,8 +2,6 @@
 // @brief Resolve the same recording with bounded metadata candidates and transient-server cooldowns.
 package com.music.spotui.data.api
 
-import com.music.spotui.data.entity.LyricLine
-import com.music.spotui.data.entity.LyricWord
 import com.music.spotui.data.entity.Lyrics
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -19,7 +17,6 @@ internal class LyricsPlusResolver(
     data class Result(val lyrics: Lyrics?, val retryable: Boolean = false)
     private data class Cooldown(val until: Long)
     private val cooldowns = ConcurrentHashMap<String, Cooldown>()
-    private val bases = listOf("https://lyricsplus.binimum.org", "https://lyricsplus.prjktla.my.id")
 
     fun resolve(info: Query): Result {
         val deadline = now() + 18_000
@@ -48,7 +45,7 @@ internal class LyricsPlusResolver(
         val candidates = listOf(info,
             info.copy(title = clean, artist = primary), info.copy(title = clean)).distinct()
         for ((index, candidate) in candidates.withIndex()) {
-            for (base in bases) {
+            for (base in BASES) {
                 if (now() >= deadline) return Result(null, true)
                 val parameters = linkedMapOf("title" to candidate.title, "artist" to candidate.artist)
                 if (candidate.album.isNotBlank()) parameters["album"] = candidate.album
@@ -75,7 +72,6 @@ internal class LyricsPlusResolver(
 
     private fun parse(payload: JSONObject, metadata: JSONObject, durationMs: Long, normalized: Boolean): Lyrics? {
         val rows = payload.optJSONArray("lyrics") ?: return null
-        val lines = ArrayList<LyricLine>()
         var lastEnd = 0L
         for (i in 0 until rows.length()) {
             val row = rows.optJSONObject(i) ?: continue
@@ -83,24 +79,18 @@ internal class LyricsPlusResolver(
             val duration = row.optLong("duration", 0)
             if (start < 0 || duration < 0) return null
             lastEnd = maxOf(lastEnd, start + duration)
-            val syllables = row.optJSONArray("syllabus")
-            val words = syllables?.let { list -> (0 until list.length()).mapNotNull { list.optJSONObject(it) }
-                .filterNot { it.optBoolean("isBackground") }
-                .map { word -> val time = word.optLong("time"); LyricWord(time,
-                    time + word.optLong("duration"), word.optString("text")) }
-            }?.takeIf { it.isNotEmpty() }
-            val text = words?.joinToString("") { it.text }?.trim() ?: row.optString("text").trim()
-            if (text.isNotEmpty()) lines += LyricLine(start, text, words)
         }
-        if (lines.isEmpty()) return null
         if (normalized && durationMs > 0 && (lastEnd > durationMs + 3000 || lastEnd < durationMs * .6)) return null
+        // The lines as the app reads LyricsPlus elsewhere: words, backing vocals, singers and translations.
+        val lyrics = LyricsApi.lyricsPlusLines(payload) ?: return null
         val source = metadata.optString("source")
-        return Lyrics(lines, synced = lines.any { it.timeMs > 0 },
-            language = metadata.optString("language").takeIf { it.isNotBlank() },
+        return lyrics.copy(synced = lyrics.lines.any { it.timeMs > 0 },
+            language = metadata.optString("language").takeIf { it.isNotBlank() } ?: lyrics.language,
             provider = if (source.contains("apple", true)) "Apple Music · LyricsPlus" else "LyricsPlus")
     }
 
     companion object {
+        internal val BASES = listOf("https://lyricsplus.binimum.org", "https://lyricsplus.prjktla.my.id")
         private val feat = Regex("""\s*[(（\[［]\s*(?:feat\.?|ft\.?|featuring)\s+[^)）\]］]+[)）\]］]""", RegexOption.IGNORE_CASE)
         internal fun cleanTitle(title: String) = title.replace(feat, "").trim()
         private fun key(value: String) = Normalizer.normalize(value, Normalizer.Form.NFKC).lowercase().filter { it.isLetterOrDigit() }

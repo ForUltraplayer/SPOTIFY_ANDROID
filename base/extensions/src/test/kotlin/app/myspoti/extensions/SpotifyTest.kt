@@ -293,7 +293,7 @@ class SpotifyTest {
         val all = SpotifyMethods.all()
         fun count(a: Action) = all.count { it.action == a }
         assertEquals(
-            setOf(Action.SPOTIFY_CATALOG, Action.LIBRARY_READ, Action.PLAYBACK_EVENTS, Action.PLAYBACK_CONTROL, Action.PLAYBACK_QUEUE,
+            setOf(Action.SPOTIFY_CATALOG, Action.LIBRARY_READ, Action.PLAYBACK_EVENTS, Action.PLAYBACK_CONTROL, Action.PLAYBACK_QUEUE, Action.PLAYBACK_MIRROR,
                 Action.LIBRARY_WRITE, Action.PLAYLISTS_WRITE, Action.SPOTIFY_RAW),
             all.map { it.action }.toSet(),
         )

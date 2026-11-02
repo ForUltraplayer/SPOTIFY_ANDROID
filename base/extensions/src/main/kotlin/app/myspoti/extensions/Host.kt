@@ -2,8 +2,11 @@ package app.myspoti.extensions
 
 import kotlinx.serialization.Serializable
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URI
+import java.util.concurrent.TimeUnit
 
 /**
  * What the app gives the sandbox. Every call arrives here already checked against the rights the
@@ -20,6 +23,9 @@ interface Host {
 
     /** The user's value for one of the extension's settings, as JSON text, or null when unset. */
     fun setting(extensionId: String, key: String): String?
+
+    /** The phone is on mobile data (a metered network), as the app's own streaming quality reads it: a per-network setting then gives its mobile value. */
+    fun metered(): Boolean = false
 
     /** The song playing now, as the hooks receive a track (JSON), or null. */
     fun nowPlaying(): String? = null
@@ -79,6 +85,9 @@ interface Host {
      * it fires changes nothing.
      */
     fun whenOnline(extensionId: String) {}
+
+    /** The keys behind `myspoti.attest` ([Action.ATTEST]); null: this host cannot make any, and the script gets an error. */
+    fun attestation(): Attestation? = null
 
     fun userAgent(extensionId: String) = "Myspoti-Extension/$API_VERSION ($extensionId)"
 }
@@ -152,42 +161,53 @@ data class HttpRequest(
 @Serializable
 data class HttpResponse(val status: Int, val headers: Map<String, String>, val body: String)
 
-/** Plain HTTP for extensions: no cookies, no cache, a size cap, redirects only to https. */
+/**
+ * Plain HTTP for extensions (OkHttp): no cookies, no cache, no redirect followed (the script sees
+ * the 3xx), a size cap, and never a connection to a local address: the names are resolved and
+ * checked by [SafeNet.SafeDns] when the connection is made, IP literals by an interceptor.
+ */
 object BasicHttp {
     const val MAX_BODY = 5 * 1024 * 1024
     private val METHODS = setOf("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
     /** Set by the transport itself: an extension cannot pretend to be another client this way. */
-    private val FORBIDDEN_HEADERS = setOf("host", "content-length", "connection", "cookie", "transfer-encoding")
+    private val FORBIDDEN_HEADERS = setOf("host", "content-length", "connection", "cookie", "transfer-encoding", "proxy-authorization", "upgrade")
 
-    fun send(request: HttpRequest, userAgent: String): HttpResponse {
+    fun send(request: HttpRequest, userAgent: String, client: okhttp3.OkHttpClient = SafeNet.client): HttpResponse {
         val method = request.method.uppercase()
         require(method in METHODS) { "method $method is not allowed" }
-        val c = URI(request.url).toURL().openConnection() as HttpURLConnection
-        c.instanceFollowRedirects = false
-        c.useCaches = false
-        c.connectTimeout = request.timeout.coerceIn(1_000, 20_000)
-        c.readTimeout = request.timeout.coerceIn(1_000, 20_000)
-        c.requestMethod = method
-        c.setRequestProperty("User-Agent", userAgent)
-        request.headers.forEach { (k, v) -> if (k.lowercase() !in FORBIDDEN_HEADERS) c.setRequestProperty(k, v) }
-        if (request.body != null && method != "GET" && method != "HEAD") {
-            c.doOutput = true
-            c.outputStream.use { it.write(request.body.toByteArray()) }
+        val url = request.url.toHttpUrlOrNull() ?: throw IllegalArgumentException("not a URL: ${request.url}")
+        SafeNet.checkUrlHost(url.host)
+        val timeout = request.timeout.coerceIn(1_000, 20_000).toLong()
+        val headers = okhttp3.Headers.Builder().add("User-Agent", userAgent)
+        var contentType: String? = null
+        request.headers.forEach { (k, v) ->
+            if (k.lowercase() in FORBIDDEN_HEADERS) return@forEach
+            if (k.equals("Content-Type", true)) contentType = v
+            headers.set(k, v)
         }
-        val status = c.responseCode
-        val stream = if (status >= 400) c.errorStream else runCatching { c.inputStream }.getOrNull()
-        val out = ByteArrayOutputStream()
-        stream?.use { s ->
-            val buf = ByteArray(16 * 1024)
-            while (true) {
-                val n = s.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-                if (out.size() > MAX_BODY) throw IllegalStateException("response larger than ${MAX_BODY / 1024 / 1024} MB")
+        val body = when {
+            method == "GET" || method == "HEAD" -> null
+            request.body != null -> request.body.toByteArray().toRequestBody((contentType ?: "application/x-www-form-urlencoded").toMediaTypeOrNull())
+            method == "DELETE" -> null
+            else -> ByteArray(0).toRequestBody(null)
+        }
+        val call = client.newBuilder()
+            .connectTimeout(timeout, TimeUnit.MILLISECONDS).readTimeout(timeout, TimeUnit.MILLISECONDS).callTimeout(timeout * 2, TimeUnit.MILLISECONDS)
+            .build()
+            .newCall(okhttp3.Request.Builder().url(url).headers(headers.build()).method(method, body).build())
+        call.execute().use { r ->
+            val out = ByteArrayOutputStream()
+            r.body.source().let { src ->
+                val buf = ByteArray(16 * 1024)
+                while (true) {
+                    val n = src.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    if (out.size() > MAX_BODY) throw IllegalStateException("response larger than ${MAX_BODY / 1024 / 1024} MB")
+                }
             }
+            val responseHeaders = r.headers.names().associate { it.lowercase() to r.headers.values(it).joinToString(", ") }
+            return HttpResponse(r.code, responseHeaders, out.toString(Charsets.UTF_8.name()))
         }
-        val headers = c.headerFields.filterKeys { it != null }.mapKeys { it.key.lowercase() }.mapValues { it.value.joinToString(", ") }
-        c.disconnect()
-        return HttpResponse(status, headers, out.toString(Charsets.UTF_8))
     }
 }

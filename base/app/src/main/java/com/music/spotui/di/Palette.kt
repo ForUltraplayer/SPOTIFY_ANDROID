@@ -4,10 +4,17 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.palette.graphics.Palette
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+
+/**
+ * Side of the cover decode for colours and the mesh gradient. Glide keys its decodes on the size,
+ * so one size means the cover is decoded once for both.
+ */
+const val COVER_DECODE_PX = 128
 
 class Palette {
     companion object {
@@ -20,6 +27,24 @@ class Palette {
         })
         fun cachedSecond(imageUrl: String): Color? = colors["2|$imageUrl"]
         fun cachedFirst(imageUrl: String): Color? = colors["1|$imageUrl"]
+
+        /**
+         * The first colour carries white text and icons (the mini player, the player's gradient). A
+         * cover with no dark swatch gave its dominant colour, a pale yellow or pink the white text
+         * vanished on: darkened, same hue, until white reads on it.
+         */
+        internal fun readableUnderWhite(c: Color): Color {
+            var out = c
+            var t = 0f
+            while (out.luminance() > MAX_TINT_LUMINANCE && t < 0.8f) {
+                t += 0.05f
+                out = androidx.compose.ui.graphics.lerp(c, Color.Black, t)
+            }
+            return out
+        }
+
+        /** White on a colour of this luminance has a contrast ratio of about 5.5:1. */
+        private const val MAX_TINT_LUMINANCE = 0.14f
     }
 
 //    fun extractColorFromImageUrl(context: Context, imageUrl: String, onPaletteGenerated: (Palette) -> Unit) {
@@ -45,7 +70,7 @@ class Palette {
         Glide.with(context)
             .asBitmap()
             .load(imageUrl)
-            .override(64, 64)
+            .override(COVER_DECODE_PX, COVER_DECODE_PX)
             .disallowHardwareConfig()
             .into(object : CustomTarget<Bitmap>() {
                 override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
@@ -55,7 +80,7 @@ class Palette {
                         val dominantColor = palette?.let { it.darkVibrantSwatch ?: it.darkMutedSwatch ?: it.dominantSwatch ?: it.vibrantSwatch }?.rgb
                         dominantColor?.let {
                             // Convert RGB color integer to ARGB color integer with full opacity
-                            val argbColor = Color(it or (0xFF shl 24))
+                            val argbColor = readableUnderWhite(Color(it or (0xFF shl 24)))
                             colors[key] = argbColor; onColorExtracted(argbColor)
                         }
                     }
@@ -75,7 +100,7 @@ class Palette {
         Glide.with(context)
             .asBitmap()
             .load(imageUrl)
-            .override(64, 64)
+            .override(COVER_DECODE_PX, COVER_DECODE_PX)
             .disallowHardwareConfig()
             .into(object : CustomTarget<Bitmap>() {
                 override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {

@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateCheckerTest {
+    private val arm64 = listOf("arm64-v8a", "armeabi-v7a", "armeabi")
     @Test fun comparesNumericallyNotAsText() {
         assertTrue(UpdateChecker.isNewer("1.10.0", "1.9.2"))
         assertTrue(UpdateChecker.isNewer("0.9.1", "0.9.0"))
@@ -22,16 +23,57 @@ class UpdateCheckerTest {
         assertFalse(UpdateChecker.isNewer("2.0.0-beta.1", "2.0.0-beta.1"))
         assertTrue(UpdateChecker.isNewer("2.0.1-beta.1", "2.0.0"))
     }
+    @Test fun ordersBetasAndReleases() {
+        assertTrue(UpdateChecker.isNewer("2.0.2-beta.7", "2.0.2-beta.6"))
+        assertFalse(UpdateChecker.isNewer("2.0.2-beta.6", "2.0.2-beta.7"))
+        assertTrue(UpdateChecker.isNewer("2.0.2-beta.10", "2.0.2-beta.9"))
+        assertTrue(UpdateChecker.isNewer("2.0.2", "2.0.2-beta.7"))
+        assertFalse(UpdateChecker.isNewer("2.0.2-beta.7", "2.0.2"))
+        assertTrue(UpdateChecker.isNewer("2.0.3-beta.1", "2.0.2"))
+        assertTrue(UpdateChecker.isNewer("2.1.0-beta.1", "2.0.9"))
+        assertTrue(UpdateChecker.isNewer("2.0.2-beta.1", "2.0.1-beta.9"))
+    }
     @Test fun notesKeepTheChangelogSectionAsPlainLines() {
         val body = "- **Local Files**: a folder\n  - nested [link](https://x.y)\n\n**Full Changelog**: https://github.com/a/b/compare/v1...v2"
         assertEquals("• Local Files: a folder\n  • nested link", UpdateChecker.cleanNotes(body))
     }
-    @Test fun findsTheReleaseApk() {
-        val release = org.json.JSONObject("""{"assets":[
+    @Test fun findsTheReleaseApkOfThisChannelOnly() {
+        // An older release: one APK named after the version, whichever channel the release is.
+        val legacy = org.json.JSONObject("""{"tag_name":"v2.0.0-beta.4","assets":[
             {"name":"checksums.txt","browser_download_url":"https://x/c.txt"},
             {"name":"myspoti-2.0.0-beta.4.apk","browser_download_url":"https://x/myspoti.apk"}]}""")
-        assertEquals("https://x/myspoti.apk", UpdateChecker.apkAsset(release))
-        assertEquals("", UpdateChecker.apkAsset(org.json.JSONObject("{}")))
+        assertEquals("https://x/myspoti.apk", UpdateChecker.apkAsset(legacy, beta = true, abis = arm64))
+        assertEquals("https://x/myspoti.apk", UpdateChecker.apkAsset(legacy, beta = false, abis = arm64))
+        val both = org.json.JSONObject("""{"tag_name":"v2.2.1","assets":[
+            {"name":"myspoti-stable-2.2.1.apk","browser_download_url":"https://x/stable.apk"},
+            {"name":"myspoti-beta-2.2.1.apk","browser_download_url":"https://x/beta.apk"}]}""")
+        assertEquals("https://x/beta.apk", UpdateChecker.apkAsset(both, beta = true, abis = arm64))
+        assertEquals("https://x/stable.apk", UpdateChecker.apkAsset(both, beta = false, abis = arm64))
+        // Only the other channel's APK, or an unrelated .apk: no link, never the wrong build.
+        val other = org.json.JSONObject("""{"tag_name":"v2.2.1","assets":[
+            {"name":"myspoti-stable-2.2.1.apk","browser_download_url":"https://x/stable.apk"},
+            {"name":"something-else.apk","browser_download_url":"https://x/else.apk"}]}""")
+        assertEquals("", UpdateChecker.apkAsset(other, beta = true, abis = arm64))
+        assertEquals("", UpdateChecker.apkAsset(org.json.JSONObject("{}"), beta = true, abis = arm64))
+    }
+    @Test fun findsTheApkOfThisPhonesAbi() {
+        val split = org.json.JSONObject("""{"tag_name":"v2.3.0-beta.1","assets":[
+            {"name":"myspoti-beta-2.3.0-beta.1-armeabi-v7a.apk","browser_download_url":"https://x/beta-v7a.apk"},
+            {"name":"myspoti-beta-2.3.0-beta.1-arm64-v8a.apk","browser_download_url":"https://x/beta-arm64.apk"},
+            {"name":"myspoti-stable-2.3.0-beta.1-arm64-v8a.apk","browser_download_url":"https://x/stable-arm64.apk"}]}""")
+        // A 64-bit phone that also runs armeabi-v7a takes arm64-v8a, whatever the assets' order.
+        assertEquals("https://x/beta-arm64.apk", UpdateChecker.apkAsset(split, beta = true, abis = arm64))
+        assertEquals("https://x/beta-v7a.apk", UpdateChecker.apkAsset(split, beta = true, abis = listOf("armeabi-v7a", "armeabi")))
+        assertEquals("https://x/stable-arm64.apk", UpdateChecker.apkAsset(split, beta = false, abis = arm64))
+        // The other channel's APK for this ABI only: no link.
+        assertEquals("", UpdateChecker.apkAsset(split, beta = false, abis = listOf("armeabi-v7a")))
+        // An ABI the releases do not carry (x86 emulator, Chromebook): no link, the release page opens.
+        assertEquals("", UpdateChecker.apkAsset(split, beta = true, abis = listOf("x86_64", "x86")))
+        assertEquals("", UpdateChecker.apkAsset(split, beta = true, abis = emptyList()))
+        // A release from before the ABI split: the channel's APK without a suffix, as before.
+        val single = org.json.JSONObject("""{"tag_name":"v2.2.1","assets":[
+            {"name":"myspoti-stable-2.2.1.apk","browser_download_url":"https://x/stable.apk"}]}""")
+        assertEquals("https://x/stable.apk", UpdateChecker.apkAsset(single, beta = false, abis = listOf("armeabi-v7a")))
     }
     @Test fun hangulBuildsFollowTheBetaReleaseListAndCompareTheirOwnVersions() {
         assertTrue(UpdateChecker.betaChannel("2.0.1-hangul.5"))
@@ -81,61 +123,33 @@ class UpdateCheckerTest {
     // A version every test build is older than, so pending() offers it.
     private val known = UpdateChecker.Release("99.0.0", "https://x/99", "notes", "https://x/99.apk")
     private val later = UpdateChecker.Release("99.1.0", "https://x/99.1", "", "https://x/99.1.apk")
-    private val hour = 3_600_000L
-    // Well after "never checked" (0).
-    private val start = 100 * hour
+    private val start = 100 * 3_600_000L
     private fun checkedAt(release: UpdateChecker.Release?, at: Long) = MemoryPreferences().also {
-        UpdateChecker.check(it, at, manual = false) { release }
+        UpdateChecker.store(it, UpdateChecker.Fetch.Ok(release), at)
     }
 
-    @Test fun launchCheckWaitsThreeHoursButTheManualOneAsksAtOnce() {
+    @Test fun failedCheckKeepsTheKnownReleaseAndIsNotCountedAsACheck() {
         val prefs = checkedAt(known, start)
-        var requests = 0
-        assertEquals(known, UpdateChecker.check(prefs, start + 3 * hour - 1, manual = false) { requests++; later })
-        assertEquals(0, requests)
-        // A release published since the last check is found by the button.
-        assertEquals(later, UpdateChecker.check(prefs, start + 3 * hour - 1, manual = true) { requests++; later })
-        assertEquals(1, requests)
-        // The manual answer counts as a check: the launch waits 3 hours from it.
-        assertEquals(later, UpdateChecker.check(prefs, start + 6 * hour - 2, manual = false) { requests++; known })
-        assertEquals(1, requests)
-        assertEquals(known, UpdateChecker.check(prefs, start + 6 * hour - 1, manual = false) { requests++; known })
-        assertEquals(2, requests)
-    }
-
-    @Test fun failedCheckKeepsTheKnownReleaseAndTriesAgainNextLaunch() {
-        val prefs = checkedAt(known, start)
-        val saved = prefs.values.toMap()
-        var requests = 0
-        assertEquals(known, UpdateChecker.check(prefs, start + 4 * hour, manual = false) { requests++; throw java.io.IOException("HTTP 403") })
-        assertEquals(saved, prefs.values)
-        // Not counted as a check: the next launch asks again instead of waiting 3 hours.
-        assertEquals(known, UpdateChecker.check(prefs, start + 4 * hour + 1, manual = false) { requests++; known })
-        assertEquals(2, requests)
-    }
-
-    @Test fun failedManualCheckIsReportedNotTakenForUpToDate() {
-        val prefs = checkedAt(known, start)
-        val saved = prefs.values.toMap()
-        try {
-            UpdateChecker.check(prefs, start + hour, manual = true) { throw org.json.JSONException("truncated") }
-            org.junit.Assert.fail("A failed manual check must not look like \"up to date\"")
-        } catch (_: org.json.JSONException) { }
-        assertEquals(saved, prefs.values)
+        UpdateChecker.store(prefs, UpdateChecker.Fetch.Err(rateLimited = true), start + 1)
+        assertEquals(known, UpdateChecker.pending(prefs))
+        // Only the retry clock moves; the last successful check stays where it was.
+        assertEquals(start, prefs.getLong("checked_at", 0L))
+        assertEquals(start + 1, prefs.getLong("tried_at", 0L))
+        UpdateChecker.store(prefs, UpdateChecker.Fetch.Ok(later), start + 2)
+        assertEquals(later, UpdateChecker.pending(prefs))
+        assertEquals(0L, prefs.getLong("tried_at", -1L))
     }
 
     @Test fun successfulCheckWithNothingNewerClearsTheOldOffer() {
         val prefs = checkedAt(known, start)
-        assertNull(UpdateChecker.check(prefs, start + 4 * hour, manual = false) { null })
-        assertNull(UpdateChecker.check(prefs, start + 4 * hour + 1, manual = false) { known })
+        UpdateChecker.store(prefs, UpdateChecker.Fetch.Ok(null), start + 1)
+        assertNull(UpdateChecker.pending(prefs, manual = true))
     }
 
     @Test fun manualCheckOffersADismissedReleaseAgain() {
         val prefs = checkedAt(known, start)
         prefs.edit().putString("dismissed", known.version).apply()
-        assertNull(UpdateChecker.check(prefs, start + hour, manual = false) { known })
-        assertEquals(known, UpdateChecker.check(prefs, start + hour, manual = true) { known })
-        // The dismissal stays for the launch prompt.
-        assertNull(UpdateChecker.check(prefs, start + hour + 1, manual = false) { known })
+        assertNull(UpdateChecker.pending(prefs))
+        assertEquals(known, UpdateChecker.pending(prefs, manual = true))
     }
 }

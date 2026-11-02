@@ -4,6 +4,8 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
@@ -17,6 +19,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -45,12 +52,15 @@ import com.music.spotui.ui.screens.ShowScreen
 import com.music.spotui.ui.screens.QueueScreen
 import com.music.spotui.ui.screens.SearchScreen
 import com.music.spotui.ui.viewmodel.PlayerViewModel
+import com.music.spotui.ui.immersive.motion.ImmersiveMotion.Pages as IPages
+import com.music.spotui.ui.immersive.motion.ImmersiveMotion.PageFade as IFade
 
 @Composable
 fun MyNavHost(
     navHostController: NavHostController,
     bottomBarState: MutableState<Boolean>,
-    bottomBarPlayerState: MutableState<Boolean>
+    bottomBarPlayerState: MutableState<Boolean>,
+    modifier: Modifier = Modifier,
 ) {
 
     val playerViewModel : PlayerViewModel = viewModel()
@@ -62,44 +72,50 @@ fun MyNavHost(
 
     val context = LocalContext.current
     val startDestination = Routes.Home.route
+    // The look (Settings > Display) is read through State objects: the graph builder and the
+    // transitions keep the same lambdas, so a switch never rebuilds the graph (or the back stack).
+    val immersiveState = androidx.compose.runtime.rememberUpdatedState(isImmersive())
+    val reduceState = androidx.compose.runtime.rememberUpdatedState(com.music.spotui.ui.look.rememberReduceMotion())
 
     com.music.spotui.ui.components.ArtistChooserHost(navHostController)
     NavHost(
         navController = navHostController,
         startDestination = startDestination,
+        modifier = modifier,
         // Pages: a short shift with a fade-through, tabs fade in, the player and queue rise
         // from the bottom (see navEnter). The fades put a page in an offscreen layer for
         // their 0.1-0.2 s: the owner's call, a page change read as a hard block without them.
-        enterTransition = { navEnter(initialState, targetState) },
-        exitTransition = { navExit(initialState, targetState) },
-        popEnterTransition = { navPopEnter(initialState, targetState) },
-        popExitTransition = { navPopExit(initialState, targetState) },
+        // The Immersive look pushes pages like a navigation stack (ImmersiveMotion.Pages).
+        enterTransition = { if (immersiveState.value) IPages.enter(reduceState.value)(this) else if (reduceState.value) EnterTransition.None else navEnter(initialState, targetState) },
+        exitTransition = { if (immersiveState.value) IPages.exit(reduceState.value)(this) else if (reduceState.value) ExitTransition.None else navExit(initialState, targetState) },
+        popEnterTransition = { if (immersiveState.value) IPages.popEnter(reduceState.value)(this) else if (reduceState.value) EnterTransition.None else navPopEnter(initialState, targetState) },
+        popExitTransition = { if (immersiveState.value) IPages.popExit(reduceState.value)(this) else if (reduceState.value) ExitTransition.None else navPopExit(initialState, targetState) },
     ){
         page(Routes.Home.route){
             LaunchedEffect(playerState) {
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-                HomeScreen(navHostController)
+                if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveHomeScreen(navHostController) else HomeScreen(navHostController)
         }
         page(Routes.Search.route){
             LaunchedEffect(playerState) {
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            SearchScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveSearchScreen(navHostController) else SearchScreen(navHostController)
         }
         page(Routes.Library.route) {
             LaunchedEffect(playerState) {
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            LibraryScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveLibraryScreen(navHostController) else LibraryScreen(navHostController)
         }
         // Older links to the player route open the player sheet over the page instead.
         page(Routes.Player.route){
             LaunchedEffect(Unit) {
-                navHostController.popBackStack()
+                navHostController.popBackStack(Routes.Player.route, inclusive = true)
                 PlayerSheet.show()
             }
         }
@@ -109,7 +125,7 @@ fun MyNavHost(
                 bottomBarState.value = false
                 bottomBarPlayerState.value = false
             }
-            QueueScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveQueueScreen(navHostController) else QueueScreen(navHostController)
         }
 
         page(Routes.LocalFiles.route){
@@ -117,7 +133,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.LocalFilesScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveLocalFilesScreen(navHostController) else com.music.spotui.ui.screens.LocalFilesScreen(navHostController)
         }
 
         page(Routes.Downloads.route){
@@ -125,7 +141,24 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.DownloadsScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveDownloadsScreen(navHostController) else com.music.spotui.ui.screens.DownloadsScreen(navHostController)
+        }
+
+        page(Routes.HiddenSongs.route) {
+            LaunchedEffect(playerState) {
+                bottomBarState.value = true
+                bottomBarPlayerState.value = playerState != ""
+            }
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveHiddenSongsScreen(navHostController) else com.music.spotui.ui.screens.HiddenSongsScreen(navHostController)
+        }
+
+        // The local player's equalizer, speed and silence skipping (Settings > Playback, the player's menu).
+        page(Routes.Equalizer.route) {
+            LaunchedEffect(playerState) {
+                bottomBarState.value = true
+                bottomBarPlayerState.value = playerState != ""
+            }
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveEqualizerScreen(navHostController) else com.music.spotui.ui.screens.EqualizerScreen(navHostController)
         }
 
         page(Routes.NewReleases.route) {
@@ -133,7 +166,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.NewReleasesScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveNewReleasesScreen(navHostController) else com.music.spotui.ui.screens.NewReleasesScreen(navHostController)
         }
 
         page(Routes.Episodes.route) {
@@ -141,7 +174,15 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.EpisodesScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveEpisodesScreen(navHostController) else com.music.spotui.ui.screens.EpisodesScreen(navHostController)
+        }
+
+        page(Routes.NewEpisodes.route) {
+            LaunchedEffect(playerState) {
+                bottomBarState.value = true
+                bottomBarPlayerState.value = playerState != ""
+            }
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveNewEpisodesScreen(navHostController) else com.music.spotui.ui.screens.NewEpisodesScreen(navHostController)
         }
 
         page(Routes.Recap.route) {
@@ -149,7 +190,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.RecapScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveRecapScreen(navHostController) else com.music.spotui.ui.screens.RecapScreen(navHostController)
         }
 
         page(Routes.Friends.route) {
@@ -157,7 +198,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.FriendActivityScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveFriendsScreen(navHostController) else com.music.spotui.ui.screens.FriendActivityScreen(navHostController)
         }
 
         // Spotify's own list for the account (every device), not this phone's counter.
@@ -166,7 +207,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.RecentlyPlayedScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveRecentlyPlayedScreen(navHostController) else com.music.spotui.ui.screens.RecentlyPlayedScreen(navHostController)
         }
 
         page(Routes.Liked.route){
@@ -174,7 +215,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            ContextScreen(navHostController, type = "liked", id = "")
+            if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveContextScreen(navHostController, type = "liked", id = "") else ContextScreen(navHostController, type = "liked", id = "")
         }
 
         // Settings: sound quality, downloads, data, display, language.
@@ -183,7 +224,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.SettingsScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveSettingsScreen(navHostController) else com.music.spotui.ui.screens.SettingsScreen(navHostController)
         }
 
         // Extensions: the Store and Installed tabs; one installed extension's page; a repository's extension before install.
@@ -192,21 +233,21 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.ExtensionsScreen(navHostController)
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveExtensionsScreen(navHostController) else com.music.spotui.ui.screens.ExtensionsScreen(navHostController)
         }
         page("${Routes.Extension.route}/{id}", arguments = listOf(navArgument("id") { defaultValue = "" })){ entry ->
             LaunchedEffect(playerState) {
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.ExtensionScreen(navHostController, entry.arguments?.getString("id").orEmpty())
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveExtensionScreen(navHostController, entry.arguments?.getString("id").orEmpty()) else com.music.spotui.ui.screens.ExtensionScreen(navHostController, entry.arguments?.getString("id").orEmpty())
         }
         page("${Routes.ExtensionEntry.route}/{id}", arguments = listOf(navArgument("id") { defaultValue = "" })){ entry ->
             LaunchedEffect(playerState) {
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            com.music.spotui.ui.screens.ExtensionEntryScreen(navHostController, entry.arguments?.getString("id").orEmpty())
+            if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveExtensionEntryScreen(navHostController, entry.arguments?.getString("id").orEmpty()) else com.music.spotui.ui.screens.ExtensionEntryScreen(navHostController, entry.arguments?.getString("id").orEmpty())
         }
         // An extension's own page (webview.page), sandboxed.
         page("extension-page/{id}", arguments = listOf(navArgument("id") { defaultValue = "" })){ entry ->
@@ -232,7 +273,7 @@ fun MyNavHost(
             }
             val genre = navBackStackEntry.arguments?.getString("genre").orEmpty()
             val title = navBackStackEntry.arguments?.getString("title").orEmpty()
-            CategoryScreen(navHostController, genre = genre, title = title.ifBlank { genre })
+            if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveCategoryScreen(navHostController, genre = genre, title = title.ifBlank { genre }) else CategoryScreen(navHostController, genre = genre, title = title.ifBlank { genre })
         }
 
         page(
@@ -253,7 +294,7 @@ fun MyNavHost(
             /* We check if it's not null */
             val albumId = navBackStackEntry.arguments?.getString("albumId").orEmpty()
             uId?.let { name ->
-                AlbumByIdScreen(navHostController, name = name, artist = artist, id = albumId)
+                if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveAlbumByIdScreen(navHostController, name = name, artist = artist, id = albumId) else AlbumByIdScreen(navHostController, name = name, artist = artist, id = albumId)
             }
         }
 
@@ -267,7 +308,7 @@ fun MyNavHost(
             }
             val pId = navBackStackEntry.arguments?.getString("pId")
             val name = navBackStackEntry.arguments?.getString("name").orEmpty()
-            pId?.let { ContextScreen(navHostController, type = "playlist", id = it) }
+            pId?.let { if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveContextScreen(navHostController, type = "playlist", id = it) else ContextScreen(navHostController, type = "playlist", id = it) }
         }
 
         page(
@@ -280,7 +321,7 @@ fun MyNavHost(
             }
             val uId = navBackStackEntry.arguments?.getString("uId")
             val name = navBackStackEntry.arguments?.getString("name").orEmpty()
-            uId?.let { com.music.spotui.ui.screens.ProfileScreen(navHostController, userId = it, userName = name) }
+            uId?.let { if (isImmersive()) com.music.spotui.ui.immersive.people.ImmersiveProfileScreen(navHostController, userId = it, userName = name) else com.music.spotui.ui.screens.ProfileScreen(navHostController, userId = it, userName = name) }
         }
 
         page("$LIKED_BY_ARTIST_ROUTE/{key}") { navBackStackEntry ->
@@ -288,7 +329,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            navBackStackEntry.arguments?.getString("key")?.let { ContextScreen(navHostController, type = "liked-artist", id = it) }
+            navBackStackEntry.arguments?.getString("key")?.let { if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveContextScreen(navHostController, type = "liked-artist", id = it) else ContextScreen(navHostController, type = "liked-artist", id = it) }
         }
 
         page(
@@ -300,7 +341,7 @@ fun MyNavHost(
             }
             val uId = navBackStackEntry.arguments?.getString("uId")
             val mode = navBackStackEntry.arguments?.getString("mode")
-            uId?.let { com.music.spotui.ui.screens.FollowListScreen(navHostController, userId = it, followers = mode == "followers") }
+            uId?.let { if (isImmersive()) com.music.spotui.ui.immersive.people.ImmersiveFollowListScreen(navHostController, userId = it, followers = mode == "followers") else com.music.spotui.ui.screens.FollowListScreen(navHostController, userId = it, followers = mode == "followers") }
         }
 
         page(
@@ -313,7 +354,7 @@ fun MyNavHost(
             }
             val sId = navBackStackEntry.arguments?.getString("sId")
             val name = navBackStackEntry.arguments?.getString("name").orEmpty()
-            sId?.let { ShowScreen(navHostController, showId = it, showName = name) }
+            sId?.let { if (isImmersive()) com.music.spotui.ui.immersive.podcast.ImmersiveShowScreen(navHostController, showId = it, showName = name) else ShowScreen(navHostController, showId = it, showName = name) }
         }
 
         page(
@@ -326,7 +367,7 @@ fun MyNavHost(
             }
             val eId = navBackStackEntry.arguments?.getString("eId")
             val name = navBackStackEntry.arguments?.getString("name").orEmpty()
-            eId?.let { com.music.spotui.ui.screens.EpisodeScreen(navHostController, episodeId = it, fallbackName = name) }
+            eId?.let { if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveEpisodeScreen(navHostController, episodeId = it, fallbackName = name) else com.music.spotui.ui.screens.EpisodeScreen(navHostController, episodeId = it, fallbackName = name) }
         }
 
         page(
@@ -339,7 +380,7 @@ fun MyNavHost(
             }
             val uri = navBackStackEntry.arguments?.getString("uri")
             val name = navBackStackEntry.arguments?.getString("name").orEmpty()
-            uri?.let { com.music.spotui.ui.screens.FolderScreen(navHostController, it, name) }
+            uri?.let { if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveFolderScreen(navHostController, it, name) else com.music.spotui.ui.screens.FolderScreen(navHostController, it, name) }
         }
 
         page("${Routes.LocalPlaylist.route}/{id}") { navBackStackEntry ->
@@ -347,7 +388,7 @@ fun MyNavHost(
                 bottomBarState.value = true
                 bottomBarPlayerState.value = playerState != ""
             }
-            navBackStackEntry.arguments?.getString("id")?.let { com.music.spotui.ui.screens.LocalPlaylistScreen(navHostController, it) }
+            navBackStackEntry.arguments?.getString("id")?.let { if (isImmersive()) com.music.spotui.ui.immersive.pages.ImmersiveLocalPlaylistScreen(navHostController, it) else com.music.spotui.ui.screens.LocalPlaylistScreen(navHostController, it) }
         }
 
         page(
@@ -360,7 +401,7 @@ fun MyNavHost(
             }
             val aId = navBackStackEntry.arguments?.getString("aString")
             val artistId = navBackStackEntry.arguments?.getString("artistId").orEmpty()
-            aId?.let { ArtistReleasesScreen(navHostController, it, artistId) }
+            aId?.let { if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveArtistReleasesScreen(navHostController, it, artistId) else ArtistReleasesScreen(navHostController, it, artistId) }
         }
 
         page(
@@ -377,7 +418,7 @@ fun MyNavHost(
             val artistId = navBackStackEntry.arguments?.getString("artistId").orEmpty()
             /* We check if it's not null */
             aId?.let { aid->
-                ArtistScreen(navHostController, aid, artistId)
+                if (isImmersive()) com.music.spotui.ui.immersive.screens.ImmersiveArtistScreen(navHostController, aid, artistId) else ArtistScreen(navHostController, aid, artistId)
             }
         }
     }
@@ -453,10 +494,46 @@ private fun NavGraphBuilder.page(
             scope.transition.currentState == scope.transition.targetState
         }
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalPageSettled provides settled) {
-        Box(Modifier.fillMaxSize().background(AppBackground)) { scope.content(entry) }
+    val immersive = isImmersive()
+    // Immersive: the page runs its own fade (ImmersiveMotion.PageFade) and hands it to the Liquid
+    // Glass recording it, which then fades with it on every frame of the transition.
+    val fade = if (!immersive) null else scope.transition.animateFloat(
+        transitionSpec = {
+            val ms = if (targetState == androidx.compose.animation.EnterExitState.Visible) IFade.enterMs else IFade.exitMs
+            tween(ms)
+        },
+        label = "pageFade",
+    ) { if (it == androidx.compose.animation.EnterExitState.Visible) 1f else 0f }
+    val alpha = androidx.compose.runtime.remember(fade) { { fade?.value ?: 1f } }
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalPageSettled provides settled,
+        com.music.spotui.ui.immersive.shell.backdrop.backdrops.LocalBackdropSourceAlpha provides alpha,
+    ) {
+        // Large windows: detail pages (album, playlist, artist, settings…) keep a readable width,
+        // centred, instead of rows 2000 px wide; the tab pages and grids use the whole width
+        // (more columns). The inner box is always there, so a resize never rebuilds the page.
+        val capped = com.music.spotui.ui.components.windowSize().large &&
+            entry.destination.route?.substringBefore('/')?.substringBefore('?') !in FullWidthRoutes
+        // Immersive look: every page (Classic fallbacks too) sits on its black page colour.
+        Box(Modifier.fillMaxSize()
+            .then(if (fade == null) Modifier else Modifier.graphicsLayer { this.alpha = fade.value })
+            .background(if (immersive) com.music.spotui.ui.immersive.Immersive.Page else AppBackground)) {
+            Box(
+                Modifier.fillMaxHeight().then(
+                    if (capped) Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally)
+                        .widthIn(max = com.music.spotui.ui.components.WindowSize.MaxPageWidth)
+                    else Modifier.fillMaxWidth()
+                )
+            ) { scope.content(entry) }
+        }
     }
 }
+
+/** Pages that use a large window's whole width (grids, the tabs' own pages, the player). */
+private val FullWidthRoutes = setOf(
+    Routes.Home.route, Routes.Search.route, Routes.Library.route, Routes.Player.route, Routes.Queue.route,
+    Routes.Category.route, Routes.NewReleases.route,
+)
 
 /**
  * false while this page is sliding in or out. Heavy views (video players, surfaces)
@@ -465,3 +542,8 @@ private fun NavGraphBuilder.page(
 val LocalPageSettled = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.State<Boolean>> {
     androidx.compose.runtime.mutableStateOf(true)
 }
+
+/** The Immersive look is on (Settings > Display, or the onboarding's look step). */
+@Composable
+internal fun isImmersive(): Boolean =
+    com.music.spotui.ui.look.LocalLook.current == com.music.spotui.data.preferences.Look.IMMERSIVE

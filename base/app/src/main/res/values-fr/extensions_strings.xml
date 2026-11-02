@@ -158,7 +158,7 @@
     <string name="ext_welcome_ok">Compris</string>
 
     <!-- GitHub : découverte, notes, signalements -->
-    <string name="extensions_github_title">Sur GitHub</string>
+    <string name="extensions_github_title">Sur GitHub, GitLab et Codeberg</string>
     <string name="extensions_github_note">Publiées par la communauté, non vérifiées par Myspoti. Chaque auteur est responsable de son extension.</string>
     <string name="extensions_show_all">Tout afficher (%1$d masquées)</string>
     <string name="extensions_show_less">Masquer les bloquées, signalées, mal notées et abandonnées</string>
@@ -190,6 +190,7 @@
     <string name="extension_update_needs_ok">Mise à jour à valider : %1$s → %2$s</string>
     <string name="extension_update_needs_ok_body">Cette version demande plus que ce que vous avez accepté. L\'actuelle continue de tourner jusqu\'à votre choix.</string>
     <string name="extension_update_accept">Accepter</string>
+    <string name="extension_accept_tick_first">Coche la case ci-dessus pour accepter.</string>
     <string name="extension_update_keep">Garder l\'actuelle</string>
     <string name="extension_refused_title">Attend votre accord</string>
     <string name="extension_refused_body">Elle a été installée quand on pouvait décocher des actions, et vous en avez décoché. Une extension reçoit désormais toutes les actions qu\'elle demande : elle reste éteinte tant que vous ne les acceptez pas.</string>
@@ -212,4 +213,35 @@
     <string name="ext_grants_title">Toujours autorisé</string>
     <string name="ext_grants_note">Modifications Spotify que cette extension effectue sans vous demander. Révoquez-en une pour être à nouveau interrogé.</string>
     <string name="ext_grant_revoke">Révoquer</string>
+    <string name="extension_sign_in_needed">%1$s : connectez-vous pour continuer à utiliser sa source</string>
+    <string name="extension_sign_in">Se connecter</string>
+    <string name="extension_sign_in_later">Plus tard</string>
+    <string name="why_source_title">Pourquoi cette source ?</string>
+    <string name="why_source_none">Aucune tentative d\'extension enregistrée pour ce titre.</string>
+    <string name="why_source_asked">Sources interrogées</string>
+    <string name="why_source_ms">%1$s · %2$d ms</string>
+    <string name="why_source_skipped">ignorée : %1$s</string>
+    <string name="why_source_chosen">Choisie : %1$s</string>
+    <string name="why_source_none_chosen">Aucune source ne l\'avait</string>
+    <string name="why_source_open_ok">Ouverte en %1$d ms</string>
+    <string name="why_source_open_failed">Échec de l\'ouverture après %1$d ms : %2$s</string>
+    <string name="why_source_http">HTTP %1$d</string>
+    <string name="why_source_announced">Annoncée par la source : %1$s</string>
+    <string name="why_source_detected">Détectée par le lecteur : %1$s</string>
+    <string name="why_source_fallback">Repli : %1$s</string>
+    <string name="why_source_error">Dernière erreur : %1$s</string>
+    <string name="outcome_found">trouvé</string>
+    <string name="outcome_not_found">introuvable</string>
+    <string name="outcome_sign_in">connexion requise</string>
+    <string name="outcome_rate_limited">limite de requêtes atteinte</string>
+    <string name="outcome_quality_unavailable">qualité indisponible</string>
+    <string name="outcome_server_down">serveur indisponible</string>
+    <string name="outcome_network">erreur réseau ou délai dépassé</string>
+    <string name="outcome_skipped">ignorée</string>
+    <string name="outcome_bug">erreur de l\'extension</string>
+    <string name="ext_section_settings">Réglages de %1$s</string>
+    <string name="ext_setting_wifi">%1$s · Wi-Fi</string>
+    <string name="ext_setting_cell">%1$s · Données mobiles</string>
+    <string name="why_source_ext_quality">Son réglage : %1$s (%2$s)</string>
+    <string name="extensions_unreadable_file">Le fichier n\'a pas pu être lu</string>
 </resources>

@@ -44,6 +44,12 @@ class StallTest {
         assertEquals("reload", SpotifyPlayer.adRecovery(4))
     }
 
+    @Test fun `a muted ad that plays is played past once before the reload`() {
+        assertEquals("next", SpotifyPlayer.adRecovery(1, playing = true))
+        assertEquals("reload", SpotifyPlayer.adRecovery(2, playing = true))
+        assertEquals("next", SpotifyPlayer.adRecovery(3, playing = true))
+    }
+
     // Chromium pauses a hidden page's media that (re)starts at volume 0.
     @Test fun `a fade never reaches volume 0`() = SpotifyPlayer.FADE_STEPS.forEach { assertEquals(true, it > 0.0) }
 

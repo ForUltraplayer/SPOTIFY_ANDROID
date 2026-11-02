@@ -71,7 +71,8 @@
     /**
      * Listens to the app: on('track' | 'playback', fn) needs playback.events, on('auth', fn)
      * webview.auth, on('online', fn) network, on('setting', fn) settings.page ({ key } when one of
-     * its settings changed, { key, pressed: true } for a button setting).
+     * its settings changed, { key, pressed: true } for a button setting, { key, network: true } when the
+     * network changed a perNetwork setting's value).
      */
     on: function (event, fn) {
       if (typeof fn !== 'function') throw new TypeError('on("' + event + '", fn): fn must be a function');
@@ -122,9 +123,12 @@
 
     /**
      * What this app understands beyond the first API, for an extension to adapt to: "audio.manifest",
-     * "audio.expires", "audio.quality", "audio.source", "audio.ahead", "http.all", "status", "raw.base64".
+     * "audio.expires", "audio.quality", "audio.source", "audio.ahead", "http.all", "status", "raw.base64", "results" (source hooks may answer { outcome }), "settings.section" (manifest section, role, perNetwork), "player.localMute" only when the user granted playback.mirror, and "attest" only when it granted attest.
      */
-    features: Object.freeze(['audio.manifest', 'audio.expires', 'audio.quality', 'audio.source', 'audio.ahead', 'http.all', 'status', 'raw.base64']),
+    sources: Object.freeze({ race: function (hook, query, lanes) {
+      return parse(host.sourceRace(String(hook),JSON.stringify(query),JSON.stringify(lanes)));
+    } }),
+    features: Object.freeze(['audio.manifest', 'audio.expires', 'audio.quality', 'audio.source', 'audio.ahead', 'http.all', 'status', 'raw.base64', 'results', 'download.transform', 'audio.transform', 'sources.race', 'settings.section'].concat(parse(host.info()).mirror ? ['player.localMute'] : [], parse(host.info()).attest ? ['attest'] : [])),
 
     /**
      * A sign-in page (webview.auth): open({ url, callback, hidden }) shows url in a web view of its
@@ -137,6 +141,20 @@
         if (r == null || typeof r.url !== 'string' || typeof r.callback !== 'string') throw new TypeError('auth.open({ url, callback })');
         return host.authOpen(r.url, r.callback, r.hidden === true);
       },
+    }),
+
+    /**
+     * A signing key of its own in the phone's hardware keystore (attest), so its server can tell its
+     * requests come from a genuine Myspoti install. No key exists before enroll(challenge), which
+     * returns { publicKey, certChain } (base64; the Android key attestation chain, the challenge
+     * inside). publicKey() is that key or null, sign(text) a base64 DER ECDSA-SHA256 signature of
+     * the UTF-8 text (it throws before enroll), reset() deletes the key.
+     */
+    attest: Object.freeze({
+      enroll: function (challenge) { return parse(host.attestEnroll(String(challenge))); },
+      publicKey: function () { return parse(host.attestPublicKey()); },
+      sign: function (text) { return host.attestSign(String(text)); },
+      reset: function () { host.attestReset(); },
     }),
 
     /** Work that waits for the network (network): whenOnline() asks for one on('online') once it is there. */
@@ -188,6 +206,53 @@
   Object.defineProperty(global, 'myspoti', Object.assign({ value: Object.freeze(myspoti) }, fixed));
   Object.defineProperty(global, 'console', Object.assign({ value: console }, fixed));
   Object.defineProperty(global, '__dispatch', Object.assign({ value: dispatch }, fixed));
+
+  // Size guards: native string operations are not interrupted by the time limit, so a script
+  // could ask for gigabytes in one call. The limits are far above what a lyrics, audio or page
+  // extension needs; past them the call throws a RangeError, which the script can catch.
+  var MAX_STRING = 4 * 1024 * 1024;   // result of repeat / padStart / padEnd / join
+  var MAX_INPUT = 8 * 1024 * 1024;    // JSON.parse and regular expression input
+  function guard(proto, name, check) {
+    var original = proto[name];
+    if (typeof original !== 'function') return;
+    Object.defineProperty(proto, name, {
+      value: function () { check.apply(this, arguments); return original.apply(this, arguments); },
+      writable: true, configurable: true, enumerable: false,
+    });
+  }
+  function tooBig(what) { throw new RangeError(what + ': too large'); }
+  guard(String.prototype, 'repeat', function (count) {
+    if (String(this).length * Math.max(0, Number(count) || 0) > MAX_STRING) tooBig('String.prototype.repeat');
+  });
+  ['padStart', 'padEnd'].forEach(function (name) {
+    guard(String.prototype, name, function (length) {
+      if (Number(length) > MAX_STRING) tooBig('String.prototype.' + name);
+    });
+  });
+  guard(Array.prototype, 'join', function (sep) {
+    var s = sep === undefined ? 1 : String(sep).length;
+    if (this.length * s > MAX_STRING) tooBig('Array.prototype.join');
+  });
+  var jsonParse = JSON.parse;
+  Object.defineProperty(JSON, 'parse', {
+    value: function (text, reviver) {
+      if (typeof text === 'string' && text.length > MAX_INPUT) tooBig('JSON.parse');
+      return jsonParse.call(JSON, text, reviver);
+    },
+    writable: true, configurable: true, enumerable: false,
+  });
+  // A regular expression runs natively and cannot be interrupted: at least the input is capped
+  // (a catastrophic pattern on a short input is still the script's own time to lose, see docs).
+  ['exec', 'test'].forEach(function (name) {
+    guard(RegExp.prototype, name, function (input) {
+      if (String(input).length > MAX_INPUT / 4) tooBig('RegExp.prototype.' + name);
+    });
+  });
+  ['match', 'matchAll', 'replace', 'replaceAll', 'search', 'split'].forEach(function (name) {
+    guard(String.prototype, name, function () {
+      if (String(this).length > MAX_INPUT / 4) tooBig('String.prototype.' + name);
+    });
+  });
 
   // No code built from strings: what was reviewed is what runs.
   // Function keeps its prototype, so `instanceof Function` and Function.prototype.call still work.

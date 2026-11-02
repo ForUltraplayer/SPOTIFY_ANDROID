@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
  * passes the threshold, adds the song ONCE on release, then springs back.
  */
 @Composable
-fun SwipeToQueue(song: SongsModel, content: @Composable () -> Unit) {
+fun SwipeToQueue(song: SongsModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -52,7 +52,7 @@ fun SwipeToQueue(song: SongsModel, content: @Composable () -> Unit) {
     val offset = remember { Animatable(0f) }
     var armed by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth()) {
         if (offset.value != 0f) {
             Box(
                 contentAlignment = if (offset.value > 0) Alignment.CenterStart else Alignment.CenterEnd,

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Delete
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -25,6 +26,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,6 +106,7 @@ private val SheetColor: androidx.compose.ui.graphics.Color get() = tone(0xFF2828
  */
 @Composable
 fun activeDeviceLabel(): String {
+    com.music.spotui.cast.CastPlayback.device.value?.let { return it.name }
     SongPlayer.activeDevice.value?.let { return it.name }
     val route = rememberAudioRoute()
     return when (route.kind) {
@@ -118,6 +121,7 @@ fun activeDeviceLabel(): String {
 /** The icon of the output playing now, matching [activeDeviceLabel]: a phone when this phone plays. */
 @Composable
 fun activeDeviceIcon(): ImageVector {
+    if (com.music.spotui.cast.CastPlayback.device.value != null) return Icons.Default.Cast
     SongPlayer.activeDevice.value?.let { return deviceIcon(it.type) }
     return when (rememberAudioRoute().kind) {
         AudioRoute.Kind.SPEAKER -> Icons.Default.Smartphone
@@ -128,18 +132,45 @@ fun activeDeviceIcon(): ImageVector {
 
 /**
  * Where the sound comes from while Myspoti's own player plays a song (an extension's stream: its
- * name and the quality it announced; a download), shown under the output device; "" when Spotify
- * plays (a song it plays for want of the extensions included) or while a song is being asked for.
+ * name and the quality it announced; a download; Spotify's codec and bitrate), shown under the
+ * output device; "" while a song is being asked for or on another device.
  */
 @Composable
 fun playingSourceLabel(): String {
     val uri = SongPlayer.nowPlaying.value.uri
     val answers = com.music.spotui.extensions.ExtensionAudio.answers.intValue
     val downloaded = stringResource(R.string.player_source_downloaded)
-    if (!com.music.spotui.di.LocalPlayer.active.value || SongPlayer.routing) return ""
-    return remember(uri, answers, downloaded) {
+    // A source picked in the quality sheet for this session: said, discreetly, at the line's end.
+    val temporary = com.music.spotui.extensions.Extensions.sessionSource.collectAsState().value?.let { stringResource(R.string.source_pick_tag) }
+    if (SongPlayer.routing) return ""
+    val label = if (!com.music.spotui.di.LocalPlayer.active.value) spotifyQualityLabel(uri) else remember(uri, answers, downloaded) {
         com.music.spotui.di.LocalPlayer.current()?.let { com.music.spotui.extensions.ExtensionAudio.sourceLabel(it, downloaded) }.orEmpty()
     }
+    return if (temporary == null || label.isBlank() || uri.startsWith("spotify:episode:")) label else "$label · $temporary"
+}
+
+/**
+ * What Spotify streams while its own player plays here: "Spotify · AAC · 160 kbit/s", read from the
+ * page once the song has loaded (it reports the stream a moment after the start); "" on another
+ * device or while it is not known. Same line, same tap (the quality sheet) as an extension's source.
+ */
+/** How many times (every 2 s, about half a minute) the page is asked for the stream it plays. */
+private const val QUALITY_TRIES = 15
+
+@Composable
+private fun spotifyQualityLabel(uri: String): String {
+    if (SongPlayer.activeDevice.value != null || uri.isBlank()) return ""
+    val label by androidx.compose.runtime.produceState("", uri) {
+        value = ""
+        // The Immersive player is composed from the song's start, before the page has loaded the
+        // stream (later still after a pause or a slow start): asked again until it is known.
+        repeat(QUALITY_TRIES) { i ->
+            kotlinx.coroutines.delay(if (i == 0) 1500L else 2000L)
+            val (bitrate, mime) = app.myspoti.host.android.MyspotiRuntime.spotify.player.audioInfo()
+            if (bitrate > 0) { value = "${codecName(mime)} · ${bitrate / 1000} kbit/s"; return@produceState }
+        }
+    }
+    return if (label.isBlank()) "" else stringResource(R.string.player_source_spotify, label)
 }
 
 /** The name of the extension streaming the song playing, for the mini player; null otherwise (see [playingSourceLabel]). */
@@ -153,7 +184,7 @@ fun playingExtensionName(): String? {
 
 private fun deviceIcon(type: String): ImageVector = when (type.uppercase()) {
     "SMARTPHONE", "TABLET" -> Icons.Default.Smartphone
-    "SPEAKER", "AVR", "STB", "AUDIO_DONGLE" -> Icons.Default.Speaker
+    "SPEAKER", "AVR", "STB", "AUDIO_DONGLE", "CAST_AUDIO" -> Icons.Default.Speaker
     "TV", "CAST_VIDEO", "GAME_CONSOLE" -> Icons.Default.Tv
     else -> Icons.Default.Computer
 }
@@ -171,7 +202,7 @@ fun DevicesSheet(onDismiss: () -> Unit) {
     val route = rememberAudioRoute()
     val headphones = remote == null && route.kind != AudioRoute.Kind.SPEAKER
     if (quality) QualitySheet(onDismiss = { quality = false })
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(
                 stringResource(R.string.listen_on),
@@ -204,6 +235,7 @@ fun DevicesSheet(onDismiss: () -> Unit) {
                 }
                 Icon(
                     when {
+                        com.music.spotui.cast.CastPlayback.device.value != null -> Icons.Default.Cast
                         remote != null -> deviceIcon(remote.type)
                         headphones -> Icons.Default.Headphones
                         else -> Icons.Default.Smartphone
@@ -237,9 +269,14 @@ fun DevicesSheet(onDismiss: () -> Unit) {
                 list.filter { !it.isSelf && !it.isActive }.forEach { d ->
                     DeviceRow(deviceIcon(d.type), d.name, null) { SongPlayer.transferTo(d); onDismiss() }
                 }
-                if (list.none { !it.isSelf } && !headphones && remote == null)
+                if (list.none { !it.isSelf } && !headphones && remote == null && com.music.spotui.cast.CastDiscovery.devices.isEmpty() &&
+                    com.music.spotui.connect.LanDiscovery.devices.isEmpty() && com.music.spotui.cast.CastPlayback.device.value == null)
                     Text(stringResource(R.string.no_devices), color = AppText.copy(alpha = 0.7f), modifier = Modifier.padding(20.dp))
             }
+            // Spotify Connect devices of the network that are not logged in to the account yet.
+            com.music.spotui.connect.LanDeviceRows()
+            // Cast devices, for Myspoti's own songs (Spotify's go through Spotify Connect above).
+            com.music.spotui.cast.CastDeviceRows(onDismiss)
             JamSection(onDismiss)
             // Bluetooth: pair or pick headphones and speakers in the system settings.
             Column(
@@ -270,7 +307,7 @@ private fun DeviceRow(icon: ImageVector, name: String, detail: String?, current:
     }
 }
 
-private fun streamingLabel(q: com.music.spotui.data.preferences.StreamingQuality): Int = when (q) {
+internal fun streamingLabel(q: com.music.spotui.data.preferences.StreamingQuality): Int = when (q) {
     com.music.spotui.data.preferences.StreamingQuality.AUTO -> R.string.quality_streaming_auto
     com.music.spotui.data.preferences.StreamingQuality.LOW -> R.string.quality_streaming_low
     com.music.spotui.data.preferences.StreamingQuality.NORMAL -> R.string.quality_streaming_normal
@@ -282,7 +319,9 @@ private fun streamingLabel(q: com.music.spotui.data.preferences.StreamingQuality
 @Composable
 fun QualitySheet(onDismiss: () -> Unit) {
     val local = com.music.spotui.di.LocalPlayer.active.value
-    val now by androidx.compose.runtime.produceState<String?>(null) {
+    // Read again when another source plays the song (picked below, see SourcePicker).
+    val answers = com.music.spotui.extensions.ExtensionAudio.answers.intValue
+    val now by androidx.compose.runtime.produceState<String?>(null, local, answers) {
         value = if (local) {
             val t = com.music.spotui.di.LocalPlayer.current()
             val file = t?.let { com.music.spotui.data.offline.OfflineStore.byLocalId(it.id) }
@@ -296,8 +335,8 @@ fun QualitySheet(onDismiss: () -> Unit) {
             if (bitrate <= 0) "" else "${codecName(mime)} · ${bitrate / 1000} kbit/s"
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+        Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(stringResource(R.string.quality_sheet_title), color = AppText, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             val text = now
@@ -309,6 +348,17 @@ fun QualitySheet(onDismiss: () -> Unit) {
                 },
                 color = Green, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
+            // A song an extension gives: the sources asked for it, and why this one plays.
+            val extId = if (local) com.music.spotui.di.LocalPlayer.current()?.uri
+                ?.takeIf { it.scheme == com.music.spotui.extensions.ExtensionAudio.SCHEME }?.lastPathSegment else null
+            var why by remember { androidx.compose.runtime.mutableStateOf(false) }
+            if (extId != null) {
+                Text(stringResource(R.string.why_source_title), color = AppText, fontSize = 15.sp,
+                    modifier = Modifier.fillMaxWidth().clickable { why = true }.padding(horizontal = 20.dp, vertical = 12.dp))
+                if (why) WhySourceSheet(extId, detectedLabel(com.music.spotui.di.LocalPlayer.audioFormat())) { why = false }
+            }
+            // Another audio source for this song and the next ones, until the app restarts.
+            SourcePicker(Modifier.padding(top = 12.dp))
             // The level of the network in use now (Wi-Fi and mobile data each keep their own).
             if (!local) StreamingQualityPicker(Modifier.padding(top = 12.dp), cellular = com.music.spotui.data.DataSaver.metered,
                 title = if (com.music.spotui.data.DataSaver.metered) R.string.quality_streaming_cell_title else R.string.quality_streaming_wifi_title)
@@ -316,7 +366,7 @@ fun QualitySheet(onDismiss: () -> Unit) {
     }
 }
 
-private fun codecName(mime: String): String = when {
+internal fun codecName(mime: String): String = when {
     "mp4a" in mime -> "AAC"
     "flac" in mime -> "FLAC"
     "opus" in mime -> "Opus"
@@ -416,7 +466,7 @@ private object JamLinks {
 @Composable
 fun SleepTimerSheet(onDismiss: () -> Unit) {
     val active = SongPlayer.sleepEndsAt.value != null
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
+    com.music.spotui.ui.components.LookSheet(onDismissRequest = onDismiss, containerColor = SheetColor) {
         Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(
                 stringResource(R.string.context_menu_sleep_timer),
@@ -476,7 +526,7 @@ fun QueueSheet(contextName: String, onDismiss: () -> Unit) {
     // through this state.
     val listState = rememberLazyListState()
 
-    ModalBottomSheet(
+    com.music.spotui.ui.components.LookSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = SheetColor,
@@ -528,7 +578,7 @@ fun QueueSheet(contextName: String, onDismiss: () -> Unit) {
                     SongPlayer.setShuffle(!shuffle); state.shuffle.value = !shuffle
                 }
                 val mode = SongPlayer.repeatMode.value
-                QueueAction(if (mode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, stringResource(R.string.np_content_desc_repeat), mode != 0, Modifier.weight(1f)) {
+                QueueAction(when (mode) { 2 -> Icons.Default.RepeatOne; 3 -> RepeatIcons.once; else -> Icons.Default.Repeat }, stringResource(R.string.np_content_desc_repeat), mode != 0, Modifier.weight(1f)) {
                     SongPlayer.cycleRepeat()
                 }
                 QueueAction(Icons.Outlined.Timer, stringResource(R.string.np_content_desc_sleep_timer), SongPlayer.sleepEndsAt.value != null, Modifier.weight(1f)) {

@@ -14,6 +14,8 @@ val AppAccent: Color get() = com.music.spotui.data.api.SupportReminder.accentCol
 val AppText: Color = Color.White
 /** Secondary text and icons. */
 val AppMuted: Color = Color(0xFFB3B3B3)
+/** Destructive actions (delete, leave, block) and failures shown as text. */
+val AppDestructive = Color(0xFFF15E6C)
 /** What a tint is mixed with to make a header. */
 val AppShade: Color = Color.Black
 
