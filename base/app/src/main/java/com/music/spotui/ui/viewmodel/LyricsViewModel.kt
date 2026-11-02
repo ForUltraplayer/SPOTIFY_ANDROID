@@ -117,7 +117,7 @@ class LyricsViewModel constructor() : ViewModel() {
             // A skip meanwhile: the answer is for the previous song.
             if (loadedKey == key) {
                 if (lyrics == null) _triedNothing.value = sourceId
-                else _state.value = loadedState(lyrics)
+                else { _state.value = loadedState(lyrics); requestHangul(track, lyrics) }
             }
             _trying.value = null
         }

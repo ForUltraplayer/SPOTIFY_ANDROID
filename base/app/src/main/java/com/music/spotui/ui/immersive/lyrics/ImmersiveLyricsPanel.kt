@@ -222,6 +222,26 @@ fun ImmersiveLyricsPanel(modifier: Modifier = Modifier, contentPadding: PaddingV
                                 ),
                         )
                     }
+                    // The readings being looked for, or why there are none, where it is seen: the notes
+                    // after the lines are out of reach while a song plays. A tap shows the whole reason.
+                    val readingStatus = when {
+                        current.readingLoading -> "한글 발음 찾는 중…"
+                        current.readingError != null && current.readings == null -> "한글 발음 없음 · 눌러서 이유 보기"
+                        else -> null
+                    }
+                    if (!selecting && readingStatus != null) Text(
+                        text = readingStatus,
+                        style = Immersive.Caption,
+                        color = Immersive.TextSecondary,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(top = contentPadding.calculateTopPadding(), start = Immersive.Gutter)
+                            .glass(RoundedCornerShape(14.dp))
+                            .clickable(enabled = current.readingError != null) {
+                                android.widget.Toast.makeText(context, current.readingError, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    )
                     if (selecting) ShareBar(
                         canShare = picked != null,
                         onCancel = { vm.stopSelecting() },

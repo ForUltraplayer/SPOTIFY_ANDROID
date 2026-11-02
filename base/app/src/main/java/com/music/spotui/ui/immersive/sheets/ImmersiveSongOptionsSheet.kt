@@ -269,6 +269,7 @@ fun ImmersiveSongOptionsSheet(
             val hangul = com.music.spotui.data.api.HangulReadings.enabled()
             ImmersiveSheetRow(
                 Icons.Rounded.RecordVoiceOver, "기존 한글 발음 자동 조회",
+                value = if (hangul) "켜짐" else "꺼짐",
                 tint = if (hangul) LocalImmersiveSheetTint.current.accent else null,
             ) {
                 lyricsVm.toggleHangul()
@@ -278,6 +279,7 @@ fun ImmersiveSongOptionsSheet(
             val automatic = com.music.spotui.data.api.HangulReadings.automaticEnabled()
             ImmersiveSheetRow(
                 Icons.Rounded.AutoFixHigh, "누락 줄에 기기 내부 자동 발음 사용",
+                value = if (automatic) "켜짐" else "꺼짐",
                 tint = if (automatic) LocalImmersiveSheetTint.current.accent else null,
             ) {
                 lyricsVm.toggleAutomaticReadings()
