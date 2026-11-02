@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">für diese Sitzung im Player gewählt</string>
+    <string name="why_note_goes_on">der Song läuft dort weiter, wo er lief</string>
+    <string name="why_note_recent_miss">Spotify: Vor weniger als einer Minute hatte ihn keine Erweiterung, nicht erneut gefragt</string>
+    <string name="why_note_no_source">Spotify: keine Quelle zum Fragen</string>
+    <string name="why_note_none_had">Spotify: keine Erweiterung hatte ihn</string>
+    <string name="why_note_refused">Erweiterungen erneut gefragt: Die Adresse wurde abgelehnt (abgelaufen oder entfernt)</string>
+    <string name="why_note_set_aside">vorübergehend ausgesetzt: %1$s</string>
+    <string name="why_note_inactive">inaktiv: %1$s</string>
+</resources>

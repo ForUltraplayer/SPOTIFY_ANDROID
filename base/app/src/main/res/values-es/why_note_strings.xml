@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">elegida en el reproductor para esta sesión</string>
+    <string name="why_note_goes_on">la canción sigue donde sonaba</string>
+    <string name="why_note_recent_miss">Spotify: ninguna extensión la tenía hace menos de un minuto, no se volvió a preguntar</string>
+    <string name="why_note_no_source">Spotify: no hay ninguna fuente a la que preguntar</string>
+    <string name="why_note_none_had">Spotify: ninguna extensión la tenía</string>
+    <string name="why_note_refused">se volvió a preguntar a las extensiones: su dirección fue rechazada (caducada o eliminada)</string>
+    <string name="why_note_set_aside">apartada temporalmente: %1$s</string>
+    <string name="why_note_inactive">inactiva: %1$s</string>
+</resources>

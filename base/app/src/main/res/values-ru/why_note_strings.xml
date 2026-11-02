@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">выбран в плеере на этот сеанс</string>
+    <string name="why_note_goes_on">трек продолжает играть там же</string>
+    <string name="why_note_recent_miss">Spotify: менее минуты назад ни у одного расширения его не было, повторно не запрашивался</string>
+    <string name="why_note_no_source">Spotify: нет источников для запроса</string>
+    <string name="why_note_none_had">Spotify: ни у одного расширения его не было</string>
+    <string name="why_note_refused">расширения опрошены снова: адрес отклонён (истёк или удалён)</string>
+    <string name="why_note_set_aside">временно отложен: %1$s</string>
+    <string name="why_note_inactive">неактивен: %1$s</string>
+</resources>

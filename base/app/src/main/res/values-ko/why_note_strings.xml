@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">이번 실행 동안 플레이어에서 선택함</string>
+    <string name="why_note_goes_on">곡은 재생하던 곳에서 계속됩니다</string>
+    <string name="why_note_recent_miss">Spotify: 1분 안에 이 곡을 가진 확장이 없어 다시 묻지 않음</string>
+    <string name="why_note_no_source">Spotify: 물어볼 소스가 없음</string>
+    <string name="why_note_none_had">Spotify: 이 곡을 가진 확장이 없음</string>
+    <string name="why_note_refused">확장에 다시 물음: 음원 주소가 거부됨(만료되었거나 사라짐)</string>
+    <string name="why_note_set_aside">잠시 제외됨: %1$s</string>
+    <string name="why_note_inactive">비활성: %1$s</string>
+</resources>

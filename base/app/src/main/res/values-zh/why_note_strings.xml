@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">本次运行期间在播放器中选择</string>
+    <string name="why_note_goes_on">歌曲继续在原来的来源播放</string>
+    <string name="why_note_recent_miss">Spotify：一分钟内没有扩展提供此歌曲，不再重复询问</string>
+    <string name="why_note_no_source">Spotify：没有可询问的来源</string>
+    <string name="why_note_none_had">Spotify：没有扩展提供此歌曲</string>
+    <string name="why_note_refused">已重新询问扩展：地址被拒绝（已过期或已删除）</string>
+    <string name="why_note_set_aside">暂时搁置：%1$s</string>
+    <string name="why_note_inactive">未启用：%1$s</string>
+</resources>

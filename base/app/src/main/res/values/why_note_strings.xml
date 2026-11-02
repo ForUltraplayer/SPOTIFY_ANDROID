@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The extension engine's fixed notes in "Why this source?" (WhySourceSheet); its log keeps them in English. -->
+<resources>
+    <string name="why_note_picked">picked in the player for this session</string>
+    <string name="why_note_goes_on">the song goes on where it played</string>
+    <string name="why_note_recent_miss">Spotify: no extension had it under a minute ago, not asked again</string>
+    <string name="why_note_no_source">Spotify: no source to ask</string>
+    <string name="why_note_none_had">Spotify: no extension had it</string>
+    <string name="why_note_refused">asked the extensions again: its address was refused (expired or gone)</string>
+    <string name="why_note_set_aside">set aside: %1$s</string>
+    <string name="why_note_inactive">inactive: %1$s</string>
+</resources>

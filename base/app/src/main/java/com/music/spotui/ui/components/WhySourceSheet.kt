@@ -43,12 +43,13 @@ fun WhySourceSheet(trackId: String, detected: String?, onDismiss: () -> Unit) {
                 Line(stringResource(R.string.why_source_none), muted = true)
                 return@Column
             }
+            val note = rememberNotes()
             Head(stringResource(R.string.why_source_asked))
             a.asked.forEach { s ->
                 val name = nameOf(s.extension)
                 val what = stringResource(R.string.why_source_ms, outcomeLabel(s.outcome), s.ms)
-                Line("$name — " + (s.skippedReason?.let { stringResource(R.string.why_source_skipped, PlayAttempt.maskText(it)) } ?: what) +
-                    (s.detail?.let { " (${PlayAttempt.maskText(it)})" } ?: ""))
+                Line("$name — " + (s.skippedReason?.let { stringResource(R.string.why_source_skipped, note(PlayAttempt.maskText(it))) } ?: what) +
+                    (s.detail?.let { " (${note(PlayAttempt.maskText(it))})" } ?: ""))
             }
             Line(a.chosen?.let { stringResource(R.string.why_source_chosen, nameOf(it)) } ?: stringResource(R.string.why_source_none_chosen))
             a.open?.let { o ->
@@ -59,13 +60,39 @@ fun WhySourceSheet(trackId: String, detected: String?, onDismiss: () -> Unit) {
             a.announced?.let { Line(stringResource(R.string.why_source_announced, it)) }
             a.sourceQuality?.let { q -> a.chosen?.let { Line(stringResource(R.string.why_source_ext_quality, q, nameOf(it))) } }
             (detected ?: a.detected)?.let { Line(stringResource(R.string.why_source_detected, it)) }
-            a.fallback?.let { Line(stringResource(R.string.why_source_fallback, PlayAttempt.maskText(it)), muted = true) }
+            a.fallback?.let { Line(stringResource(R.string.why_source_fallback, note(PlayAttempt.maskText(it))), muted = true) }
             a.error?.let { Line(stringResource(R.string.why_source_error, PlayAttempt.maskText(it)), muted = true) }
         }
     }
 }
 
 private fun nameOf(id: String): String = Extensions.registry.value.find(id)?.name ?: id
+
+/** The engine's fixed English notes, as Extensions and ExtensionAudio write them; its log keeps the English. */
+private val NOTES = mapOf(
+    "picked in the player for this session" to R.string.why_note_picked,
+    "the song goes on where it played" to R.string.why_note_goes_on,
+    "Spotify: no extension had it under a minute ago, not asked again" to R.string.why_note_recent_miss,
+    "Spotify: no source to ask" to R.string.why_note_no_source,
+    "Spotify: no extension had it" to R.string.why_note_none_had,
+    "asked the extensions again: its address was refused (expired or gone)" to R.string.why_note_refused,
+)
+private val PREFIXED = mapOf("set aside: " to R.string.why_note_set_aside, "inactive: " to R.string.why_note_inactive)
+
+/** Shows a note ("a; b" parts) in the app's language where it is one of the engine's fixed ones; an extension's own text as it is. */
+@Composable
+private fun rememberNotes(): (String) -> String {
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    return remember(res) {
+        { text ->
+            text.split("; ").joinToString("; ") { part ->
+                NOTES[part]?.let(res::getString)
+                    ?: PREFIXED.entries.firstOrNull { part.startsWith(it.key) }?.let { res.getString(it.value, part.removePrefix(it.key)) }
+                    ?: part
+            }
+        }
+    }
+}
 
 @Composable
 private fun outcomeLabel(key: String): String = stringResource(when (key) {

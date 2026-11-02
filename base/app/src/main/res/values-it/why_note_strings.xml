@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">scelta nel lettore per questa sessione</string>
+    <string name="why_note_goes_on">il brano continua dove era in riproduzione</string>
+    <string name="why_note_recent_miss">Spotify: nessuna estensione l\'aveva meno di un minuto fa, non richiesto di nuovo</string>
+    <string name="why_note_no_source">Spotify: nessuna sorgente da interrogare</string>
+    <string name="why_note_none_had">Spotify: nessuna estensione l\'aveva</string>
+    <string name="why_note_refused">estensioni interrogate di nuovo: il suo indirizzo è stato rifiutato (scaduto o rimosso)</string>
+    <string name="why_note_set_aside">messa da parte: %1$s</string>
+    <string name="why_note_inactive">inattiva: %1$s</string>
+</resources>

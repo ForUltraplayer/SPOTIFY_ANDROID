@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">επιλέχθηκε στο πρόγραμμα αναπαραγωγής για αυτή τη συνεδρία</string>
+    <string name="why_note_goes_on">το τραγούδι συνεχίζει από εκεί που έπαιζε</string>
+    <string name="why_note_recent_miss">Spotify: καμία επέκταση δεν το είχε πριν από λιγότερο από ένα λεπτό, δεν ρωτήθηκε ξανά</string>
+    <string name="why_note_no_source">Spotify: καμία πηγή για ερώτηση</string>
+    <string name="why_note_none_had">Spotify: καμία επέκταση δεν το είχε</string>
+    <string name="why_note_refused">ρωτήθηκαν ξανά οι επεκτάσεις: η διεύθυνση απορρίφθηκε (έληξε ή καταργήθηκε)</string>
+    <string name="why_note_set_aside">παραμερίστηκε προσωρινά: %1$s</string>
+    <string name="why_note_inactive">ανενεργή: %1$s</string>
+</resources>

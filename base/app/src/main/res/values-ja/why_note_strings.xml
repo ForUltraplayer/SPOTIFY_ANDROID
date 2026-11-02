@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="why_note_picked">この起動中にプレーヤーで選択</string>
+    <string name="why_note_goes_on">曲はそれまでのソースで再生を続けます</string>
+    <string name="why_note_recent_miss">Spotify：1分以内にどの拡張機能にもなかったため再確認しない</string>
+    <string name="why_note_no_source">Spotify：確認できるソースがない</string>
+    <string name="why_note_none_had">Spotify：どの拡張機能にもなかった</string>
+    <string name="why_note_refused">拡張機能に再確認：アドレスが拒否されました（期限切れまたは削除）</string>
+    <string name="why_note_set_aside">一時的に除外：%1$s</string>
+    <string name="why_note_inactive">停止中：%1$s</string>
+</resources>
