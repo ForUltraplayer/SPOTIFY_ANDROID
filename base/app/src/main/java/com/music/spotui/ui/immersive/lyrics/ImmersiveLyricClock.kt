@@ -57,7 +57,9 @@ private const val SEEK_JUMP_MS = 800L
 /** How often the position is looked at while paused, for a seek made from elsewhere. */
 private const val PAUSED_POLL_MS = 120L
 
-private fun playerPosition(): Long = SongPlayer.getCurrentPosition().coerceAtLeast(0L)
+// The song's own lyric adjustment (LyricsOffsets) moves the lyrics, not the audio.
+private fun playerPosition(): Long =
+    (SongPlayer.getCurrentPosition() + com.music.spotui.data.api.LyricsOffsets.of(SongPlayer.currentLyricsTrack()?.key)).coerceAtLeast(0L)
 
 /**
  * The song position, ticking every frame while [playing].

@@ -476,32 +476,9 @@ fun LyricsScreen(
     val vm: LyricsViewModel = viewModel()
     val state = rememberLyricsState(vm, title, artist)
     var readingSourceDialog by remember { mutableStateOf(false) }
-    var readingSourceInput by remember { mutableStateOf("") }
-    var readingSourceError by remember { mutableStateOf<String?>(null) }
     var offsetDialog by remember { mutableStateOf(false) }
     if (offsetDialog) LyricsOffsetDialog { offsetDialog = false }
-    if (readingSourceDialog) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { readingSourceDialog = false },
-            title = { Text("한글 발음 자료") },
-            text = { Column {
-                Text("기존 한글 발음을 가져옵니다. 빈 주소는 자동 검색입니다.")
-                androidx.compose.material3.OutlinedTextField(
-                    value = readingSourceInput,
-                    onValueChange = { readingSourceInput = it; readingSourceError = null },
-                    label = { Text("한음, 나무위키 또는 티스토리 HTTPS 주소") },
-                    isError = readingSourceError != null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                readingSourceError?.let { Text(it) }
-            } },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = {
-                val error = vm.setReadingSource(readingSourceInput)
-                if (error == null) readingSourceDialog = false else readingSourceError = error
-            }) { Text("저장하고 다시 조회") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { readingSourceDialog = false }) { Text("취소") } },
-        )
-    }
+    if (readingSourceDialog) HangulSourceDialog(vm) { readingSourceDialog = false }
     val lyrics = (state as? LyricsViewModel.State.Loaded)?.lyrics
     val palette = paletteFor(lyrics, accentColor)
     val bg by animateColorAsState(palette.background, tween(300), label = "lyricsBg")
@@ -587,7 +564,7 @@ fun LyricsScreen(
                     canTranslate = state is LyricsViewModel.State.Loaded,
                     hangulEnabled = com.music.spotui.data.api.HangulReadings.enabled(),
                     onHangulToggle = { vm.toggleHangul() },
-                    onHangulSource = { readingSourceInput = vm.readingSource(); readingSourceError = null; readingSourceDialog = true },
+                    onHangulSource = { readingSourceDialog = true },
                     automaticEnabled = com.music.spotui.data.api.HangulReadings.automaticEnabled(),
                     onAutomaticToggle = { vm.toggleAutomaticReadings() },
                     onCopyTitle = {
@@ -745,8 +722,36 @@ fun LyricsScreen(
     }
 }
 
+/** The Hangul reading source of the song playing: an address to read, or blank to search (Classic and Immersive menus). */
 @Composable
-private fun LyricsOffsetDialog(onDismiss: () -> Unit) {
+internal fun HangulSourceDialog(vm: LyricsViewModel, onDismiss: () -> Unit) {
+    var input by remember { mutableStateOf(vm.readingSource()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("한글 발음 자료") },
+        text = { Column {
+            Text("기존 한글 발음을 가져옵니다. 빈 주소는 자동 검색입니다.")
+            androidx.compose.material3.OutlinedTextField(
+                value = input,
+                onValueChange = { input = it; error = null },
+                label = { Text("한음, 나무위키 또는 티스토리 HTTPS 주소") },
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            error?.let { Text(it) }
+        } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = {
+            error = vm.setReadingSource(input)
+            if (error == null) onDismiss()
+        }) { Text("저장하고 다시 조회") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("취소") } },
+    )
+}
+
+/** The per-song lyric timing adjustment (LyricsOffsets) of the song playing (Classic and Immersive menus). */
+@Composable
+internal fun LyricsOffsetDialog(onDismiss: () -> Unit) {
     val key = SongPlayer.currentLyricsTrack()?.key
     if (key.isNullOrEmpty()) { LaunchedEffect(Unit) { onDismiss() }; return }
     val offsets = com.music.spotui.data.api.LyricsOffsets

@@ -5,7 +5,7 @@ Each release on GitHub shows its section below. The app shows it too when it off
 ## 2.3.0-hangul.1
 
 - Based on Myspoti 2.3.0: Repeat once and Repeat for good, Myspoti shuffle, equalizer and playback speed for extension and device songs, source order for audio and download extensions, the Immersive look, safer extensions and more (sections 2.0.2-beta.5 to 2.3.0 below)
-- Hangul readings, YouTube links in playlists with their mixed order, and per-song lyric sync are kept
+- Hangul readings, YouTube links in playlists with their mixed order, and per-song lyric sync are kept, in the Classic look and in the new Immersive look (its lyrics, song menu, playlist and phone list pages)
 - Check for updates is now Myspoti's own (last checked time, a notice when GitHub limits requests); Hangul builds still take both releases and pre-releases
 - LyricsPlus lyrics now carry translations, backing vocals and singers, still checked against the same recording
 

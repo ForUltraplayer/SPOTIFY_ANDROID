@@ -24,6 +24,11 @@ import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Share
@@ -94,6 +99,13 @@ fun ImmersiveSongOptionsSheet(
     var showNerd by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
     var showDevices by remember { mutableStateOf(false) }
+    var showOffset by remember { mutableStateOf(false) }
+    var showHangulSource by remember { mutableStateOf(false) }
+    if (showOffset) { com.music.spotui.ui.screens.LyricsOffsetDialog { showOffset = false; onDismiss() }; return }
+    if (showHangulSource) {
+        com.music.spotui.ui.screens.HangulSourceDialog(androidx.lifecycle.viewmodel.compose.viewModel()) { showHangulSource = false; onDismiss() }
+        return
+    }
     if (showQuality) { com.music.spotui.ui.components.QualitySheet(onDismiss = { showQuality = false; onDismiss() }); return }
     if (showDevices) { com.music.spotui.ui.components.DevicesSheet(onDismiss = { showDevices = false; onDismiss() }); return }
     if (showNerd) { com.music.spotui.ui.components.StatsForNerdsSheet(onDismiss = { showNerd = false; onDismiss() }); return }
@@ -247,6 +259,34 @@ fun ImmersiveSongOptionsSheet(
                     com.music.spotui.data.preferences.LyricsRomanizationPref.set(context, !on)
                     onDismiss()
                 }
+            }
+            // The Hangul build's lyric options, as in the Classic lyrics menu.
+            val offsets = com.music.spotui.data.api.LyricsOffsets
+            ImmersiveSheetRow(
+                Icons.Rounded.Tune, "가사 싱크 조절",
+                value = offsets.describe(offsets.of(com.music.spotui.di.SongPlayer.currentLyricsTrack()?.key)),
+            ) { showOffset = true }
+            val hangul = com.music.spotui.data.api.HangulReadings.enabled()
+            ImmersiveSheetRow(
+                Icons.Rounded.RecordVoiceOver, "기존 한글 발음 자동 조회",
+                tint = if (hangul) LocalImmersiveSheetTint.current.accent else null,
+            ) {
+                lyricsVm.toggleHangul()
+                onDismiss()
+            }
+            if (lyrics != null) ImmersiveSheetRow(Icons.Rounded.Link, "한글 발음 자료 주소") { showHangulSource = true }
+            val automatic = com.music.spotui.data.api.HangulReadings.automaticEnabled()
+            ImmersiveSheetRow(
+                Icons.Rounded.AutoFixHigh, "누락 줄에 기기 내부 자동 발음 사용",
+                tint = if (automatic) LocalImmersiveSheetTint.current.accent else null,
+            ) {
+                lyricsVm.toggleAutomaticReadings()
+                onDismiss()
+            }
+            ImmersiveSheetRow(Icons.Rounded.ContentCopy, "곡 제목 복사") {
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", song.title))
+                onDismiss()
             }
             // Ask another provider for the lyrics (also when none were found).
             if (lyricsState !is com.music.spotui.ui.viewmodel.LyricsViewModel.State.Loading) {

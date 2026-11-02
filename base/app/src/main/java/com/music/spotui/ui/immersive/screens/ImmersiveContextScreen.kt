@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -255,6 +256,10 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     var askRemoveDownloads by remember { mutableStateOf(false) }
     var playlistMenu by remember { mutableStateOf(false) }
     var addingSongs by remember { mutableStateOf(false) }
+    // A YouTube link kept on this phone under the playlist (the Hangul build's, as on the Classic page).
+    var addingLink by remember { mutableStateOf(false) }
+    // Moving rows by hand: the mixed order kept on this phone; Spotify's order is not changed.
+    var editingOrder by remember(p.uri) { mutableStateOf(false) }
     var albumMenu by remember { mutableStateOf(false) }
     // Collaborative playlists, as on the Classic page: the people, leaving, who added what.
     var showMembers by remember { mutableStateOf(false) }
@@ -325,10 +330,16 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     }
 
     if (addingSongs) com.music.spotui.ui.components.AddSongsScreen(p) { added -> addingSongs = false; if (added) vm.reload() }
+    if (addingLink) com.music.spotui.ui.screens.YouTubeLinkDialog(onDismiss = { addingLink = false }) { track ->
+        addingLink = false
+        LocalPlaylists.addToSpotify(p.uri.substringAfterLast(':'), track)
+        Toast.makeText(context, context.getString(R.string.local_added_to, p.name), Toast.LENGTH_SHORT).show()
+    }
     if (albumMenu) com.music.spotui.ui.components.AlbumOptionsSheet(p.uri, p.name, known = p) { albumMenu = false }
     if (playlistMenu) com.music.spotui.ui.components.PlaylistOptionsSheet(
         page = p,
         onAddSongs = if (p.type == "playlist" && vm.editableContext.value && !p.isBlend) ({ addingSongs = true }) else null,
+        onAddYouTube = if (p.type == "playlist" && vm.editableContext.value && !p.isBlend) ({ addingLink = true }) else null,
         onDismiss = { playlistMenu = false },
         onChanged = { vm.reload() },
         onEdited = { name, description -> vm.showDetails(name, description) },
@@ -387,12 +398,37 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
         }
     }
     val rows = shown.first
+    // A playlist with links or phone files under it, or an order set on this phone: one mixed list
+    // (MixedOrder), shown and played in that order, as on the Classic page. Without either, the page is Spotify's.
+    val playlistId = p.uri.substringAfterLast(':')
+    val mixed = p.type == "playlist" && (LocalPlaylists.additions[playlistId].orEmpty().isNotEmpty() || LocalPlaylists.orders[playlistId] != null)
+    val mixedAll by remember(p, sort) {
+        derivedStateOf {
+            sort.applyMixed(com.music.spotui.data.local.MixedOrder.merge(all,
+                LocalPlaylists.additions[playlistId].orEmpty(), LocalPlaylists.orders[playlistId].orEmpty()))
+        }
+    }
+    val mixedShown by remember(p, find, sort) {
+        derivedStateOf {
+            mixedAll.filter { r -> when (r) {
+                is com.music.spotui.data.local.MixedRow.Spotify -> matchesFind(find, r.song.title, r.song.singer, r.song.album)
+                is com.music.spotui.data.local.MixedRow.Local -> matchesFind(find, r.item.title, r.item.artist, r.item.album)
+            } }
+        }
+    }
+    fun playMixed(row: com.music.spotui.data.local.MixedRow?, shuffleIt: Boolean) {
+        val list = mixedAll
+        if (list.isEmpty()) return
+        val at = if (row == null) (if (shuffleIt) list.indices.random() else 0) else list.indexOf(row).coerceAtLeast(0)
+        com.music.spotui.di.MixedPlayback.play(p.uri, p.name, list, at, shuffleIt)
+    }
 
     // What the Play pill does: pause / resume this list, else start it (smart shuffle if it is on).
     fun onPlay() = when {
         isThisContext && playing -> SongPlayer.pause()
         isThisContext -> SongPlayer.play()
         p.tracks.isNotEmpty() && SmartShuffle.on.value == p.uri -> vm.playSmart(p, null)
+        mixed -> playMixed(null, shuffle)
         p.tracks.isNotEmpty() -> vm.play(p, if (shuffle) p.tracks.random() else sort.apply(p.tracks).first(), sort)
         else -> Unit
     }
@@ -411,6 +447,7 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     // Discord: in 2.2.0 a tap while the list played only turned shuffle on or off). Turning
     // shuffle off is the player's shuffle button; smart shuffle has its own button under the pill.
     fun onShuffle() {
+        if (mixed && !smart) return playMixed(null, true)
         if (p.tracks.isEmpty()) return
         if (smart) return vm.playSmart(p, null)
         playerVm.updateShuffleState(true)
@@ -495,49 +532,56 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                 ImmersiveMessageState(stringResource(R.string.assisted_curation_search_empty_view_no_result_title, find.trim()))
             }
             val numbered = p.type == "album"
-            itemsIndexed(shown.first, key = { i, _ -> shown.second[i] }) { index, song ->
-                Column {
-                    ImmersiveSwipeToQueue(song) {
-                        ImmersiveSongRow(
-                            song = song,
-                            playing = song.id == currentSongId && playing,
-                            current = song.id == currentSongId,
-                            onClick = {
-                                dismissKeyboard()
-                                tapper.tap(song) { if (SmartShuffle.on.value == p.uri) vm.playSmart(p, song) else vm.play(p, song, sort) }
-                            },
-                            onMore = { menuSong = song },
-                            trackNumber = if (numbered) index + 1 else null,
-                            showDuration = numbered,
-                            showAlbum = !numbered,
-                            // As in the Classic list: the heart and the download of the song, from the same state
-                            // (what Spotify last reported, the list's one batch check, the downloads kept on the phone).
-                            liked = com.music.spotui.di.trackSaved(song.spotifyTrackId, savedTracks),
-                            offline = OfflineStore.statusOf(song.spotifyTrackId),
-                            // Collaborative: the small face of who added the song.
-                            trailing = vm.adders.value.let { a -> a["row:" + song.rowUid] ?: a["song:" + song.spotifyTrackId] }?.let { m ->
-                                { com.music.spotui.ui.components.ProfileAvatar(m.imageUrl, m.name, 22.dp) }
-                            },
-                        )
-                    }
-                    if (index < rows.lastIndex) ImmersiveRowDivider(if (numbered) NumberedDividerInset else ImmersiveRowDividerInset)
+            @Composable
+            fun SongItem(song: SongsModel, index: Int, onPlay: () -> Unit) {
+                ImmersiveSwipeToQueue(song) {
+                    ImmersiveSongRow(
+                        song = song,
+                        playing = song.id == currentSongId && playing,
+                        current = song.id == currentSongId,
+                        onClick = {
+                            dismissKeyboard()
+                            tapper.tap(song) { if (SmartShuffle.on.value == p.uri) vm.playSmart(p, song) else onPlay() }
+                        },
+                        onMore = { menuSong = song },
+                        trackNumber = if (numbered) index + 1 else null,
+                        showDuration = numbered,
+                        showAlbum = !numbered,
+                        // As in the Classic list: the heart and the download of the song, from the same state
+                        // (what Spotify last reported, the list's one batch check, the downloads kept on the phone).
+                        liked = com.music.spotui.di.trackSaved(song.spotifyTrackId, savedTracks),
+                        offline = OfflineStore.statusOf(song.spotifyTrackId),
+                        // Collaborative: the small face of who added the song.
+                        trailing = vm.adders.value.let { a -> a["row:" + song.rowUid] ?: a["song:" + song.spotifyTrackId] }?.let { m ->
+                            { com.music.spotui.ui.components.ProfileAvatar(m.imageUrl, m.name, 22.dp) }
+                        },
+                    )
                 }
             }
-            // Phone files added to this playlist on this phone (the catalogue can't hold them).
-            if (p.type == "playlist") {
-                val playlistId = p.uri.substringAfterLast(":")
-                val additions = LocalPlaylists.additions[playlistId].orEmpty()
-                if (additions.isNotEmpty()) {
-                    item(key = "local-header") { SectionHeader(stringResource(R.string.local_added_section), modifier = Modifier.padding(top = 14.dp)) }
-                    itemsIndexed(additions, key = { _, item -> "local:${item.key}" }) { index, item ->
-                        val track = item.toTrack()
-                        ImmersiveListRow(
-                            title = item.title,
-                            subtitle = item.artist,
-                            imageUrl = item.artUri,
+            if (editingOrder) item(key = "order-edit") {
+                MixedOrderBar(onReset = { LocalPlaylists.setOrder(playlistId, emptyList()) }, onDone = { editingOrder = false })
+            }
+            // YouTube links and phone files among the songs, in the order kept on this phone (MixedOrder).
+            if (mixed || editingOrder) itemsIndexed(mixedShown, key = { _, r -> r.key }) { index, row ->
+                Column {
+                    when {
+                        editingOrder -> {
+                            val (title, artist) = when (row) {
+                                is com.music.spotui.data.local.MixedRow.Spotify -> row.song.title to row.song.singer
+                                is com.music.spotui.data.local.MixedRow.Local -> row.item.title to row.item.artist
+                            }
+                            MovableRow(title, artist, index, mixedShown.size) { to ->
+                                LocalPlaylists.setOrder(playlistId, com.music.spotui.data.local.MixedOrder.move(mixedAll, index, to))
+                            }
+                        }
+                        row is com.music.spotui.data.local.MixedRow.Spotify -> SongItem(row.song, index) { playMixed(row, false) }
+                        row is com.music.spotui.data.local.MixedRow.Local -> ImmersiveListRow(
+                            title = row.item.title,
+                            subtitle = row.item.artist,
+                            imageUrl = row.item.artUri,
                             round = false,
-                            playing = LocalPlayer.active.value && np.uri == "local:${track.id}",
-                            onClick = { LocalPlayer.play(additions.map { it.toTrack() }, index, context = p.name) },
+                            playing = LocalPlayer.active.value && np.uri == "local:${row.item.toTrack().id}",
+                            onClick = { dismissKeyboard(); playMixed(row, false) },
                             trailing = {
                                 Icon(
                                     Icons.Rounded.Close,
@@ -546,12 +590,18 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                                     modifier = Modifier
                                         .size(36.dp)
                                         .clip(CircleShape)
-                                        .immersiveClickable(onClick = { LocalPlaylists.removeFromSpotify(playlistId, item.key) })
+                                        .immersiveClickable(onClick = { LocalPlaylists.removeFromSpotify(playlistId, row.item.key) })
                                         .padding(8.dp),
                                 )
                             },
                         )
                     }
+                    if (index < mixedShown.lastIndex) ImmersiveRowDivider(ImmersiveRowDividerInset)
+                }
+            } else itemsIndexed(shown.first, key = { i, _ -> shown.second[i] }) { index, song ->
+                Column {
+                    SongItem(song, index) { vm.play(p, song, sort) }
+                    if (index < rows.lastIndex) ImmersiveRowDivider(if (numbered) NumberedDividerInset else ImmersiveRowDividerInset)
                 }
             }
             // "Recommended songs", as under an own playlist in the official apps (an empty one too).
@@ -590,6 +640,9 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                             sort = sort,
                             onDismiss = { sortMenu = false },
                             onSort = { sort = it; TrackOrder.save(context, p.uri, it) },
+                            onEditOrder = if (p.type == "playlist" && !p.isBlend) ({
+                                sort = TrackOrder(); TrackOrder.save(context, p.uri, sort); find = ""; editingOrder = true
+                            }) else null,
                         )
                     }
                     if (p.type == "playlist" || p.type == "album" || p.type == "liked" || p.type == "liked-artist") ImmersiveBarAction(
@@ -856,7 +909,7 @@ private fun DownloadCircle(downloaded: Int, total: Int, busy: Boolean, kept: Boo
 
 /** The sort menu: picking the sort already chosen flips its direction (the arrow shows it). */
 @Composable
-private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onSort: (TrackOrder) -> Unit) {
+private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onSort: (TrackOrder) -> Unit, onEditOrder: (() -> Unit)? = null) {
     DropdownMenu(expanded = open, onDismissRequest = onDismiss, containerColor = Immersive.Raised) {
         Text(
             stringResource(R.string.filter_and_sort_sort_section_title),
@@ -883,6 +936,41 @@ private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onS
                     onDismiss()
                     onSort(if (option == sort.sort) sort.copy(reversed = !sort.reversed) else TrackOrder(option))
                 },
+            )
+        }
+        // The custom order changed by hand, YouTube links and phone files included; kept on this phone.
+        if (onEditOrder != null) DropdownMenuItem(
+            text = { Text("순서 직접 편집 (이 기기)", style = Immersive.Body.copy(color = Immersive.Text)) },
+            onClick = { onDismiss(); onEditOrder() },
+        )
+    }
+}
+
+/** Over the rows while they are moved by hand: back to Spotify's order, and done. */
+@Composable
+private fun MixedOrderBar(onReset: () -> Unit, onDone: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = Immersive.Gutter, vertical = 8.dp)) {
+        Text("위아래 버튼으로 옮기면 이 기기에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.", style = Immersive.Caption, modifier = Modifier.weight(1f))
+        TextButton(onClick = onReset) { Text("Spotify 순서로", style = Immersive.Body.copy(color = Immersive.Text)) }
+        TextButton(onClick = onDone) { Text("완료", style = Immersive.Body.copy(color = Immersive.Accent)) }
+    }
+}
+
+/** A row while the order is edited: its title and buttons that move it one place up or down. */
+@Composable
+private fun MovableRow(title: String, artist: String, index: Int, count: Int, move: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(start = Immersive.Gutter, end = 8.dp).heightIn(min = 56.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Immersive.Body.copy(color = Immersive.Text), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (artist.isNotBlank()) Text(artist, style = Immersive.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        listOf(Triple(Icons.Rounded.ArrowUpward, "위로", index - 1), Triple(Icons.Rounded.ArrowDownward, "아래로", index + 1)).forEach { (icon, label, to) ->
+            val enabled = to in 0 until count
+            Icon(
+                icon, contentDescription = label,
+                tint = if (enabled) Immersive.Text else Immersive.TextSecondary,
+                modifier = Modifier.size(40.dp).clip(CircleShape)
+                    .then(if (enabled) Modifier.immersiveClickable(onClick = { move(to) }) else Modifier).padding(8.dp),
             )
         }
     }

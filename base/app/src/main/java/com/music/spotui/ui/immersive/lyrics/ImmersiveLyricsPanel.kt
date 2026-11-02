@@ -197,6 +197,13 @@ fun ImmersiveLyricsPanel(modifier: Modifier = Modifier, contentPadding: PaddingV
                         current.lyrics, trackKey, Modifier.fillMaxSize(), contentPadding, vm,
                         translations = current.translations.takeIf { current.showTranslation },
                         romanizing = LyricsRomanizationPref.on && current.lyrics.hasRomanization,
+                        readings = current.readings,
+                        hangulNotes = listOfNotNull(
+                            ("기존 한글 발음 자료를 찾는 중" to null).takeIf { current.readingLoading },
+                            current.readingError?.let { it to null },
+                            ("기기 내부 자동 발음: ${current.readingGenerated}줄. 실제 노래의 읽기와 다를 수 있습니다." to null).takeIf { current.readingGenerated > 0 },
+                            current.readingSource?.let { url -> "한글 발음 출처: " + android.net.Uri.parse(url).host to url },
+                        ),
                     )
                     // The Classic screen's translation, with its language setting and its service: the
                     // lyrics are only sent when it is tapped. Not offered for a song already in that language.
@@ -400,6 +407,10 @@ private fun LyricsList(
     translations: List<String>? = null,
     /** Shows the lines' romanization under them. */
     romanizing: Boolean = false,
+    /** The Hangul readings, in the source's order; null while there are none. */
+    readings: List<String>? = null,
+    /** Lines about the readings shown after the lyrics, each with the address it opens (or null). */
+    hangulNotes: List<Pair<String, String?>> = emptyList(),
 ) {
     // Lines picked to share (see ImmersiveLyricsPanel): taps select, the follow waits.
     val selecting by vm.selecting.collectAsState()
@@ -576,6 +587,7 @@ private fun LyricsList(
                 translation = translations?.getOrNull(row.sourceIndex)?.trim()?.takeIf { it.isNotEmpty() && !it.equals(row.text.trim(), ignoreCase = true) },
                 romanizing = romanizing,
                 duet = duet,
+                reading = readings?.getOrNull(row.sourceIndex)?.trim()?.takeIf { it.isNotEmpty() && !row.isGap && it != row.text.trim() },
                 onNote = notes[index]?.let { n -> { noteOpen = n } },
                 // A line Genius explains opens its note; any other starts picking lines to share.
                 onHold = if (selecting) null else notes[index]?.let { n ->
@@ -597,10 +609,23 @@ private fun LyricsList(
                     if (selecting) return@PanelRow
                     SongPlayer.logLyricJump(timeMs)
                     head.announceJump()
-                    SongPlayer.seekTo(timeMs)
+                    // The song's own lyric adjustment moves the lyrics, not the audio.
+                    SongPlayer.seekTo((timeMs - com.music.spotui.data.api.LyricsOffsets.of(SongPlayer.currentLyricsTrack()?.key)).coerceAtLeast(0L))
                     SongPlayer.play()
                 },
             )
+        }
+        // Where the Hangul readings stand (searching, failed, generated lines, their source), under the lines.
+        hangulNotes.forEachIndexed { i, (note, url) ->
+            item(key = "hangul-$i") {
+                Text(
+                    text = note,
+                    style = Immersive.Caption,
+                    color = Immersive.TextSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(start = GLOW_ROOM, end = GLOW_ROOM, top = if (i == 0) 24.dp else 4.dp)
+                        .then(if (url != null) Modifier.clickable { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } else Modifier),
+                )
+            }
         }
     }
 }
@@ -628,6 +653,8 @@ private fun PanelRow(
     romanizing: Boolean,
     /** The song has two singers: see [endLane]. */
     duet: Boolean,
+    /** The line's Hangul reading (HangulReadings), shown under it before the romanization; null when none. */
+    reading: String?,
     /** Opens the Genius note on this line; null when Genius has none. */
     onNote: (() -> Unit)?,
     onHold: (() -> Unit)?,
@@ -807,6 +834,14 @@ private fun PanelRow(
                 PanelBackground(
                     row = row, clock = clock, style = secondaryStyle(BACKGROUND_STYLE, lane),
                     isActive = isActive, sung = sung, synced = synced, lane = lane,
+                    modifier = Modifier.fillMaxWidth().padding(start = GLOW_ROOM, end = GLOW_ROOM, bottom = if (reading != null || romanized != null || translation != null) 4.dp else GLOW_ROOM),
+                )
+            }
+            if (reading != null) {
+                Text(
+                    text = reading,
+                    style = secondaryStyle(TRANSLATION_STYLE, lane),
+                    color = Immersive.TextSecondary,
                     modifier = Modifier.fillMaxWidth().padding(start = GLOW_ROOM, end = GLOW_ROOM, bottom = if (romanized != null || translation != null) 4.dp else GLOW_ROOM),
                 )
             }

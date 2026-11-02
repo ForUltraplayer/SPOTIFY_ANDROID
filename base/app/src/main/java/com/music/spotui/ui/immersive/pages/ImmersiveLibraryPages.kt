@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -173,12 +175,18 @@ fun ImmersiveLocalPlaylistScreen(navController: NavController, id: String) {
     val playlist = LocalPlaylists.playlists[id]
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var addingLink by remember { mutableStateOf(false) }
+    val exportList = com.music.spotui.ui.screens.rememberLocalPlaylistExport()
     if (playlist == null) {
         LaunchedEffect(Unit) { navController.navigateUp() }
         return
     }
+    if (addingLink) com.music.spotui.ui.screens.YouTubeLinkDialog(onDismiss = { addingLink = false }) { addingLink = false; LocalPlaylists.add(id, it) }
     if (menu) ImmersiveSheet(onDismiss = { menu = false }) {
         ImmersiveSheetRow(Icons.Rounded.Edit, stringResource(R.string.local_rename), onClick = { menu = false; renaming = true })
+        // The Hangul build's, as in the Classic list menu: a YouTube link, and the list as a file.
+        ImmersiveSheetRow(Icons.Rounded.Link, "YouTube 링크 추가", onClick = { menu = false; addingLink = true })
+        ImmersiveSheetRow(Icons.Rounded.SaveAlt, "파일로 내보내기", detail = "다른 휴대폰에서는 YouTube 링크만 재생됩니다", onClick = { menu = false; exportList(id) })
         ImmersiveSheetRow(Icons.Rounded.DeleteOutline, stringResource(R.string.local_delete_playlist), destructive = true, onClick = {
             menu = false
             navController.navigateUp()
