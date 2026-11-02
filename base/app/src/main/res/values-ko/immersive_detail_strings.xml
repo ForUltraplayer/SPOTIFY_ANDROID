@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's album, playlist and artist pages (Korean). -->
+<resources>
+    <string name="immersive_detail_pause">일시 정지</string>
+    <string name="immersive_detail_save">내 라이브러리에 저장</string>
+    <string name="immersive_detail_unsave">내 라이브러리에서 삭제</string>
+    <string name="immersive_detail_find">목록에서 찾기</string>
+    <string name="immersive_detail_smart_shuffle_on">스마트 셔플 켜짐: 추천 곡이 셔플 목록에 추가됩니다.</string>
+    <string name="immersive_detail_more">자세히 보기</string>
+    <string name="immersive_detail_less">간단히 보기</string>
+    <string name="immersive_detail_featured_on">참여 앨범</string>
+    <string name="immersive_detail_remove_local">이 플레이리스트에서 삭제</string>
+    <string name="immersive_detail_follow">팔로우</string>
+    <string name="immersive_detail_unfollow">팔로우 취소</string>
+</resources>

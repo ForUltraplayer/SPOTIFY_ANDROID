@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="msp_previous">이전</string>
+    <string name="msp_play">재생</string>
+    <string name="msp_pause">일시 정지</string>
+    <string name="msp_next">다음</string>
+    <string name="msp_like">좋아요</string>
+    <string name="msp_unlike">좋아요 취소</string>
+    <string name="msp_shuffle_on">셔플 켜기</string>
+    <string name="msp_shuffle_off">셔플 끄기</string>
+    <string name="msp_channel_playback">재생</string>
+    <string name="msp_back_15">15초 뒤로</string>
+    <string name="msp_forward_15">15초 앞으로</string>
+</resources>

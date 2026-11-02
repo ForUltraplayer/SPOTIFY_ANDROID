@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_playback_mirror">이 기기에서 Spotify를 소리 없이 계속 재생하고, 내 계정에 재생 횟수를 집계합니다</string>
+    <string name="action_attest">Myspoti 앱임을 증명하기</string>
+    <string name="mirror_indicator">%1$s에서 Spotify 미러링 중</string>
+</resources>

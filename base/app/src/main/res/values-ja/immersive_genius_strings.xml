@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="immersive_genius_none">この曲に関するGeniusの情報はありません。</string>
+    <string name="immersive_genius_error">現在Geniusに接続できません。</string>
+    <string name="immersive_genius_read">Geniusで読む</string>
+    <string name="immersive_genius_note_open">この歌詞についてのGeniusの解説</string>
+    <string name="immersive_genius_source">Geniusの注釈</string>
+    <plurals name="immersive_genius_upvotes">
+        <item quantity="other">%1$d件の高評価</item>
+    </plurals>
+</resources>

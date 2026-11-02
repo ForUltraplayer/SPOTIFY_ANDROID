@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_liquid_glass_title">Liquid Glass</string>
+    <string name="settings_liquid_glass_detail">バーがガラスのように背後の画面を屈折させ、映し込みます</string>
+    <string name="settings_liquid_glass_unsupported">Android 12以降が必要です</string>
+    <string name="settings_liquid_glass_reduced">スマホでぼかしやアニメーションを減らしている間は、すりガラス表示になります</string>
+    <string name="immersive_expand_tab_bar">すべてのタブを表示</string>
+</resources>

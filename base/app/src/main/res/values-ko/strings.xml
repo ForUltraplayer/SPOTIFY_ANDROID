@@ -1,0 +1,26 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Myspoti</string>
+    <string name="aa_playlists">플레이리스트</string>
+    <string name="aa_albums">앨범</string>
+    <string name="aa_artists">아티스트</string>
+    <string name="settings_amoled_theme">AMOLED 테마</string>
+    <string name="settings_amoled_theme_subtitle">배터리를 절약하는 완전한 검은색 배경</string>
+    <string name="main_update_available">새 업데이트를 사용할 수 있습니다</string>
+
+    <string name="notif_action_play">재생</string>
+    <string name="notif_action_pause">일시 정지</string>
+    <string name="notif_shuffle_enable">셔플 켜기</string>
+    <string name="notif_shuffle_disable">셔플 끄기</string>
+    <string name="notif_shuffle_disable_smart">스마트 셔플 끄기</string>
+
+
+    <string name="energy_saver_title" tools:ignore="MissingTranslation">배터리 절약</string>
+    <string name="energy_saver_summary" tools:ignore="MissingTranslation">Canvas 끄기, 동영상과 애니메이션 간소화</string>
+    <string name="video_fullscreen_enter" tools:ignore="MissingTranslation">전체 화면으로 보기</string>
+    <string name="video_fullscreen_exit" tools:ignore="MissingTranslation">전체 화면 종료</string>
+    <string name="playback_seek_description" tools:ignore="MissingTranslation">재생 위치</string>
+    <string name="account_page_title">Spotify 계정</string>
+    <string name="account_page_detail">spotify.com에서 요금제, 개인정보 보호, 기기 관리</string>
+    <string name="player_source_downloaded">다운로드됨</string>
+    <string name="extension_change_write">이제 Spotify로 보내기도 허용됨: %1$s</string>
+</resources>

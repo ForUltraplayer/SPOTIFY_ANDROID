@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="immersive_genius_none">Genius에 이 곡에 대한 정보가 없습니다.</string>
+    <string name="immersive_genius_error">지금은 Genius에 연결할 수 없습니다.</string>
+    <string name="immersive_genius_read">Genius에서 읽기</string>
+    <string name="immersive_genius_note_open">이 구절에 대한 Genius 가사 해석</string>
+    <string name="immersive_genius_source">Genius 주석</string>
+    <plurals name="immersive_genius_upvotes">
+        <item quantity="other">추천 %1$d개</item>
+    </plurals>
+</resources>

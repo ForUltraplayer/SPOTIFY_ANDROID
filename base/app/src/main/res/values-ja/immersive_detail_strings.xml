@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's album, playlist and artist pages (Japanese). -->
+<resources>
+    <string name="immersive_detail_pause">一時停止</string>
+    <string name="immersive_detail_save">マイライブラリに保存</string>
+    <string name="immersive_detail_unsave">マイライブラリから削除</string>
+    <string name="immersive_detail_find">リストから探す</string>
+    <string name="immersive_detail_smart_shuffle_on">スマートシャッフル オン: おすすめの曲がシャッフルされたリストに加わります。</string>
+    <string name="immersive_detail_more">さらに表示</string>
+    <string name="immersive_detail_less">折りたたむ</string>
+    <string name="immersive_detail_featured_on">コラボ作品</string>
+    <string name="immersive_detail_remove_local">このプレイリストから削除</string>
+    <string name="immersive_detail_follow">フォローする</string>
+    <string name="immersive_detail_unfollow">フォローをやめる</string>
+</resources>

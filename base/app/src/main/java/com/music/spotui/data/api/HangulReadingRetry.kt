@@ -12,6 +12,8 @@ internal object HangulReadingRetry {
     const val MAX_RETRIES = 3
     const val DELAY_MS = 2_000L
     const val BUDGET_MS = 60_000L
+    /** The message of the time-out; HangulReadings.userMessage words it for the screen. */
+    const val TIMEOUT = "Hangul reading lookup timed out"
 
     suspend fun <T : Any> resolve(
         now: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -22,7 +24,7 @@ internal object HangulReadingRetry {
         for (attempt in 0..MAX_RETRIES) {
             currentCoroutineContext().ensureActive()
             val remaining = deadline - now()
-            if (remaining <= 0) throw IOException("한글 발음 조회 시간이 초과되었습니다.")
+            if (remaining <= 0) throw IOException(TIMEOUT)
             try {
                 return@withTimeoutOrNull request(attempt, remaining)
             } catch (error: IOException) {
@@ -33,7 +35,7 @@ internal object HangulReadingRetry {
             }
         }
         error("Unreachable reading retry state")
-    } ?: throw IOException("한글 발음 조회 시간이 초과되었습니다.")
+    } ?: throw IOException(TIMEOUT)
 }
 
 /** Owned by HangulReadings' resolution lock; UI reopening does not reset its source budget. */

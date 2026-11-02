@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Listening stats, friend activity and the "your top artist" line (JA). -->
+<resources>
+    <string name="stats_tab_spotify">Spotifyの記録</string>
+    <string name="stats_tab_phone">このスマホの記録</string>
+    <string name="stats_range_short">過去4週間</string>
+    <string name="stats_range_medium">過去6か月</string>
+    <string name="stats_range_long">過去1年</string>
+    <string name="stats_artists_ranked">再生履歴のアーティスト%1$d人</string>
+    <string name="stats_empty">この期間のSpotifyのトップアーティストやトップ曲はまだありません。引き続き再生して、あとでもう一度確認してください。</string>
+    <string name="stats_failed">Spotifyから統計情報が届きませんでした。</string>
+    <string name="stats_spotify_note">このアカウントがすべてのデバイスで再生した内容をもとに、Spotifyがランキングを作成します。Spotifyは再生回数や再生時間（分）を公開していないため、\"このスマホの記録\"の再生時間（分）はMyspotiが独自に集計した値です。</string>
+    <string name="stats_weekly_minutes">週ごとの再生時間（分）</string>
+    <string name="stats_this_week">今週: %1$d分</string>
+    <string name="stats_listening_stats">再生の統計</string>
+    <string name="friends_title">友達のアクティビティ</string>
+    <string name="friends_detail">フォローしている人が聴いている音楽</string>
+    <string name="friends_now">今</string>
+    <string name="friends_empty">まだ友達のアクティビティはありません。フォローしている友達のうち、Spotifyで再生アクティビティを共有している人がここに表示されます。</string>
+    <string name="friends_failed">Spotifyから友達のアクティビティが届きませんでした。</string>
+    <string name="friends_refresh">更新</string>
+    <string name="artist_top_short">過去4週間によく聴いたアーティスト第%1$d位</string>
+    <string name="artist_top_medium">過去6か月によく聴いたアーティスト第%1$d位</string>
+    <string name="artist_top_long">過去1年によく聴いたアーティスト第%1$d位</string>
+</resources>

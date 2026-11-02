@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's bars and shared list components (Korean). -->
+<resources>
+    <string name="immersive_shell_back">뒤로</string>
+    <string name="immersive_shell_more">옵션 더보기</string>
+    <string name="immersive_shell_search_hint">검색</string>
+    <string name="immersive_shell_search_clear">검색어 지우기</string>
+    <string name="immersive_shell_play">재생</string>
+    <string name="immersive_shell_shuffle">셔플</string>
+    <string name="immersive_shell_see_all">모두 보기</string>
+    <string name="immersive_shell_now_playing">지금 재생 중</string>
+    <string name="immersive_shell_explicit">청소년 이용불가</string>
+</resources>

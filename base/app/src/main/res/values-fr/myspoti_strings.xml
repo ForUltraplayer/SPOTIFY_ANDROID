@@ -83,7 +83,7 @@
     <string name="playlist_not_found">Playlist introuvable</string>
     <string name="browse_new_releases">Nouveautés</string>
     <string name="language_auto">Automatique</string>
-    <string name="language_auto_detail">La langue du téléphone quand Myspoti l\'a (allemand, anglais, chinois, espagnol, français, grec, italien, polonais, portugais, russe), sinon l\'anglais</string>
+    <string name="language_auto_detail">La langue du téléphone quand Myspoti l\'a (allemand, anglais, chinois, coréen, espagnol, français, grec, italien, japonais, polonais, portugais, russe), sinon l\'anglais</string>
     <string name="language_partial_note">Autres langues : les libellés de Spotify sont traduits, les textes de Myspoti restent en anglais.</string>
     <string name="restart_player_title">Redémarrer le lecteur</string>
     <string name="restart_player_detail">Si la musique ne répond plus : recharge le lecteur Spotify</string>

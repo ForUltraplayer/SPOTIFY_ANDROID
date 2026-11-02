@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="immersive_player_close">플레이어 닫기</string>
+    <string name="immersive_player_play">재생</string>
+    <string name="immersive_player_pause">일시 정지</string>
+    <string name="immersive_player_previous">이전</string>
+    <string name="immersive_player_next">다음</string>
+    <string name="immersive_player_like">좋아요 표시한 곡에 추가</string>
+    <string name="immersive_player_unlike">좋아요 표시한 곡에서 삭제</string>
+    <string name="immersive_player_more">옵션 더보기</string>
+    <string name="immersive_player_lyrics">가사</string>
+    <string name="immersive_player_lyrics_close">가사 닫기</string>
+    <string name="immersive_player_queue">다음 재생</string>
+    <string name="immersive_player_queue_close">재생목록 닫기</string>
+    <string name="immersive_player_devices">기기</string>
+    <string name="immersive_player_shuffle_on">셔플: 켜짐</string>
+    <string name="immersive_player_shuffle_off">셔플: 꺼짐</string>
+    <string name="immersive_player_repeat_off">반복: 꺼짐</string>
+    <string name="immersive_player_repeat_all">반복: 전체</string>
+    <string name="immersive_player_repeat_one">반복: 한 곡</string>
+    <string name="immersive_player_repeat_once">한 번 반복</string>
+    <string name="immersive_player_volume_down">볼륨 낮추기</string>
+    <string name="immersive_player_volume_up">볼륨 높이기</string>
+    <string name="immersive_player_ad">광고</string>
+    <string name="immersive_player_explicit">청소년 이용불가</string>
+    <string name="immersive_player_added_to_liked">좋아요 표시한 곡에 추가되었습니다</string>
+    <string name="immersive_player_mini_player">플레이어 열기</string>
+</resources>

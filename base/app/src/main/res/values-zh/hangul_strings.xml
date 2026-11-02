@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">复制歌曲名称</string>
+    <string name="hangul_clip_title_label">歌曲名称</string>
+    <string name="hangul_menu_offset">调整歌词同步</string>
+    <string name="hangul_menu_lookup">查找现有韩文读音</string>
+    <string name="hangul_menu_source">韩文读音来源</string>
+    <string name="hangul_menu_automatic">缺失的行使用本机生成的读音</string>
+    <string name="hangul_on">开</string>
+    <string name="hangul_off">关</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">正在查找现有韩文读音</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="other">本机生成的读音：%1$d 行。可能与歌曲的实际唱法不同。</item>
+    </plurals>
+    <string name="hangul_readings_source">韩文读音来源：%1$s</string>
+    <string name="hangul_status_loading">正在查找韩文读音…</string>
+    <string name="hangul_status_none">无韩文读音 · 点按查看原因</string>
+    <string name="hangul_reading_missing">（未找到读音）</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">韩文读音</string>
+    <string name="hangul_source_text">获取现有的韩文读音。地址留空则自动搜索。</string>
+    <string name="hangul_source_label">Haneum、Namu Wiki 或 Tistory 的 HTTPS 地址</string>
+    <string name="hangul_source_save">保存并重新查找</string>
+    <string name="hangul_cancel">取消</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">仅对这首歌生效。歌词出现得晚就往前调，出现得早就往后调。</string>
+    <string name="hangul_offset_minus_second">-1 秒</string>
+    <string name="hangul_offset_minus_step">-0.25 秒</string>
+    <string name="hangul_offset_plus_step">+0.25 秒</string>
+    <string name="hangul_offset_plus_second">+1 秒</string>
+    <string name="hangul_offset_hint">+ 使歌词提前显示，- 使歌词延后显示。</string>
+    <string name="hangul_close">关闭</string>
+    <string name="hangul_offset_reset">重置</string>
+    <string name="hangul_offset_none">未调整</string>
+    <string name="hangul_offset_earlier">歌词提前 %1$s 秒显示</string>
+    <string name="hangul_offset_later">歌词延后 %1$s 秒显示</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">当前没有正在播放的歌曲。</string>
+    <string name="hangul_error_address">请输入 Haneum、Namu Wiki 或 Tistory 的 HTTPS 歌词地址。</string>
+    <string name="hangul_error_check_address">请检查页面地址。</string>
+    <string name="hangul_error_http">页面查询 HTTP %1$d</string>
+    <string name="hangul_error_cancelled">查询已取消</string>
+    <string name="hangul_error_cancelled_or_timeout">查询已取消或超时</string>
+    <string name="hangul_error_timeout">查询超时</string>
+    <string name="hangul_error_no_redirect">页面重定向没有地址</string>
+    <string name="hangul_error_not_html">不是 HTML 页面。</string>
+    <string name="hangul_error_too_large">超出页面大小限制</string>
+    <string name="hangul_error_redirects">页面重定向次数过多</string>
+    <string name="hangul_error_input_too_long">歌曲信息或歌词过长</string>
+    <string name="hangul_error_not_found" formatted="false">未找到与原歌词至少 85% 一致的韩文读音。请在当前歌曲的设置中指定来源地址。</string>
+    <string name="hangul_error_no_match">没有匹配的现有韩文读音。请在歌词菜单中指定来源地址。</string>
+    <string name="hangul_error_retry_timeout">韩文读音查询超时。</string>
+    <string name="hangul_error_generic">无法加载韩文读音。</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">添加 YouTube 链接</string>
+    <string name="hangul_youtube_text">在此手机的列表中播放视频的声音。歌词按下方的歌曲名称和艺人查找；留空则使用视频标题和频道。</string>
+    <string name="hangul_youtube_link_label">YouTube 或 YouTube Music 地址</string>
+    <string name="hangul_youtube_title_label">用于搜索歌词的歌曲名称（可选）</string>
+    <string name="hangul_youtube_artist_label">用于搜索歌词的艺人（可选）</string>
+    <string name="hangul_youtube_failed">无法获取视频信息。请检查网络连接。</string>
+    <string name="hangul_youtube_checking">正在检查…</string>
+    <string name="hangul_add">添加</string>
+    <string name="hangul_youtube_under_playlist">在此手机上显示于此播放列表下方</string>
+    <string name="hangul_youtube_add_detail">添加到此手机上的列表或 Spotify 播放列表下方</string>
+    <string name="hangul_youtube_unavailable">此视频为私享视频、已被删除，或无法在 YouTube 之外播放。</string>
+    <string name="hangul_youtube_bad_link">请检查 YouTube 视频地址。</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">导入列表文件</string>
+    <string name="hangul_list_import_detail">将导出的手机列表添加为新列表</string>
+    <string name="hangul_list_export">导出为文件</string>
+    <string name="hangul_list_export_detail">在其他手机上只能播放 YouTube 链接</string>
+    <string name="hangul_list_saved">已将列表保存为文件。</string>
+    <string name="hangul_list_save_failed">无法保存列表文件。</string>
+    <string name="hangul_list_file_name">列表</string>
+    <string name="hangul_list_too_large">只能导入不超过 3 MB 的列表文件。</string>
+    <string name="hangul_list_foreign">这不是从此应用导出的列表文件。</string>
+    <string name="hangul_list_too_many">列表文件中的歌曲过多。</string>
+    <string name="hangul_list_imported_name">导入的列表</string>
+    <string name="hangul_list_imported">已导入列表“%1$s”。</string>
+    <string name="hangul_list_read_failed">无法读取列表文件。</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">编辑顺序（此设备）</string>
+    <string name="hangul_order_note">用上下按钮所做的移动仅保存在此设备上。Spotify 上的歌曲顺序不会改变。</string>
+    <string name="hangul_order_reset">Spotify 顺序</string>
+    <string name="hangul_done">完成</string>
+    <string name="hangul_move_up">上移</string>
+    <string name="hangul_move_down">下移</string>
+</resources>

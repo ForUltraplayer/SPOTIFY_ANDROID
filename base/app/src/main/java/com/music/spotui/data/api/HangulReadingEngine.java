@@ -33,6 +33,20 @@ import java.util.regex.Pattern;
 
 final class HangulReadingEngine {
     static final String MISSING = "(발음 자료 없음)";
+    // Failure messages (the wording so far, for the tests and the logs); HangulReadings.userMessage
+    // shows them in the app's language. MISSING above is a stored marker, shown by HangulReadings.shownLines.
+    public static final String ADDRESS_NEEDED = "한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요.";
+    public static final String CHECK_ADDRESS = "문서 주소를 확인해 주세요.";
+    public static final String HTTP_STATUS = "문서 조회 HTTP ";
+    public static final String CANCELLED = "조회 취소";
+    public static final String CANCELLED_OR_TIMEOUT = "조회 취소 또는 시간 초과";
+    public static final String TIMEOUT = "조회 시간 초과";
+    public static final String NO_REDIRECT = "문서 이동 주소 없음";
+    public static final String NOT_HTML = "HTML 문서가 아닙니다.";
+    public static final String TOO_LARGE = "문서 크기 제한 초과";
+    public static final String TOO_MANY_REDIRECTS = "문서 이동 횟수 초과";
+    public static final String INPUT_TOO_LONG = "곡 정보 또는 가사 길이 제한 초과";
+    public static final String NOT_FOUND = "원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.";
     private static final Pattern JAPANESE = Pattern.compile("[\\u3040-\\u30ff\\u3400-\\u9fff]");
     private static final Pattern HANGUL = Pattern.compile("[가-힣]");
     private static final Pattern COVER = Pattern.compile("(?i)\\bcover(?:ed)?\\b|歌ってみた|カバー|커버(?:곡)?");
@@ -56,7 +70,7 @@ final class HangulReadingEngine {
     /** A page answered with a status other than 200 (redirects are followed). */
     static final class HttpStatus extends IOException {
         final int status;
-        HttpStatus(int status) { super("문서 조회 HTTP " + status); this.status = status; }
+        HttpStatus(int status) { super(HTTP_STATUS + status); this.status = status; }
     }
 
     /**
@@ -122,18 +136,18 @@ final class HangulReadingEngine {
                     || (uri.getPort() != -1 && uri.getPort() != 443)
                     || !(host.equals("namu.wiki") || host.endsWith(".tistory.com")
                     || (host.equals("haneum.site") && uri.getPath().matches("/songs(?:/[^/]+)?")))) {
-                throw new NonRetryable("한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요.");
+                throw new NonRetryable(ADDRESS_NEEDED);
             }
             return new URI(uri.getScheme(), uri.getAuthority(), uri.getPath(), uri.getQuery(), null).toASCIIString();
         } catch (IllegalArgumentException | java.net.URISyntaxException e) {
-            throw new NonRetryable("문서 주소를 확인해 주세요.");
+            throw new NonRetryable(CHECK_ADDRESS);
         }
     }
 
     static String fetch(String input) throws IOException {
         String url = checkedUrl(input);
         for (int redirects = 0; redirects <= 3; redirects++) {
-            if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
+            if (Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED);
             HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             try {
                 connection.setInstanceFollowRedirects(false);
@@ -145,34 +159,34 @@ final class HangulReadingEngine {
                 int status = connection.getResponseCode();
                 if (status >= 300 && status < 400) {
                     String location = connection.getHeaderField("Location");
-                    if (location == null) throw new NonRetryable("문서 이동 주소 없음");
+                    if (location == null) throw new NonRetryable(NO_REDIRECT);
                     url = checkedUrl(URI.create(url).resolve(location).toString());
                     continue;
                 }
                 if (status != 200) throw new HttpStatus(status);
                 String type = connection.getContentType();
                 if (type == null || !(type.startsWith("text/html") || type.startsWith("application/xhtml+xml")))
-                    throw new NonRetryable("HTML 문서가 아닙니다.");
+                    throw new NonRetryable(NOT_HTML);
                 try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                     byte[] buffer = new byte[8192];
                     int count;
                     while ((count = in.read(buffer)) != -1) {
-                        if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
+                        if (Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED);
                         remainingTimeout();
-                        if (out.size() + count > 3_000_000) throw new NonRetryable("문서 크기 제한 초과");
+                        if (out.size() + count > 3_000_000) throw new NonRetryable(TOO_LARGE);
                         out.write(buffer, 0, count);
                     }
                     return out.toString("UTF-8");
                 }
             } finally { connection.disconnect(); }
         }
-        throw new NonRetryable("문서 이동 횟수 초과");
+        throw new NonRetryable(TOO_MANY_REDIRECTS);
     }
 
     private static int remainingTimeout() throws IOException {
         Long deadline = requestDeadline.get();
         long remaining = deadline == null ? 6500 : (deadline - System.nanoTime()) / 1_000_000;
-        if (remaining <= 0 || Thread.currentThread().isInterrupted()) throw new IOException("조회 취소 또는 시간 초과");
+        if (remaining <= 0 || Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED_OR_TIMEOUT);
         return (int)Math.min(6500, remaining);
     }
 
@@ -484,7 +498,7 @@ final class HangulReadingEngine {
     /** [log] gets one line per page and the end of the search, without titles, lyrics or addresses. */
     Result resolve(String title, String artist, List<String> originals, String sourceUrl, String learnedUrl, Fetcher fetcher, long remainingMillis, java.util.function.Consumer<String> log) throws IOException {
         if (title.length() > 300 || artist.length() > 500 || String.join("\n", originals).length() > 40000)
-            throw new NonRetryable("곡 정보 또는 가사 길이 제한 초과");
+            throw new NonRetryable(INPUT_TOO_LONG);
         List<String> titles = titles(title, artist);
         ArrayDeque<String> pending = new ArrayDeque<>();
         boolean manual = sourceUrl != null && !sourceUrl.trim().isEmpty();
@@ -507,7 +521,7 @@ final class HangulReadingEngine {
         for (String row : originals) if (japanese(row) && !HANGUL.matcher(row).find() && normalize(row).length() >= 10 && fragments++ < 2)
             searches.add(new String[]{row.substring(0,Math.min(100,row.length())), "content"});
         Set<String> visited = new HashSet<>();
-        if (remainingMillis <= 0) throw new IOException("조회 시간 초과");
+        if (remainingMillis <= 0) throw new IOException(TIMEOUT);
         long deadline = System.nanoTime() + Math.min(32_000L, remainingMillis) * 1_000_000L;
         requestDeadline.set(deadline);
         int search = 0;
@@ -540,10 +554,10 @@ final class HangulReadingEngine {
             String url = pending.removeFirst(); if (!visited.add(url)) continue;
             try {
                 String markup = fetcher.get(url);
-                if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
-                if (System.nanoTime() >= deadline) throw new IOException("조회 시간 초과");
+                if (Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED);
+                if (System.nanoTime() >= deadline) throw new IOException(TIMEOUT);
                 Page page = parse(markup); Result result = match(originals, page, url);
-                if (Thread.currentThread().isInterrupted()) throw new IOException("조회 취소");
+                if (Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED);
                 log.accept("#" + visited.size() + " " + route(url) + ": match " + result.matched + "/" + result.total + (result.valid() ? ", accepted" : ""));
                 if (result.valid()) return result;
                 if (best == null || result.matched * best.total > best.matched * result.total) best = result;
@@ -566,7 +580,7 @@ final class HangulReadingEngine {
             }
         }
         } finally { requestDeadline.remove(); }
-        String missing = "원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.";
+        String missing = NOT_FOUND;
         // Stopped by the clock or a cancel with pages left: a retry can see what this scan did not.
         // The 20-page cap is not such a stop, since the same scan visits the same 20 pages.
         boolean left = (!manual && search < searches.size()) || pending.stream().anyMatch(url -> !visited.contains(url));

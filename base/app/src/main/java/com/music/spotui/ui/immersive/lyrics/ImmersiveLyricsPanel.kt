@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -199,10 +200,10 @@ fun ImmersiveLyricsPanel(modifier: Modifier = Modifier, contentPadding: PaddingV
                         romanizing = LyricsRomanizationPref.on && current.lyrics.hasRomanization,
                         readings = current.readings,
                         hangulNotes = listOfNotNull(
-                            ("기존 한글 발음 자료를 찾는 중" to null).takeIf { current.readingLoading },
+                            (stringResource(R.string.hangul_readings_loading) to null).takeIf { current.readingLoading },
                             current.readingError?.let { it to null },
-                            ("기기 내부 자동 발음: ${current.readingGenerated}줄. 실제 노래의 읽기와 다를 수 있습니다." to null).takeIf { current.readingGenerated > 0 },
-                            current.readingSource?.let { url -> "한글 발음 출처: " + android.net.Uri.parse(url).host to url },
+                            (pluralStringResource(R.plurals.hangul_readings_automatic, current.readingGenerated, current.readingGenerated) to null).takeIf { current.readingGenerated > 0 },
+                            current.readingSource?.let { url -> stringResource(R.string.hangul_readings_source, android.net.Uri.parse(url).host.orEmpty()) to url },
                         ),
                     )
                     // The Classic screen's translation, with its language setting and its service: the
@@ -225,8 +226,8 @@ fun ImmersiveLyricsPanel(modifier: Modifier = Modifier, contentPadding: PaddingV
                     // The readings being looked for, or why there are none, where it is seen: the notes
                     // after the lines are out of reach while a song plays. A tap shows the whole reason.
                     val readingStatus = when {
-                        current.readingLoading -> "한글 발음 찾는 중…"
-                        current.readingError != null && current.readings == null -> "한글 발음 없음 · 눌러서 이유 보기"
+                        current.readingLoading -> stringResource(R.string.hangul_status_loading)
+                        current.readingError != null && current.readings == null -> stringResource(R.string.hangul_status_none)
                         else -> null
                     }
                     if (!selecting && readingStatus != null) Text(

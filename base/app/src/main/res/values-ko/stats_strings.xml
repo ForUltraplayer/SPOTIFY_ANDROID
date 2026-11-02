@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Listening stats, friend activity and the "your top artist" line (KO). -->
+<resources>
+    <string name="stats_tab_spotify">Spotify에서</string>
+    <string name="stats_tab_phone">이 휴대폰에서</string>
+    <string name="stats_range_short">최근 4주</string>
+    <string name="stats_range_medium">최근 6개월</string>
+    <string name="stats_range_long">최근 1년</string>
+    <string name="stats_artists_ranked">청취 기록에 있는 아티스트 %1$d명</string>
+    <string name="stats_empty">이 기간에 대한 Spotify의 상위 아티스트나 트랙이 아직 없습니다. 계속 감상한 뒤 다시 확인해 주세요.</string>
+    <string name="stats_failed">Spotify에서 통계를 보내지 않았습니다.</string>
+    <string name="stats_spotify_note">이 계정이 모든 기기에서 재생한 기록을 바탕으로 Spotify가 순위를 매깁니다. Spotify는 재생 횟수나 청취 시간(분)을 공유하지 않으며, \"이 휴대폰에서\"의 시간(분)은 Myspoti가 직접 집계한 값입니다.</string>
+    <string name="stats_weekly_minutes">주별 청취 시간(분)</string>
+    <string name="stats_this_week">이번 주: %1$d분</string>
+    <string name="stats_listening_stats">청취 통계</string>
+    <string name="friends_title">친구 활동</string>
+    <string name="friends_detail">팔로우하는 사람들이 듣고 있는 음악</string>
+    <string name="friends_now">지금</string>
+    <string name="friends_empty">아직 친구 활동이 없습니다. 팔로우하는 친구 중 Spotify에서 청취 활동을 공유하는 친구가 여기에 표시됩니다.</string>
+    <string name="friends_failed">Spotify에서 친구 활동을 보내지 않았습니다.</string>
+    <string name="friends_refresh">새로고침</string>
+    <string name="artist_top_short">최근 4주 동안 내가 많이 들은 아티스트 %1$d위</string>
+    <string name="artist_top_medium">최근 6개월 동안 내가 많이 들은 아티스트 %1$d위</string>
+    <string name="artist_top_long">최근 1년 동안 내가 많이 들은 아티스트 %1$d위</string>
+</resources>

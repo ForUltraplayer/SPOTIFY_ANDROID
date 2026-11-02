@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">Songtitel kopieren</string>
+    <string name="hangul_clip_title_label">Songtitel</string>
+    <string name="hangul_menu_offset">Songtext-Timing anpassen</string>
+    <string name="hangul_menu_lookup">Vorhandene Hangul-Aussprache suchen</string>
+    <string name="hangul_menu_source">Quelle der Hangul-Aussprache</string>
+    <string name="hangul_menu_automatic">Für fehlende Zeilen Aussprache vom Gerät verwenden</string>
+    <string name="hangul_on">An</string>
+    <string name="hangul_off">Aus</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">Vorhandene Hangul-Aussprache wird gesucht</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="one">Aussprache vom Gerät: %1$d Zeile. Sie kann davon abweichen, wie der Song gesungen wird.</item>
+        <item quantity="other">Aussprache vom Gerät: %1$d Zeilen. Sie kann davon abweichen, wie der Song gesungen wird.</item>
+    </plurals>
+    <string name="hangul_readings_source">Hangul-Aussprache von %1$s</string>
+    <string name="hangul_status_loading">Hangul-Aussprache wird gesucht…</string>
+    <string name="hangul_status_none">Keine Hangul-Aussprache · tippen, um den Grund zu sehen</string>
+    <string name="hangul_reading_missing">(keine Aussprache gefunden)</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">Hangul-Aussprache</string>
+    <string name="hangul_source_text">Lädt vorhandene Hangul-Aussprache. Lass die Adresse leer, um automatisch zu suchen.</string>
+    <string name="hangul_source_label">HTTPS-Adresse von Haneum, Namu Wiki oder Tistory</string>
+    <string name="hangul_source_save">Speichern und erneut suchen</string>
+    <string name="hangul_cancel">Abbrechen</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">Gilt nur für diesen Song. Kommt der Songtext zu spät, verschiebe ihn nach vorn; kommt er zu früh, verschiebe ihn nach hinten.</string>
+    <string name="hangul_offset_minus_second">-1 s</string>
+    <string name="hangul_offset_minus_step">-0.25 s</string>
+    <string name="hangul_offset_plus_step">+0.25 s</string>
+    <string name="hangul_offset_plus_second">+1 s</string>
+    <string name="hangul_offset_hint">+ zeigt den Songtext früher, - zeigt ihn später.</string>
+    <string name="hangul_close">Schließen</string>
+    <string name="hangul_offset_reset">Zurücksetzen</string>
+    <string name="hangul_offset_none">Keine Anpassung</string>
+    <string name="hangul_offset_earlier">Songtext %1$s s früher</string>
+    <string name="hangul_offset_later">Songtext %1$s s später</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">Es wird kein Song abgespielt.</string>
+    <string name="hangul_error_address">Gib eine HTTPS-Songtextadresse von Haneum, Namu Wiki oder Tistory ein.</string>
+    <string name="hangul_error_check_address">Prüfe die Adresse der Seite.</string>
+    <string name="hangul_error_http">Seitenabruf HTTP %1$d</string>
+    <string name="hangul_error_cancelled">Suche abgebrochen</string>
+    <string name="hangul_error_cancelled_or_timeout">Suche abgebrochen oder Zeitüberschreitung</string>
+    <string name="hangul_error_timeout">Zeitüberschreitung bei der Suche</string>
+    <string name="hangul_error_no_redirect">Die Weiterleitung der Seite enthält keine Adresse</string>
+    <string name="hangul_error_not_html">Keine HTML-Seite.</string>
+    <string name="hangul_error_too_large">Größenbeschränkung der Seite überschritten</string>
+    <string name="hangul_error_redirects">Zu viele Weiterleitungen der Seite</string>
+    <string name="hangul_error_input_too_long">Songdetails oder Songtext sind zu lang</string>
+    <string name="hangul_error_not_found" formatted="false">Keine Hangul-Aussprache gefunden, die zu 85 % oder mehr mit dem Originaltext übereinstimmt. Lege in den Einstellungen des aktuellen Songs eine Quelladresse fest.</string>
+    <string name="hangul_error_no_match">Keine vorhandene Hangul-Aussprache passt. Lege im Songtext-Menü eine Quelladresse fest.</string>
+    <string name="hangul_error_retry_timeout">Zeitüberschreitung bei der Suche nach Hangul-Aussprache.</string>
+    <string name="hangul_error_generic">Die Hangul-Aussprache konnte nicht geladen werden.</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">YouTube-Link hinzufügen</string>
+    <string name="hangul_youtube_text">Spielt den Ton des Videos in der Liste dieses Telefons ab. Der Songtext wird über Titel und Künstler unten gesucht; bleiben sie leer, werden Videotitel und Kanal verwendet.</string>
+    <string name="hangul_youtube_link_label">Adresse von YouTube oder YouTube Music</string>
+    <string name="hangul_youtube_title_label">Songtitel für die Songtextsuche (optional)</string>
+    <string name="hangul_youtube_artist_label">Künstler für die Songtextsuche (optional)</string>
+    <string name="hangul_youtube_failed">Die Videodetails konnten nicht abgerufen werden. Prüfe deine Netzwerkverbindung.</string>
+    <string name="hangul_youtube_checking">Wird geprüft…</string>
+    <string name="hangul_add">Hinzufügen</string>
+    <string name="hangul_youtube_under_playlist">Auf diesem Telefon unter dieser Playlist angezeigt</string>
+    <string name="hangul_youtube_add_detail">Zu einer Liste auf diesem Telefon oder unter einer Spotify-Playlist hinzufügen</string>
+    <string name="hangul_youtube_unavailable">Dieses Video ist privat, wurde entfernt oder kann außerhalb von YouTube nicht abgespielt werden.</string>
+    <string name="hangul_youtube_bad_link">Prüfe die Adresse des YouTube-Videos.</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">Listendatei importieren</string>
+    <string name="hangul_list_import_detail">Eine exportierte Telefonliste als neue Liste hinzufügen</string>
+    <string name="hangul_list_export">In Datei exportieren</string>
+    <string name="hangul_list_export_detail">Auf anderen Telefonen werden nur die YouTube-Links abgespielt</string>
+    <string name="hangul_list_saved">Liste in einer Datei gespeichert.</string>
+    <string name="hangul_list_save_failed">Die Listendatei konnte nicht gespeichert werden.</string>
+    <string name="hangul_list_file_name">Liste</string>
+    <string name="hangul_list_too_large">Nur Listendateien bis 3 MB können importiert werden.</string>
+    <string name="hangul_list_foreign">Das ist keine aus dieser App exportierte Listendatei.</string>
+    <string name="hangul_list_too_many">Die Listendatei enthält zu viele Songs.</string>
+    <string name="hangul_list_imported_name">Importierte Liste</string>
+    <string name="hangul_list_imported">Liste „%1$s“ importiert.</string>
+    <string name="hangul_list_read_failed">Die Listendatei konnte nicht gelesen werden.</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">Reihenfolge bearbeiten (dieses Gerät)</string>
+    <string name="hangul_order_note">Was du mit den Schaltflächen nach oben und unten verschiebst, wird nur auf diesem Gerät gespeichert. Die Reihenfolge der Songs bei Spotify ändert sich nicht.</string>
+    <string name="hangul_order_reset">Spotify-Reihenfolge</string>
+    <string name="hangul_done">Fertig</string>
+    <string name="hangul_move_up">Nach oben</string>
+    <string name="hangul_move_down">Nach unten</string>
+</resources>

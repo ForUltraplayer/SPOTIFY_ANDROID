@@ -14,4 +14,14 @@
     <string name="sources_open">拡張機能を開く</string>
     <string name="sources_order_hint">ソースは設定（再生、ダウンロード）で設定された順序で確認されます。</string>
     <string name="sources_below_spotify">確認されません: Spotify が上にあります</string>
+    <string name="source_pick_title">ソース</string>
+    <string name="source_pick_detail">Myspoti を再起動するまで、この曲と次の曲を選んだソースから再生します。設定の順序はそのまま保持されます。</string>
+    <string name="source_pick_playing">再生中</string>
+    <string name="source_pick_temporary">一時的: Myspoti を再起動するまで最優先</string>
+    <string name="source_pick_reset">自分の順序に戻す</string>
+    <string name="source_pick_reset_detail">設定 → 再生で設定した順序</string>
+    <string name="source_pick_tag">一時的</string>
+    <string name="source_pick_missing">%1$s にはこの曲がありません: 再生中のソースのまま続行し、順序は変更されません。</string>
+    <string name="source_pick_next">%1$s は次の曲から再生します: この曲は現在のまま再生が続きます。</string>
+    <string name="source_pick_active">このセッションの一時的な選択: Myspoti を再起動するまで %1$s が最初に確認されます。</string>
 </resources>

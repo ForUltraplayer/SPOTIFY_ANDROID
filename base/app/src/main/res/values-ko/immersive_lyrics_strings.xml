@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="immersive_lyrics_instrumental">연주곡</string>
+    <string name="immersive_lyrics_none">이 트랙에는 가사가 없습니다</string>
+    <string name="immersive_queue_title">재생목록</string>
+    <string name="immersive_queue_now_playing">지금 재생 중</string>
+    <string name="immersive_queue_empty">재생목록이 비어 있습니다</string>
+    <string name="immersive_queue_remove">재생목록에서 삭제</string>
+    <string name="immersive_queue_reorder">재생목록에서 이동</string>
+    <string name="immersive_queue_shuffle">셔플</string>
+    <string name="immersive_queue_repeat">반복</string>
+</resources>

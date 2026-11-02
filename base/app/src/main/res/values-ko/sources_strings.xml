@@ -11,7 +11,17 @@
     <string name="sources_details_hide">세부정보 숨기기</string>
     <string name="sources_detail_version">버전 %1$s · 제작 %2$s</string>
     <string name="sources_last_used">최근: %1$s, %2$s</string>
-    <string name="sources_open">확장 기능 열기</string>
+    <string name="sources_open">확장 열기</string>
     <string name="sources_order_hint">소스는 설정(재생, 다운로드)에서 정한 순서대로 확인됩니다.</string>
     <string name="sources_below_spotify">묻지 않음: Spotify가 위에 있습니다</string>
+    <string name="source_pick_title">소스</string>
+    <string name="source_pick_detail">Myspoti를 다시 시작할 때까지 이 곡과 다음 곡들을 선택한 소스에서 재생합니다. 설정의 순서는 그대로 유지됩니다.</string>
+    <string name="source_pick_playing">지금 재생 중</string>
+    <string name="source_pick_temporary">임시: Myspoti를 다시 시작할 때까지 첫 번째</string>
+    <string name="source_pick_reset">내 순서로 돌아가기</string>
+    <string name="source_pick_reset_detail">설정 → 재생에서 정한 순서</string>
+    <string name="source_pick_tag">임시</string>
+    <string name="source_pick_missing">%1$s에 이 곡이 없습니다. 재생하던 소스에서 계속 재생되며, 순서는 그대로 유지됩니다.</string>
+    <string name="source_pick_next">%1$s에서 다음 곡부터 재생합니다. 이 곡은 지금처럼 계속 재생됩니다.</string>
+    <string name="source_pick_active">이번 세션의 임시 선택: Myspoti를 다시 시작할 때까지 %1$s을(를) 가장 먼저 확인합니다.</string>
 </resources>

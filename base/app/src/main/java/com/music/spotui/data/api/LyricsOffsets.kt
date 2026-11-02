@@ -4,6 +4,7 @@ package com.music.spotui.data.api
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateMapOf
+import app.myspoti.engine.R
 import com.music.spotui.di.Graph
 import org.json.JSONObject
 
@@ -50,8 +51,9 @@ object LyricsOffsets {
         prefs().edit().putString("offsets", saved.toString()).apply()
     }
 
-    fun describe(ms: Long): String =
-        if (ms == 0L) "보정 없음"
-        else "가사를 " + java.math.BigDecimal(kotlin.math.abs(ms)).movePointLeft(3).stripTrailingZeros().toPlainString() +
-            " 초 " + (if (ms > 0) "먼저" else "나중에") + " 표시"
+    /** [ms] for the screen: [text] fills a string resource with the seconds (the app's resources by default). */
+    fun describe(ms: Long, text: (Int, String) -> String = { id, seconds -> Graph.app.getString(id, seconds) }): String =
+        if (ms == 0L) text(R.string.hangul_offset_none, "")
+        else text(if (ms > 0) R.string.hangul_offset_earlier else R.string.hangul_offset_later,
+            java.math.BigDecimal(kotlin.math.abs(ms)).movePointLeft(3).stripTrailingZeros().toPlainString())
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's bars and shared list components (Japanese). -->
+<resources>
+    <string name="immersive_shell_back">戻る</string>
+    <string name="immersive_shell_more">その他のオプション</string>
+    <string name="immersive_shell_search_hint">検索</string>
+    <string name="immersive_shell_search_clear">検索をクリア</string>
+    <string name="immersive_shell_play">再生</string>
+    <string name="immersive_shell_shuffle">シャッフル</string>
+    <string name="immersive_shell_see_all">すべて表示</string>
+    <string name="immersive_shell_now_playing">再生中</string>
+    <string name="immersive_shell_explicit">露骨な表現</string>
+</resources>

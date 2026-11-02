@@ -5,6 +5,7 @@ import com.music.spotui.ui.look.lastPress
 import com.music.spotui.ui.look.tapTime
 import com.music.spotui.ui.look.toSwept
 import com.music.spotui.ui.components.pressable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 
 import android.content.Context
@@ -532,9 +533,9 @@ fun LyricsScreen(
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                 Text(title, color = palette.highlight, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.combinedClickable(onClick = {}, onLongClickLabel = "곡 제목 복사", onLongClick = {
+                    modifier = Modifier.combinedClickable(onClick = {}, onLongClickLabel = stringResource(R.string.hangul_copy_title), onLongClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", title))
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(context.getString(R.string.hangul_clip_title_label), title))
                     }))
                 Text(artist, color = palette.highlight.copy(alpha = 0.75f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -569,7 +570,7 @@ fun LyricsScreen(
                     onAutomaticToggle = { vm.toggleAutomaticReadings() },
                     onCopyTitle = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", title))
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(context.getString(R.string.hangul_clip_title_label), title))
                     },
                     onOffset = { offsetDialog = true },
                     translating = (state as? LyricsViewModel.State.Loaded)?.showTranslation == true,
@@ -674,17 +675,17 @@ fun LyricsScreen(
                             )
                         }
                         if (state.readingLoading) item(key="hangul-loading") {
-                            Text("기존 한글 발음 자료를 찾는 중",color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
+                            Text(stringResource(R.string.hangul_readings_loading),color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
                         }
                         state.readingError?.let { error -> item(key="hangul-error") {
                             Text(error,color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
                         } }
                         if (state.readingGenerated > 0) item(key="hangul-automatic") {
-                            Text("기기 내부 자동 발음: ${state.readingGenerated}줄. 실제 노래의 읽기와 다를 수 있습니다.",
+                            Text(pluralStringResource(R.plurals.hangul_readings_automatic, state.readingGenerated, state.readingGenerated),
                                 color=palette.highlight.copy(alpha=.8f),fontSize=12.sp)
                         }
                         state.readingSource?.let { url -> item(key="hangul-source") {
-                            Text("한글 발음 출처: " + android.net.Uri.parse(url).host,
+                            Text(stringResource(R.string.hangul_readings_source, android.net.Uri.parse(url).host.orEmpty()),
                                 color=palette.highlight.copy(alpha=.8f),fontSize=12.sp,
                                 modifier=Modifier.clickable { context.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url))) })
                         } }
@@ -729,13 +730,13 @@ internal fun HangulSourceDialog(vm: LyricsViewModel, onDismiss: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("한글 발음 자료") },
+        title = { Text(stringResource(R.string.hangul_source_title)) },
         text = { Column {
-            Text("기존 한글 발음을 가져옵니다. 빈 주소는 자동 검색입니다.")
+            Text(stringResource(R.string.hangul_source_text))
             androidx.compose.material3.OutlinedTextField(
                 value = input,
                 onValueChange = { input = it; error = null },
-                label = { Text("한음, 나무위키 또는 티스토리 HTTPS 주소") },
+                label = { Text(stringResource(R.string.hangul_source_label)) },
                 isError = error != null,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -744,8 +745,8 @@ internal fun HangulSourceDialog(vm: LyricsViewModel, onDismiss: () -> Unit) {
         confirmButton = { androidx.compose.material3.TextButton(onClick = {
             error = vm.setReadingSource(input)
             if (error == null) onDismiss()
-        }) { Text("저장하고 다시 조회") } },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("취소") } },
+        }) { Text(stringResource(R.string.hangul_source_save)) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.hangul_cancel)) } },
     )
 }
 
@@ -759,20 +760,20 @@ internal fun LyricsOffsetDialog(onDismiss: () -> Unit) {
     fun shift(ms: Long) = offsets.set(key, current + ms)
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("가사 싱크 조절") },
+        title = { Text(stringResource(R.string.hangul_menu_offset)) },
         text = { Column {
-            Text("이 곡에만 적용합니다. 가사가 늦게 나오면 먼저, 빨리 나오면 나중으로 옮기세요.")
+            Text(stringResource(R.string.hangul_offset_text))
             Text(offsets.describe(current), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                androidx.compose.material3.TextButton(onClick = { shift(-1000) }) { Text("-1초") }
-                androidx.compose.material3.TextButton(onClick = { shift(-offsets.STEP_MS) }) { Text("-0.25초") }
-                androidx.compose.material3.TextButton(onClick = { shift(offsets.STEP_MS) }) { Text("+0.25초") }
-                androidx.compose.material3.TextButton(onClick = { shift(1000) }) { Text("+1초") }
+                androidx.compose.material3.TextButton(onClick = { shift(-1000) }) { Text(stringResource(R.string.hangul_offset_minus_second)) }
+                androidx.compose.material3.TextButton(onClick = { shift(-offsets.STEP_MS) }) { Text(stringResource(R.string.hangul_offset_minus_step)) }
+                androidx.compose.material3.TextButton(onClick = { shift(offsets.STEP_MS) }) { Text(stringResource(R.string.hangul_offset_plus_step)) }
+                androidx.compose.material3.TextButton(onClick = { shift(1000) }) { Text(stringResource(R.string.hangul_offset_plus_second)) }
             }
-            Text("+는 가사를 먼저, -는 나중에 표시합니다.", fontSize = 12.sp, color = Color.Gray)
+            Text(stringResource(R.string.hangul_offset_hint), fontSize = 12.sp, color = Color.Gray)
         } },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("닫기") } },
-        dismissButton = { androidx.compose.material3.TextButton(enabled = current != 0L, onClick = { offsets.set(key, 0) }) { Text("되돌리기") } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.hangul_close)) } },
+        dismissButton = { androidx.compose.material3.TextButton(enabled = current != 0L, onClick = { offsets.set(key, 0) }) { Text(stringResource(R.string.hangul_offset_reset)) } },
     )
 }
 
@@ -803,27 +804,27 @@ private fun LyricsMenu(
     var extra by remember { mutableStateOf(isLyricsExtraSources(context)) }
     var words by remember { mutableStateOf(com.music.spotui.data.preferences.isLyricsWordSync(context)) }
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text("곡 제목 복사") }, onClick = { onDismiss(); onCopyTitle() })
+        DropdownMenuItem(text = { Text(stringResource(R.string.hangul_copy_title)) }, onClick = { onDismiss(); onCopyTitle() })
         DropdownMenuItem(
             text = {
                 Column {
-                    Text("가사 싱크 조절")
+                    Text(stringResource(R.string.hangul_menu_offset))
                     Text(com.music.spotui.data.api.LyricsOffsets.describe(currentLyricsOffset()), fontSize = 12.sp, color = Color.Gray)
                 }
             },
             onClick = { onDismiss(); onOffset() },
         )
         DropdownMenuItem(
-            text = { Text("기존 한글 발음 자동 조회") },
+            text = { Text(stringResource(R.string.hangul_menu_lookup)) },
             trailingIcon = { if (hangulEnabled) Icon(Icons.Default.Check, contentDescription = null) },
             onClick = { onDismiss(); onHangulToggle() },
         )
         if (canTranslate) DropdownMenuItem(
-            text = { Text("한글 발음 자료 주소") },
+            text = { Text(stringResource(R.string.hangul_menu_source)) },
             onClick = { onDismiss(); onHangulSource() },
         )
         DropdownMenuItem(
-            text = { Text("누락 줄에 기기 내부 자동 발음 사용") },
+            text = { Text(stringResource(R.string.hangul_menu_automatic)) },
             trailingIcon = { if (automaticEnabled) Icon(Icons.Default.Check, contentDescription = null) },
             onClick = { onDismiss(); onAutomaticToggle() },
         )

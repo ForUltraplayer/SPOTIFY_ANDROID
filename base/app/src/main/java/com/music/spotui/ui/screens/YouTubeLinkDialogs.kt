@@ -54,6 +54,7 @@ import kotlinx.coroutines.withContext
 /** Asks for a YouTube address, checks the video, and hands it over as a phone-list item. */
 @Composable
 fun YouTubeLinkDialog(onDismiss: () -> Unit, onAdded: (LocalTrack) -> Unit) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var link by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
@@ -62,15 +63,15 @@ fun YouTubeLinkDialog(onDismiss: () -> Unit, onAdded: (LocalTrack) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("YouTube 링크 추가") },
+        title = { Text(stringResource(R.string.hangul_youtube_add)) },
         text = {
             Column {
-                Text("영상의 소리를 이 휴대폰의 목록에서 재생합니다. 가사는 아래 제목과 가수로 찾고, 비워 두면 영상 제목과 채널을 씁니다.", fontSize = 13.sp)
-                OutlinedTextField(link, { link = it; error = null }, label = { Text("YouTube 또는 YouTube Music 주소") },
+                Text(stringResource(R.string.hangul_youtube_text), fontSize = 13.sp)
+                OutlinedTextField(link, { link = it; error = null }, label = { Text(stringResource(R.string.hangul_youtube_link_label)) },
                     singleLine = true, isError = error != null, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                OutlinedTextField(title, { title = it }, label = { Text("가사 검색용 곡 제목 (선택)") },
+                OutlinedTextField(title, { title = it }, label = { Text(stringResource(R.string.hangul_youtube_title_label)) },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(artist, { artist = it }, label = { Text("가사 검색용 가수 (선택)") },
+                OutlinedTextField(artist, { artist = it }, label = { Text(stringResource(R.string.hangul_youtube_artist_label)) },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
             }
@@ -83,12 +84,12 @@ fun YouTubeLinkDialog(onDismiss: () -> Unit, onAdded: (LocalTrack) -> Unit) {
                     busy = false
                     result.onSuccess(onAdded).onFailure { e ->
                         error = if (e is YouTubeLinks.Unavailable || e is IllegalArgumentException) e.message
-                        else "영상 정보를 가져오지 못했습니다. 네트워크를 확인해 주세요."
+                        else context.getString(R.string.hangul_youtube_failed)
                     }
                 }
-            }) { Text(if (busy) "확인 중…" else "추가") }
+            }) { Text(stringResource(if (busy) R.string.hangul_youtube_checking else R.string.hangul_add)) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.hangul_cancel)) } },
     )
 }
 
@@ -99,7 +100,7 @@ fun PlaylistAddChooser(onDismiss: () -> Unit, onSpotify: () -> Unit, onYouTube: 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tone(0xFF282828)) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             ChooserRow(Icons.Outlined.AddCircleOutline, stringResource(R.string.add_songs_title), null) { onDismiss(); onSpotify() }
-            ChooserRow(Icons.Outlined.Link, "YouTube 링크 추가", "이 휴대폰에서 이 플레이리스트 아래에 표시") { onDismiss(); onYouTube() }
+            ChooserRow(Icons.Outlined.Link, stringResource(R.string.hangul_youtube_add), stringResource(R.string.hangul_youtube_under_playlist)) { onDismiss(); onYouTube() }
         }
     }
 }
@@ -133,12 +134,12 @@ fun rememberLocalPlaylistExport(): (id: String) -> Unit {
             val saved = withContext(Dispatchers.IO) {
                 runCatching { context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray()) } }
             }
-            Toast.makeText(context, if (saved.isSuccess) "목록을 파일로 저장했습니다." else "목록 파일을 저장하지 못했습니다.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(if (saved.isSuccess) R.string.hangul_list_saved else R.string.hangul_list_save_failed), Toast.LENGTH_SHORT).show()
         }
     }
     return { id ->
         pending = id
-        launcher.launch((LocalPlaylists.playlists[id]?.name ?: "목록").replace(Regex("[\\\\/:*?\"<>|]"), "_") + ".json")
+        launcher.launch((LocalPlaylists.playlists[id]?.name ?: context.getString(R.string.hangul_list_file_name)).replace(Regex("[\\\\/:*?\"<>|]"), "_") + ".json")
     }
 }
 
@@ -157,14 +158,20 @@ fun rememberLocalPlaylistImport(onDone: (LocalPlaylist?) -> Unit): () -> Unit {
                 runCatching {
                     context.contentResolver.openInputStream(uri)!!.use { input ->
                         val bytes = input.readNBytesCompat(LocalPlaylists.MAX_FILE_BYTES + 1)
-                        require(bytes.size <= LocalPlaylists.MAX_FILE_BYTES) { "3 MB 이하의 목록 파일만 가져올 수 있습니다." }
+                        require(bytes.size <= LocalPlaylists.MAX_FILE_BYTES) { LocalPlaylists.REFUSED_TOO_LARGE }
                         String(bytes, Charsets.UTF_8)
                     }
                 }
             }
             val imported = text.mapCatching(LocalPlaylists::import)
-            Toast.makeText(context, imported.fold({ "'${it.name}' 목록을 가져왔습니다." }, { (it as? IllegalArgumentException)?.message ?: "목록 파일을 읽지 못했습니다." }),
-                Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, imported.fold({ context.getString(R.string.hangul_list_imported, it.name) }, { error ->
+                context.getString(when ((error as? IllegalArgumentException)?.message) {
+                    LocalPlaylists.REFUSED_TOO_LARGE -> R.string.hangul_list_too_large
+                    LocalPlaylists.REFUSED_FOREIGN -> R.string.hangul_list_foreign
+                    LocalPlaylists.REFUSED_TOO_MANY -> R.string.hangul_list_too_many
+                    else -> R.string.hangul_list_read_failed
+                })
+            }), Toast.LENGTH_SHORT).show()
             onDone(imported.getOrNull())
         }
     }

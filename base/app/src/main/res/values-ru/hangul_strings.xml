@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">Копировать название трека</string>
+    <string name="hangul_clip_title_label">Название трека</string>
+    <string name="hangul_menu_offset">Настроить синхронизацию текста</string>
+    <string name="hangul_menu_lookup">Искать готовое произношение хангылем</string>
+    <string name="hangul_menu_source">Источник произношения хангылем</string>
+    <string name="hangul_menu_automatic">Создавать произношение на устройстве для недостающих строк</string>
+    <string name="hangul_on">Вкл.</string>
+    <string name="hangul_off">Выкл.</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">Поиск готового произношения хангылем</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="one">Произношение с устройства: %1$d строка. Оно может отличаться от того, как поют в песне.</item>
+        <item quantity="few">Произношение с устройства: %1$d строки. Оно может отличаться от того, как поют в песне.</item>
+        <item quantity="many">Произношение с устройства: %1$d строк. Оно может отличаться от того, как поют в песне.</item>
+        <item quantity="other">Произношение с устройства: %1$d строки. Оно может отличаться от того, как поют в песне.</item>
+    </plurals>
+    <string name="hangul_readings_source">Источник произношения хангылем: %1$s</string>
+    <string name="hangul_status_loading">Поиск произношения хангылем…</string>
+    <string name="hangul_status_none">Нет произношения хангылем · нажмите, чтобы узнать почему</string>
+    <string name="hangul_reading_missing">(произношение не найдено)</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">Произношение хангылем</string>
+    <string name="hangul_source_text">Загружает готовое произношение хангылем. Оставьте адрес пустым, чтобы искать автоматически.</string>
+    <string name="hangul_source_label">HTTPS-адрес Haneum, Namu Wiki или Tistory</string>
+    <string name="hangul_source_save">Сохранить и искать снова</string>
+    <string name="hangul_cancel">Отмена</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">Только для этого трека. Если текст появляется поздно, сдвиньте его раньше; если рано — позже.</string>
+    <string name="hangul_offset_minus_second">-1 с</string>
+    <string name="hangul_offset_minus_step">-0.25 с</string>
+    <string name="hangul_offset_plus_step">+0.25 с</string>
+    <string name="hangul_offset_plus_second">+1 с</string>
+    <string name="hangul_offset_hint">+ показывает текст раньше, - позже.</string>
+    <string name="hangul_close">Закрыть</string>
+    <string name="hangul_offset_reset">Сбросить</string>
+    <string name="hangul_offset_none">Без сдвига</string>
+    <string name="hangul_offset_earlier">Текст показывается на %1$s с раньше</string>
+    <string name="hangul_offset_later">Текст показывается на %1$s с позже</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">Сейчас ничего не играет.</string>
+    <string name="hangul_error_address">Введите HTTPS-адрес текста с Haneum, Namu Wiki или Tistory.</string>
+    <string name="hangul_error_check_address">Проверьте адрес страницы.</string>
+    <string name="hangul_error_http">Запрос страницы: HTTP %1$d</string>
+    <string name="hangul_error_cancelled">Поиск отменён</string>
+    <string name="hangul_error_cancelled_or_timeout">Поиск отменён или время ожидания истекло</string>
+    <string name="hangul_error_timeout">Время поиска истекло</string>
+    <string name="hangul_error_no_redirect">У перенаправления страницы нет адреса</string>
+    <string name="hangul_error_not_html">Это не HTML-страница.</string>
+    <string name="hangul_error_too_large">Превышен лимит размера страницы</string>
+    <string name="hangul_error_redirects">Слишком много перенаправлений страницы</string>
+    <string name="hangul_error_input_too_long">Слишком длинные данные трека или текст</string>
+    <string name="hangul_error_not_found" formatted="false">Не удалось найти произношение хангылем, совпадающее с исходным текстом хотя бы на 85%. Укажите адрес источника в настройках текущего трека.</string>
+    <string name="hangul_error_no_match">Подходящего готового произношения хангылем нет. Укажите адрес источника в меню текста.</string>
+    <string name="hangul_error_retry_timeout">Время поиска произношения хангылем истекло.</string>
+    <string name="hangul_error_generic">Не удалось загрузить произношение хангылем.</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">Добавить ссылку YouTube</string>
+    <string name="hangul_youtube_text">Воспроизводит звук видео в списке этого телефона. Текст ищется по названию и исполнителю ниже; если поля пустые, используются название видео и канал.</string>
+    <string name="hangul_youtube_link_label">Адрес YouTube или YouTube Music</string>
+    <string name="hangul_youtube_title_label">Название трека для поиска текста (необязательно)</string>
+    <string name="hangul_youtube_artist_label">Исполнитель для поиска текста (необязательно)</string>
+    <string name="hangul_youtube_failed">Не удалось получить данные видео. Проверьте подключение к сети.</string>
+    <string name="hangul_youtube_checking">Проверка…</string>
+    <string name="hangul_add">Добавить</string>
+    <string name="hangul_youtube_under_playlist">Показывается под этим плейлистом на этом телефоне</string>
+    <string name="hangul_youtube_add_detail">Добавить в список на этом телефоне или под плейлист Spotify</string>
+    <string name="hangul_youtube_unavailable">Это видео закрыто, удалено или не воспроизводится за пределами YouTube.</string>
+    <string name="hangul_youtube_bad_link">Проверьте адрес видео на YouTube.</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">Импортировать файл списка</string>
+    <string name="hangul_list_import_detail">Добавить экспортированный список телефона как новый список</string>
+    <string name="hangul_list_export">Экспортировать в файл</string>
+    <string name="hangul_list_export_detail">На других телефонах играют только ссылки YouTube</string>
+    <string name="hangul_list_saved">Список сохранён в файл.</string>
+    <string name="hangul_list_save_failed">Не удалось сохранить файл списка.</string>
+    <string name="hangul_list_file_name">Список</string>
+    <string name="hangul_list_too_large">Импортировать можно только файлы списков размером до 3 МБ.</string>
+    <string name="hangul_list_foreign">Это не файл списка, экспортированный из этого приложения.</string>
+    <string name="hangul_list_too_many">В файле списка слишком много треков.</string>
+    <string name="hangul_list_imported_name">Импортированный список</string>
+    <string name="hangul_list_imported">Список «%1$s» импортирован.</string>
+    <string name="hangul_list_read_failed">Не удалось прочитать файл списка.</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">Изменить порядок (на этом устройстве)</string>
+    <string name="hangul_order_note">Перемещения кнопками вверх и вниз сохраняются только на этом устройстве. Порядок треков в Spotify не меняется.</string>
+    <string name="hangul_order_reset">Порядок Spotify</string>
+    <string name="hangul_done">Готово</string>
+    <string name="hangul_move_up">Переместить вверх</string>
+    <string name="hangul_move_down">Переместить вниз</string>
+</resources>

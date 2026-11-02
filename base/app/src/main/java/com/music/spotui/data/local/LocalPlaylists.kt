@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshots.SnapshotStateMap
+import app.myspoti.engine.R
+import com.music.spotui.di.Graph
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
@@ -173,6 +175,10 @@ object LocalPlaylists {
     private const val FILE_FORMAT = "myspoti-hangul-local-playlist"
     const val MAX_FILE_BYTES = 3 shl 20
     private const val MAX_FILE_ITEMS = 2000
+    /** Why [import] refused a file (its IllegalArgumentException message); the screen words it. */
+    const val REFUSED_TOO_LARGE = "list file over 3 MB"
+    const val REFUSED_FOREIGN = "not a list file of this app"
+    const val REFUSED_TOO_MANY = "too many songs in the list file"
 
     /** One list as a file. Phone files keep their phone address, which plays on this phone only. */
     fun export(id: String): String? = playlists[id]?.let { p ->
@@ -182,12 +188,12 @@ object LocalPlaylists {
 
     /** A new list from a file made by [export]; never replaces an existing one. */
     fun import(text: String): LocalPlaylist {
-        require(text.length <= MAX_FILE_BYTES) { "3 MB 이하의 목록 파일만 가져올 수 있습니다." }
+        require(text.length <= MAX_FILE_BYTES) { REFUSED_TOO_LARGE }
         val o = runCatching { JSONObject(text) }.getOrNull()
-        require(o != null && o.optString("format") == FILE_FORMAT && o.optInt("version") == VERSION) { "이 앱에서 내보낸 목록 파일이 아닙니다." }
+        require(o != null && o.optString("format") == FILE_FORMAT && o.optInt("version") == VERSION) { REFUSED_FOREIGN }
         val found = items(o.optJSONArray("items"))
-        require(found.size <= MAX_FILE_ITEMS) { "목록 파일의 곡이 너무 많습니다." }
-        val p = LocalPlaylist(UUID.randomUUID().toString(), o.optString("name").trim().ifEmpty { "가져온 목록" }.take(200),
+        require(found.size <= MAX_FILE_ITEMS) { REFUSED_TOO_MANY }
+        val p = LocalPlaylist(UUID.randomUUID().toString(), o.optString("name").trim().ifEmpty { Graph.app.getString(R.string.hangul_list_imported_name) }.take(200),
             found.map { it.copy(key = UUID.randomUUID().toString()) }, System.currentTimeMillis())
         update { playlists[p.id] = p }
         return p

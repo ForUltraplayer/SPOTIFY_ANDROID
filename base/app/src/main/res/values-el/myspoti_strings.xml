@@ -75,7 +75,7 @@
     <string name="playlist_not_found">Η playlist δεν βρέθηκε</string>
     <string name="browse_new_releases">Νέες κυκλοφορίες</string>
     <string name="language_auto">Αυτόματη</string>
-    <string name="language_auto_detail">Η γλώσσα του τηλεφώνου σου, όταν το Myspoti τη διαθέτει (αγγλικά, γαλλικά, γερμανικά, ελληνικά, ισπανικά, ιταλικά, κινεζικά, πολωνικά, πορτογαλικά, ρωσικά), αλλιώς αγγλικά</string>
+    <string name="language_auto_detail">Η γλώσσα του τηλεφώνου σου, όταν το Myspoti τη διαθέτει (αγγλικά, γαλλικά, γερμανικά, ελληνικά, ιαπωνικά, ισπανικά, ιταλικά, κινεζικά, κορεατικά, πολωνικά, πορτογαλικά, ρωσικά), αλλιώς αγγλικά</string>
     <string name="language_partial_note">Άλλες γλώσσες: οι ετικέτες του ίδιου του Spotify μεταφράζονται, τα κείμενα του Myspoti μένουν στα αγγλικά.</string>
     <string name="restart_player_title">Επανεκκίνηση του player</string>
     <string name="restart_player_detail">Αν η μουσική σταματήσει να ανταποκρίνεται: φορτώνει ξανά το player του Spotify</string>

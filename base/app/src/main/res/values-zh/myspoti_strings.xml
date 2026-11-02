@@ -77,7 +77,7 @@
     <string name="playlist_not_found">未找到播放列表</string>
     <string name="browse_new_releases">新发行</string>
     <string name="language_auto">自动</string>
-    <string name="language_auto_detail">若 Myspoti 支持手机的语言则使用该语言（中文、德语、俄语、法语、希腊语、葡萄牙语、波兰语、西班牙语、意大利语、英语），否则使用英语</string>
+    <string name="language_auto_detail">若 Myspoti 支持手机的语言则使用该语言（中文、德语、俄语、法语、韩语、日语、希腊语、葡萄牙语、波兰语、西班牙语、意大利语、英语），否则使用英语</string>
     <string name="language_partial_note">其他语言：仅翻译 Spotify 自身的标签，Myspoti 的文字仍为英语。</string>
     <string name="restart_player_title">重启播放器</string>
     <string name="restart_player_detail">音乐无响应时：重新加载 Spotify 播放器</string>

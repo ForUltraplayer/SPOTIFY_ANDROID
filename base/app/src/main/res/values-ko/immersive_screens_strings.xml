@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's Home, Search, Library and Category screens (Korean). -->
+<resources>
+    <string name="immersive_screens_account">계정</string>
+    <string name="immersive_screens_account_page">계정 페이지</string>
+    <string name="immersive_screens_account_page_detail">요금제, 개인정보 보호, 기기</string>
+    <string name="immersive_screens_top_result">상위 결과</string>
+    <string name="immersive_screens_reset_order">기본 순서로 돌아가기</string>
+</resources>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">曲名をコピー</string>
+    <string name="hangul_clip_title_label">曲名</string>
+    <string name="hangul_menu_offset">歌詞のタイミング調整</string>
+    <string name="hangul_menu_lookup">既存のハングル読みを自動検索</string>
+    <string name="hangul_menu_source">ハングル読みのソース</string>
+    <string name="hangul_menu_automatic">読みがない行にデバイス内の自動読みを使用</string>
+    <string name="hangul_on">オン</string>
+    <string name="hangul_off">オフ</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">既存のハングル読みを検索中</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="other">デバイス内の自動読み: %1$d行。実際の歌い方とは異なる場合があります。</item>
+    </plurals>
+    <string name="hangul_readings_source">ハングル読みの出典: %1$s</string>
+    <string name="hangul_status_loading">ハングル読みを検索中…</string>
+    <string name="hangul_status_none">ハングル読みなし · タップして理由を表示</string>
+    <string name="hangul_reading_missing">（読みが見つかりません）</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">ハングル読み</string>
+    <string name="hangul_source_text">既存のハングル読みを取得します。アドレスを空欄にすると自動で検索します。</string>
+    <string name="hangul_source_label">Haneum、ナムウィキ（Namu Wiki）、TistoryのHTTPSアドレス</string>
+    <string name="hangul_source_save">保存して再検索</string>
+    <string name="hangul_cancel">キャンセル</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">この曲にのみ適用されます。歌詞の表示が遅い場合は早く、早い場合は遅く調整してください。</string>
+    <string name="hangul_offset_minus_second">-1秒</string>
+    <string name="hangul_offset_minus_step">-0.25秒</string>
+    <string name="hangul_offset_plus_step">+0.25秒</string>
+    <string name="hangul_offset_plus_second">+1秒</string>
+    <string name="hangul_offset_hint">+で歌詞を早く、-で遅く表示します。</string>
+    <string name="hangul_close">閉じる</string>
+    <string name="hangul_offset_reset">リセット</string>
+    <string name="hangul_offset_none">調整なし</string>
+    <string name="hangul_offset_earlier">歌詞を%1$s秒早く表示</string>
+    <string name="hangul_offset_later">歌詞を%1$s秒遅く表示</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">再生中の曲がありません。</string>
+    <string name="hangul_error_address">Haneum、ナムウィキ、TistoryのHTTPS歌詞アドレスを入力してください。</string>
+    <string name="hangul_error_check_address">ページのアドレスを確認してください。</string>
+    <string name="hangul_error_http">ページの取得 HTTP %1$d</string>
+    <string name="hangul_error_cancelled">検索をキャンセルしました</string>
+    <string name="hangul_error_cancelled_or_timeout">検索がキャンセルされたか、タイムアウトしました</string>
+    <string name="hangul_error_timeout">検索がタイムアウトしました</string>
+    <string name="hangul_error_no_redirect">ページのリダイレクト先アドレスがありません</string>
+    <string name="hangul_error_not_html">HTMLページではありません。</string>
+    <string name="hangul_error_too_large">ページサイズの上限を超えました</string>
+    <string name="hangul_error_redirects">ページのリダイレクトが多すぎます</string>
+    <string name="hangul_error_input_too_long">曲の情報または歌詞が長すぎます</string>
+    <string name="hangul_error_not_found" formatted="false">元の歌詞と85%以上一致するハングル読みが見つかりませんでした。現在の曲の設定でソースのアドレスを指定してください。</string>
+    <string name="hangul_error_no_match">一致する既存のハングル読みがありません。歌詞メニューからソースのアドレスを指定してください。</string>
+    <string name="hangul_error_retry_timeout">ハングル読みの検索がタイムアウトしました。</string>
+    <string name="hangul_error_generic">ハングル読みを読み込めませんでした。</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">YouTubeリンクを追加</string>
+    <string name="hangul_youtube_text">動画の音声をこのスマホのリストで再生します。歌詞は下の曲名とアーティストで検索し、空欄の場合は動画のタイトルとチャンネル名を使用します。</string>
+    <string name="hangul_youtube_link_label">YouTubeまたはYouTube Musicのアドレス</string>
+    <string name="hangul_youtube_title_label">歌詞検索用の曲名（任意）</string>
+    <string name="hangul_youtube_artist_label">歌詞検索用のアーティスト（任意）</string>
+    <string name="hangul_youtube_failed">動画の情報を取得できませんでした。ネットワーク接続を確認してください。</string>
+    <string name="hangul_youtube_checking">確認中…</string>
+    <string name="hangul_add">追加</string>
+    <string name="hangul_youtube_under_playlist">このスマホでこのプレイリストの下に表示</string>
+    <string name="hangul_youtube_add_detail">このスマホのリストまたはSpotifyプレイリストの下に追加</string>
+    <string name="hangul_youtube_unavailable">この動画は非公開か削除されているか、YouTube以外では再生できません。</string>
+    <string name="hangul_youtube_bad_link">YouTube動画のアドレスを確認してください。</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">リストファイルをインポート</string>
+    <string name="hangul_list_import_detail">エクスポートしたスマホのリストを新しいリストとして追加</string>
+    <string name="hangul_list_export">ファイルにエクスポート</string>
+    <string name="hangul_list_export_detail">他のスマホではYouTubeリンクのみ再生されます</string>
+    <string name="hangul_list_saved">リストをファイルに保存しました。</string>
+    <string name="hangul_list_save_failed">リストファイルを保存できませんでした。</string>
+    <string name="hangul_list_file_name">リスト</string>
+    <string name="hangul_list_too_large">3 MB以下のリストファイルのみインポートできます。</string>
+    <string name="hangul_list_foreign">このアプリからエクスポートしたリストファイルではありません。</string>
+    <string name="hangul_list_too_many">リストファイルの曲が多すぎます。</string>
+    <string name="hangul_list_imported_name">インポートしたリスト</string>
+    <string name="hangul_list_imported">リスト「%1$s」をインポートしました。</string>
+    <string name="hangul_list_read_failed">リストファイルを読み込めませんでした。</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">順序を編集（このデバイス）</string>
+    <string name="hangul_order_note">上下ボタンで移動した順序はこのデバイスにのみ保存されます。Spotifyの曲順は変わりません。</string>
+    <string name="hangul_order_reset">Spotifyの順序</string>
+    <string name="hangul_done">完了</string>
+    <string name="hangul_move_up">上へ移動</string>
+    <string name="hangul_move_down">下へ移動</string>
+</resources>

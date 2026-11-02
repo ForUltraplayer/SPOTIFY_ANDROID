@@ -185,8 +185,8 @@ fun ImmersiveLocalPlaylistScreen(navController: NavController, id: String) {
     if (menu) ImmersiveSheet(onDismiss = { menu = false }) {
         ImmersiveSheetRow(Icons.Rounded.Edit, stringResource(R.string.local_rename), onClick = { menu = false; renaming = true })
         // The Hangul build's, as in the Classic list menu: a YouTube link, and the list as a file.
-        ImmersiveSheetRow(Icons.Rounded.Link, "YouTube 링크 추가", onClick = { menu = false; addingLink = true })
-        ImmersiveSheetRow(Icons.Rounded.SaveAlt, "파일로 내보내기", detail = "다른 휴대폰에서는 YouTube 링크만 재생됩니다", onClick = { menu = false; exportList(id) })
+        ImmersiveSheetRow(Icons.Rounded.Link, stringResource(R.string.hangul_youtube_add), onClick = { menu = false; addingLink = true })
+        ImmersiveSheetRow(Icons.Rounded.SaveAlt, stringResource(R.string.hangul_list_export), detail = stringResource(R.string.hangul_list_export_detail), onClick = { menu = false; exportList(id) })
         ImmersiveSheetRow(Icons.Rounded.DeleteOutline, stringResource(R.string.local_delete_playlist), destructive = true, onClick = {
             menu = false
             navController.navigateUp()

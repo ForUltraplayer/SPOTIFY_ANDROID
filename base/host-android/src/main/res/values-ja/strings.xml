@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="msp_previous">前へ</string>
+    <string name="msp_play">再生</string>
+    <string name="msp_pause">一時停止</string>
+    <string name="msp_next">次へ</string>
+    <string name="msp_like">お気に入りに追加</string>
+    <string name="msp_unlike">お気に入りから削除</string>
+    <string name="msp_shuffle_on">シャッフルをオン</string>
+    <string name="msp_shuffle_off">シャッフルをオフ</string>
+    <string name="msp_channel_playback">再生</string>
+    <string name="msp_back_15">15秒戻る</string>
+    <string name="msp_forward_15">15秒進む</string>
+</resources>

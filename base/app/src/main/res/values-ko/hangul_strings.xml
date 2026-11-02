@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">곡 제목 복사</string>
+    <string name="hangul_clip_title_label">곡 제목</string>
+    <string name="hangul_menu_offset">가사 싱크 조절</string>
+    <string name="hangul_menu_lookup">기존 한글 발음 자동 조회</string>
+    <string name="hangul_menu_source">한글 발음 자료 주소</string>
+    <string name="hangul_menu_automatic">누락 줄에 기기 내부 자동 발음 사용</string>
+    <string name="hangul_on">켜짐</string>
+    <string name="hangul_off">꺼짐</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">기존 한글 발음 자료를 찾는 중</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="other">기기 내부 자동 발음: %1$d줄. 실제 노래의 읽기와 다를 수 있습니다.</item>
+    </plurals>
+    <string name="hangul_readings_source">한글 발음 출처: %1$s</string>
+    <string name="hangul_status_loading">한글 발음 찾는 중…</string>
+    <string name="hangul_status_none">한글 발음 없음 · 눌러서 이유 보기</string>
+    <string name="hangul_reading_missing">(발음 자료 없음)</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">한글 발음 자료</string>
+    <string name="hangul_source_text">기존 한글 발음을 가져옵니다. 빈 주소는 자동 검색입니다.</string>
+    <string name="hangul_source_label">한음, 나무위키 또는 티스토리 HTTPS 주소</string>
+    <string name="hangul_source_save">저장하고 다시 조회</string>
+    <string name="hangul_cancel">취소</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">이 곡에만 적용합니다. 가사가 늦게 나오면 먼저, 빨리 나오면 나중으로 옮기세요.</string>
+    <string name="hangul_offset_minus_second">-1초</string>
+    <string name="hangul_offset_minus_step">-0.25초</string>
+    <string name="hangul_offset_plus_step">+0.25초</string>
+    <string name="hangul_offset_plus_second">+1초</string>
+    <string name="hangul_offset_hint">+는 가사를 먼저, -는 나중에 표시합니다.</string>
+    <string name="hangul_close">닫기</string>
+    <string name="hangul_offset_reset">되돌리기</string>
+    <string name="hangul_offset_none">보정 없음</string>
+    <string name="hangul_offset_earlier">가사를 %1$s 초 먼저 표시</string>
+    <string name="hangul_offset_later">가사를 %1$s 초 나중에 표시</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">재생 중인 곡이 없습니다.</string>
+    <string name="hangul_error_address">한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요.</string>
+    <string name="hangul_error_check_address">문서 주소를 확인해 주세요.</string>
+    <string name="hangul_error_http">문서 조회 HTTP %1$d</string>
+    <string name="hangul_error_cancelled">조회 취소</string>
+    <string name="hangul_error_cancelled_or_timeout">조회 취소 또는 시간 초과</string>
+    <string name="hangul_error_timeout">조회 시간 초과</string>
+    <string name="hangul_error_no_redirect">문서 이동 주소 없음</string>
+    <string name="hangul_error_not_html">HTML 문서가 아닙니다.</string>
+    <string name="hangul_error_too_large">문서 크기 제한 초과</string>
+    <string name="hangul_error_redirects">문서 이동 횟수 초과</string>
+    <string name="hangul_error_input_too_long">곡 정보 또는 가사 길이 제한 초과</string>
+    <string name="hangul_error_not_found" formatted="false">원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.</string>
+    <string name="hangul_error_no_match">일치하는 기존 한글 발음 자료가 없습니다. 가사 메뉴에서 자료 주소를 지정해 주세요.</string>
+    <string name="hangul_error_retry_timeout">한글 발음 조회 시간이 초과되었습니다.</string>
+    <string name="hangul_error_generic">한글 발음 자료를 불러오지 못했습니다.</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">YouTube 링크 추가</string>
+    <string name="hangul_youtube_text">영상의 소리를 이 휴대폰의 목록에서 재생합니다. 가사는 아래 제목과 가수로 찾고, 비워 두면 영상 제목과 채널을 씁니다.</string>
+    <string name="hangul_youtube_link_label">YouTube 또는 YouTube Music 주소</string>
+    <string name="hangul_youtube_title_label">가사 검색용 곡 제목 (선택)</string>
+    <string name="hangul_youtube_artist_label">가사 검색용 가수 (선택)</string>
+    <string name="hangul_youtube_failed">영상 정보를 가져오지 못했습니다. 네트워크를 확인해 주세요.</string>
+    <string name="hangul_youtube_checking">확인 중…</string>
+    <string name="hangul_add">추가</string>
+    <string name="hangul_youtube_under_playlist">이 휴대폰에서 이 플레이리스트 아래에 표시</string>
+    <string name="hangul_youtube_add_detail">이 휴대폰의 목록이나 Spotify 플레이리스트 아래에 추가</string>
+    <string name="hangul_youtube_unavailable">비공개이거나 삭제된 영상, 또는 외부 재생이 막힌 영상입니다.</string>
+    <string name="hangul_youtube_bad_link">YouTube 영상 주소를 확인해 주세요.</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">목록 파일 가져오기</string>
+    <string name="hangul_list_import_detail">내보낸 휴대폰 목록을 새 목록으로 추가</string>
+    <string name="hangul_list_export">파일로 내보내기</string>
+    <string name="hangul_list_export_detail">다른 휴대폰에서는 YouTube 링크만 재생됩니다</string>
+    <string name="hangul_list_saved">목록을 파일로 저장했습니다.</string>
+    <string name="hangul_list_save_failed">목록 파일을 저장하지 못했습니다.</string>
+    <string name="hangul_list_file_name">목록</string>
+    <string name="hangul_list_too_large">3 MB 이하의 목록 파일만 가져올 수 있습니다.</string>
+    <string name="hangul_list_foreign">이 앱에서 내보낸 목록 파일이 아닙니다.</string>
+    <string name="hangul_list_too_many">목록 파일의 곡이 너무 많습니다.</string>
+    <string name="hangul_list_imported_name">가져온 목록</string>
+    <string name="hangul_list_imported">\'%1$s\' 목록을 가져왔습니다.</string>
+    <string name="hangul_list_read_failed">목록 파일을 읽지 못했습니다.</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">순서 직접 편집 (이 기기)</string>
+    <string name="hangul_order_note">위아래 버튼으로 옮기면 이 기기에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.</string>
+    <string name="hangul_order_reset">Spotify 순서로</string>
+    <string name="hangul_done">완료</string>
+    <string name="hangul_move_up">위로</string>
+    <string name="hangul_move_down">아래로</string>
+</resources>

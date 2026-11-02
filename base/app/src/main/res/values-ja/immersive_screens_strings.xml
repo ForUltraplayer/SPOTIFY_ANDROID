@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Texts of the Immersive look's Home, Search, Library and Category screens (Japanese). -->
+<resources>
+    <string name="immersive_screens_account">アカウント</string>
+    <string name="immersive_screens_account_page">アカウントページ</string>
+    <string name="immersive_screens_account_page_detail">プラン、プライバシー、デバイス</string>
+    <string name="immersive_screens_top_result">トップの検索結果</string>
+    <string name="immersive_screens_reset_order">デフォルトの順序に戻す</string>
+</resources>

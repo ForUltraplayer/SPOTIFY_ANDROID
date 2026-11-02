@@ -3,7 +3,9 @@
 package com.music.spotui.video
 
 import android.net.Uri
+import app.myspoti.engine.R
 import app.myspoti.extensions.AudioStream
+import com.music.spotui.di.Graph
 import com.music.spotui.data.local.LocalTrack
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
@@ -29,7 +31,7 @@ object YouTubeLinks {
     private fun info(id: String, fresh: Boolean = false) = try {
         YouTubeSource.info("https://www.youtube.com/watch?v=$id", fresh)
     } catch (e: ContentNotAvailableException) {
-        throw Unavailable("비공개이거나 삭제된 영상, 또는 외부 재생이 막힌 영상입니다.").apply { initCause(e) }
+        throw Unavailable(Graph.app.getString(R.string.hangul_youtube_unavailable)).apply { initCause(e) }
     }
 
     /**
@@ -37,7 +39,7 @@ object YouTubeLinks {
      * gave their own (the lyrics are looked up by them).
      */
     fun track(link: String, title: String = "", artist: String = ""): LocalTrack {
-        val id = YouTubeUrlKey.videoId(link.trim()) ?: throw IllegalArgumentException("YouTube 영상 주소를 확인해 주세요.")
+        val id = YouTubeUrlKey.videoId(link.trim()) ?: throw IllegalArgumentException(Graph.app.getString(R.string.hangul_youtube_bad_link))
         val info = info(id)
         return LocalTrack(
             id = id.hashCode().toLong() and 0x7fffffffL,

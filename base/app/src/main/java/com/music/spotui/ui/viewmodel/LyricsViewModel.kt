@@ -7,6 +7,8 @@ import com.music.spotui.data.api.LyricsApi
 import com.music.spotui.data.api.HangulReadings
 import com.music.spotui.data.api.HangulReadingRetry
 import com.music.spotui.data.entity.Lyrics
+import com.music.spotui.di.Graph
+import app.myspoti.engine.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -182,13 +184,13 @@ class LyricsViewModel constructor() : ViewModel() {
                 }
                 val latest = _state.value as? State.Loaded ?: return@launch
                 if (loadedKey != track.key || latest.lyrics != lyrics) return@launch
-                _state.value = latest.copy(readings=found.lines,readingSource=found.source.takeIf { it.isNotBlank() },readingLoading=false,readingError=null,readingGenerated=found.generated)
+                _state.value = latest.copy(readings=HangulReadings.shownLines(found.lines, Graph.app),readingSource=found.source.takeIf { it.isNotBlank() },readingLoading=false,readingError=null,readingGenerated=found.generated)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
                 val latest = _state.value as? State.Loaded ?: return@launch
                 if (loadedKey != track.key || latest.lyrics != lyrics) return@launch
-                _state.value = latest.copy(readingLoading=false,readingError=if(error is java.io.IOException) error.message else "한글 발음 자료를 불러오지 못했습니다.")
+                _state.value = latest.copy(readingLoading=false,readingError=HangulReadings.userMessage(error, Graph.app))
             }
         }
     }
@@ -212,13 +214,13 @@ class LyricsViewModel constructor() : ViewModel() {
     }
 
     fun setReadingSource(url: String): String? {
-        val track = loadedTrack ?: return "재생 중인 곡이 없습니다."
+        val track = loadedTrack ?: return Graph.app.getString(R.string.hangul_error_no_song)
         return try {
             HangulReadings.setSource(track,url)
             HangulReadings.setEnabled(true)
             (_state.value as? State.Loaded)?.let { requestHangul(track,it.lyrics,true) }
             null
-        } catch (error: Exception) { "한음, 나무위키 또는 티스토리 HTTPS 가사 주소를 입력해 주세요." }
+        } catch (error: Exception) { Graph.app.getString(R.string.hangul_error_address) }
     }
 
     fun toggleTranslation(targetLang: String) {

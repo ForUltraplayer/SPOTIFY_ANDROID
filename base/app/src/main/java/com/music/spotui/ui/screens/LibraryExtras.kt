@@ -194,8 +194,8 @@ fun LibraryCreateSheet(navController: NavController, onDismiss: () -> Unit, onLi
                 SheetRow(Icons.Outlined.Group, stringResource(R.string.blend_title), stringResource(R.string.blend_detail)) { asking = "blend" }
                 SheetRow(Icons.Outlined.CreateNewFolder, stringResource(R.string.create_menu_item_folder_title)) { asking = "folder" }
                 SheetRow(Icons.Outlined.PhoneAndroid, stringResource(R.string.local_playlist_new), stringResource(R.string.local_add_note)) { asking = "local" }
-                SheetRow(Icons.Outlined.Link, "YouTube 링크 추가", "이 휴대폰의 목록이나 Spotify 플레이리스트 아래에 추가") { asking = "youtube" }
-                SheetRow(Icons.Outlined.FileOpen, "목록 파일 가져오기", "내보낸 휴대폰 목록을 새 목록으로 추가") { asking = "importing"; importList() }
+                SheetRow(Icons.Outlined.Link, stringResource(R.string.hangul_youtube_add), stringResource(R.string.hangul_youtube_add_detail)) { asking = "youtube" }
+                SheetRow(Icons.Outlined.FileOpen, stringResource(R.string.hangul_list_import), stringResource(R.string.hangul_list_import_detail)) { asking = "importing"; importList() }
             }
         }
     }
@@ -494,8 +494,8 @@ fun LocalPlaylistScreen(navController: NavController, id: String) {
     if (menu) com.music.spotui.ui.components.LookSheet(onDismissRequest = { menu = false }, containerColor = SheetColor) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 12.dp)) {
             SheetRow(Icons.Outlined.Edit, stringResource(R.string.local_rename)) { menu = false; renaming = true }
-            SheetRow(Icons.Outlined.Link, "YouTube 링크 추가") { menu = false; addingLink = true }
-            SheetRow(Icons.Outlined.SaveAlt, "파일로 내보내기", "다른 휴대폰에서는 YouTube 링크만 재생됩니다") { menu = false; exportList(id) }
+            SheetRow(Icons.Outlined.Link, stringResource(R.string.hangul_youtube_add)) { menu = false; addingLink = true }
+            SheetRow(Icons.Outlined.SaveAlt, stringResource(R.string.hangul_list_export), stringResource(R.string.hangul_list_export_detail)) { menu = false; exportList(id) }
             SheetRow(Icons.Outlined.Delete, stringResource(R.string.local_delete_playlist)) {
                 menu = false
                 navController.navigateUp()

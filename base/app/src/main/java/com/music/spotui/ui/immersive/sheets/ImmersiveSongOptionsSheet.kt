@@ -263,31 +263,31 @@ fun ImmersiveSongOptionsSheet(
             // The Hangul build's lyric options, as in the Classic lyrics menu.
             val offsets = com.music.spotui.data.api.LyricsOffsets
             ImmersiveSheetRow(
-                Icons.Rounded.Tune, "가사 싱크 조절",
+                Icons.Rounded.Tune, stringResource(R.string.hangul_menu_offset),
                 value = offsets.describe(offsets.of(com.music.spotui.di.SongPlayer.currentLyricsTrack()?.key)),
             ) { showOffset = true }
             val hangul = com.music.spotui.data.api.HangulReadings.enabled()
             ImmersiveSheetRow(
-                Icons.Rounded.RecordVoiceOver, "기존 한글 발음 자동 조회",
-                value = if (hangul) "켜짐" else "꺼짐",
+                Icons.Rounded.RecordVoiceOver, stringResource(R.string.hangul_menu_lookup),
+                value = stringResource(if (hangul) R.string.hangul_on else R.string.hangul_off),
                 tint = if (hangul) LocalImmersiveSheetTint.current.accent else null,
             ) {
                 lyricsVm.toggleHangul()
                 onDismiss()
             }
-            if (lyrics != null) ImmersiveSheetRow(Icons.Rounded.Link, "한글 발음 자료 주소") { showHangulSource = true }
+            if (lyrics != null) ImmersiveSheetRow(Icons.Rounded.Link, stringResource(R.string.hangul_menu_source)) { showHangulSource = true }
             val automatic = com.music.spotui.data.api.HangulReadings.automaticEnabled()
             ImmersiveSheetRow(
-                Icons.Rounded.AutoFixHigh, "누락 줄에 기기 내부 자동 발음 사용",
-                value = if (automatic) "켜짐" else "꺼짐",
+                Icons.Rounded.AutoFixHigh, stringResource(R.string.hangul_menu_automatic),
+                value = stringResource(if (automatic) R.string.hangul_on else R.string.hangul_off),
                 tint = if (automatic) LocalImmersiveSheetTint.current.accent else null,
             ) {
                 lyricsVm.toggleAutomaticReadings()
                 onDismiss()
             }
-            ImmersiveSheetRow(Icons.Rounded.ContentCopy, "곡 제목 복사") {
+            ImmersiveSheetRow(Icons.Rounded.ContentCopy, stringResource(R.string.hangul_copy_title)) {
                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("곡 제목", song.title))
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(context.getString(R.string.hangul_clip_title_label), song.title))
                 onDismiss()
             }
             // Ask another provider for the lyrics (also when none were found).

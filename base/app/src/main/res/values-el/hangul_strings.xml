@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">Αντιγραφή τίτλου τραγουδιού</string>
+    <string name="hangul_clip_title_label">Τίτλος τραγουδιού</string>
+    <string name="hangul_menu_offset">Ρύθμιση συγχρονισμού στίχων</string>
+    <string name="hangul_menu_lookup">Αναζήτηση υπάρχουσας προφοράς σε Hangul</string>
+    <string name="hangul_menu_source">Πηγή προφοράς σε Hangul</string>
+    <string name="hangul_menu_automatic">Προφορά από τη συσκευή για τις γραμμές που λείπουν</string>
+    <string name="hangul_on">Ενεργό</string>
+    <string name="hangul_off">Ανενεργό</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">Αναζήτηση υπάρχουσας προφοράς σε Hangul</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="one">Προφορά από τη συσκευή: %1$d γραμμή. Μπορεί να διαφέρει από το πώς τραγουδιέται το τραγούδι.</item>
+        <item quantity="other">Προφορά από τη συσκευή: %1$d γραμμές. Μπορεί να διαφέρει από το πώς τραγουδιέται το τραγούδι.</item>
+    </plurals>
+    <string name="hangul_readings_source">Προφορά σε Hangul από %1$s</string>
+    <string name="hangul_status_loading">Αναζήτηση προφοράς σε Hangul…</string>
+    <string name="hangul_status_none">Δεν υπάρχει προφορά σε Hangul · πάτησε για να δεις γιατί</string>
+    <string name="hangul_reading_missing">(δεν βρέθηκε προφορά)</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">Προφορά σε Hangul</string>
+    <string name="hangul_source_text">Φέρνει υπάρχουσα προφορά σε Hangul. Άφησε τη διεύθυνση κενή για αυτόματη αναζήτηση.</string>
+    <string name="hangul_source_label">Διεύθυνση HTTPS από Haneum, Namu Wiki ή Tistory</string>
+    <string name="hangul_source_save">Αποθήκευση και νέα αναζήτηση</string>
+    <string name="hangul_cancel">Ακύρωση</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">Ισχύει μόνο για αυτό το τραγούδι. Αν οι στίχοι εμφανίζονται αργά, μετακίνησέ τους νωρίτερα· αν εμφανίζονται νωρίς, μετακίνησέ τους αργότερα.</string>
+    <string name="hangul_offset_minus_second">-1 δ</string>
+    <string name="hangul_offset_minus_step">-0.25 δ</string>
+    <string name="hangul_offset_plus_step">+0.25 δ</string>
+    <string name="hangul_offset_plus_second">+1 δ</string>
+    <string name="hangul_offset_hint">Το + δείχνει τους στίχους νωρίτερα, το - αργότερα.</string>
+    <string name="hangul_close">Κλείσιμο</string>
+    <string name="hangul_offset_reset">Επαναφορά</string>
+    <string name="hangul_offset_none">Χωρίς προσαρμογή</string>
+    <string name="hangul_offset_earlier">Στίχοι %1$s δ νωρίτερα</string>
+    <string name="hangul_offset_later">Στίχοι %1$s δ αργότερα</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">Δεν παίζει κανένα τραγούδι.</string>
+    <string name="hangul_error_address">Γράψε μια διεύθυνση HTTPS στίχων από Haneum, Namu Wiki ή Tistory.</string>
+    <string name="hangul_error_check_address">Έλεγξε τη διεύθυνση της σελίδας.</string>
+    <string name="hangul_error_http">Αναζήτηση σελίδας HTTP %1$d</string>
+    <string name="hangul_error_cancelled">Η αναζήτηση ακυρώθηκε</string>
+    <string name="hangul_error_cancelled_or_timeout">Η αναζήτηση ακυρώθηκε ή έληξε ο χρόνος</string>
+    <string name="hangul_error_timeout">Έληξε ο χρόνος αναζήτησης</string>
+    <string name="hangul_error_no_redirect">Η ανακατεύθυνση της σελίδας δεν έχει διεύθυνση</string>
+    <string name="hangul_error_not_html">Δεν είναι σελίδα HTML.</string>
+    <string name="hangul_error_too_large">Η σελίδα ξεπερνά το όριο μεγέθους</string>
+    <string name="hangul_error_redirects">Πάρα πολλές ανακατευθύνσεις σελίδας</string>
+    <string name="hangul_error_input_too_long">Πολύ μεγάλο μήκος στοιχείων τραγουδιού ή στίχων</string>
+    <string name="hangul_error_not_found" formatted="false">Δεν βρέθηκε προφορά σε Hangul που να ταιριάζει τουλάχιστον κατά 85% με τους αρχικούς στίχους. Όρισε διεύθυνση πηγής στις ρυθμίσεις του τρέχοντος τραγουδιού.</string>
+    <string name="hangul_error_no_match">Καμία υπάρχουσα προφορά σε Hangul δεν ταιριάζει. Όρισε διεύθυνση πηγής από το μενού στίχων.</string>
+    <string name="hangul_error_retry_timeout">Έληξε ο χρόνος αναζήτησης της προφοράς σε Hangul.</string>
+    <string name="hangul_error_generic">Δεν ήταν δυνατή η φόρτωση της προφοράς σε Hangul.</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">Προσθήκη συνδέσμου YouTube</string>
+    <string name="hangul_youtube_text">Παίζει τον ήχο του βίντεο στη λίστα αυτού του τηλεφώνου. Οι στίχοι αναζητούνται με τον τίτλο και τον καλλιτέχνη παρακάτω· αν μείνουν κενά, χρησιμοποιούνται ο τίτλος και το κανάλι του βίντεο.</string>
+    <string name="hangul_youtube_link_label">Διεύθυνση YouTube ή YouTube Music</string>
+    <string name="hangul_youtube_title_label">Τίτλος τραγουδιού για αναζήτηση στίχων (προαιρετικό)</string>
+    <string name="hangul_youtube_artist_label">Καλλιτέχνης για αναζήτηση στίχων (προαιρετικό)</string>
+    <string name="hangul_youtube_failed">Δεν ήταν δυνατή η λήψη των στοιχείων του βίντεο. Έλεγξε τη σύνδεση δικτύου.</string>
+    <string name="hangul_youtube_checking">Έλεγχος…</string>
+    <string name="hangul_add">Προσθήκη</string>
+    <string name="hangul_youtube_under_playlist">Εμφανίζεται κάτω από αυτή την playlist σε αυτό το τηλέφωνο</string>
+    <string name="hangul_youtube_add_detail">Προσθήκη σε λίστα αυτού του τηλεφώνου ή κάτω από μια playlist του Spotify</string>
+    <string name="hangul_youtube_unavailable">Αυτό το βίντεο είναι ιδιωτικό, έχει αφαιρεθεί ή δεν μπορεί να παίξει εκτός YouTube.</string>
+    <string name="hangul_youtube_bad_link">Έλεγξε τη διεύθυνση του βίντεο YouTube.</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">Εισαγωγή αρχείου λίστας</string>
+    <string name="hangul_list_import_detail">Προσθήκη μιας εξαγμένης λίστας τηλεφώνου ως νέας λίστας</string>
+    <string name="hangul_list_export">Εξαγωγή σε αρχείο</string>
+    <string name="hangul_list_export_detail">Σε άλλα τηλέφωνα παίζουν μόνο οι σύνδεσμοι YouTube</string>
+    <string name="hangul_list_saved">Η λίστα αποθηκεύτηκε σε αρχείο.</string>
+    <string name="hangul_list_save_failed">Δεν ήταν δυνατή η αποθήκευση του αρχείου λίστας.</string>
+    <string name="hangul_list_file_name">Λίστα</string>
+    <string name="hangul_list_too_large">Μπορούν να εισαχθούν μόνο αρχεία λίστας έως 3 MB.</string>
+    <string name="hangul_list_foreign">Αυτό δεν είναι αρχείο λίστας που εξήχθη από αυτή την εφαρμογή.</string>
+    <string name="hangul_list_too_many">Το αρχείο λίστας έχει πάρα πολλά τραγούδια.</string>
+    <string name="hangul_list_imported_name">Εισαγμένη λίστα</string>
+    <string name="hangul_list_imported">Η λίστα «%1$s» εισήχθη.</string>
+    <string name="hangul_list_read_failed">Δεν ήταν δυνατή η ανάγνωση του αρχείου λίστας.</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">Επεξεργασία σειράς (αυτή η συσκευή)</string>
+    <string name="hangul_order_note">Ό,τι μετακινείς με τα κουμπιά πάνω και κάτω αποθηκεύεται μόνο σε αυτή τη συσκευή. Η σειρά των τραγουδιών στο Spotify δεν αλλάζει.</string>
+    <string name="hangul_order_reset">Σειρά του Spotify</string>
+    <string name="hangul_done">Τέλος</string>
+    <string name="hangul_move_up">Μετακίνηση πάνω</string>
+    <string name="hangul_move_down">Μετακίνηση κάτω</string>
+</resources>

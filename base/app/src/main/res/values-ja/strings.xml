@@ -1,0 +1,26 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Myspoti</string>
+    <string name="aa_playlists">プレイリスト</string>
+    <string name="aa_albums">アルバム</string>
+    <string name="aa_artists">アーティスト</string>
+    <string name="settings_amoled_theme">AMOLEDテーマ</string>
+    <string name="settings_amoled_theme_subtitle">バッテリーを節約する完全な黒の背景</string>
+    <string name="main_update_available">新しいアップデートがあります</string>
+
+    <string name="notif_action_play">再生</string>
+    <string name="notif_action_pause">一時停止</string>
+    <string name="notif_shuffle_enable">シャッフルをオン</string>
+    <string name="notif_shuffle_disable">シャッフルをオフ</string>
+    <string name="notif_shuffle_disable_smart">スマートシャッフルをオフ</string>
+
+
+    <string name="energy_saver_title" tools:ignore="MissingTranslation">バッテリーセーバー</string>
+    <string name="energy_saver_summary" tools:ignore="MissingTranslation">Canvasをオフにし、動画とアニメーションを軽量化</string>
+    <string name="video_fullscreen_enter" tools:ignore="MissingTranslation">全画面表示</string>
+    <string name="video_fullscreen_exit" tools:ignore="MissingTranslation">全画面表示を終了</string>
+    <string name="playback_seek_description" tools:ignore="MissingTranslation">再生位置</string>
+    <string name="account_page_title">Spotifyアカウント</string>
+    <string name="account_page_detail">spotify.comでプラン、プライバシー、デバイスを管理</string>
+    <string name="player_source_downloaded">ダウンロード済み</string>
+    <string name="extension_change_write">Spotifyへの送信も許可されました: %1$s</string>
+</resources>

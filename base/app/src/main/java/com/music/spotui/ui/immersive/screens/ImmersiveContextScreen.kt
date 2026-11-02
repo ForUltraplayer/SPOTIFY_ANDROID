@@ -940,7 +940,7 @@ private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onS
         }
         // The custom order changed by hand, YouTube links and phone files included; kept on this phone.
         if (onEditOrder != null) DropdownMenuItem(
-            text = { Text("순서 직접 편집 (이 기기)", style = Immersive.Body.copy(color = Immersive.Text)) },
+            text = { Text(stringResource(R.string.hangul_order_edit), style = Immersive.Body.copy(color = Immersive.Text)) },
             onClick = { onDismiss(); onEditOrder() },
         )
     }
@@ -950,9 +950,9 @@ private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onS
 @Composable
 private fun MixedOrderBar(onReset: () -> Unit, onDone: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = Immersive.Gutter, vertical = 8.dp)) {
-        Text("위아래 버튼으로 옮기면 이 기기에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.", style = Immersive.Caption, modifier = Modifier.weight(1f))
-        TextButton(onClick = onReset) { Text("Spotify 순서로", style = Immersive.Body.copy(color = Immersive.Text)) }
-        TextButton(onClick = onDone) { Text("완료", style = Immersive.Body.copy(color = Immersive.Accent)) }
+        Text(stringResource(R.string.hangul_order_note), style = Immersive.Caption, modifier = Modifier.weight(1f))
+        TextButton(onClick = onReset) { Text(stringResource(R.string.hangul_order_reset), style = Immersive.Body.copy(color = Immersive.Text)) }
+        TextButton(onClick = onDone) { Text(stringResource(R.string.hangul_done), style = Immersive.Body.copy(color = Immersive.Accent)) }
     }
 }
 
@@ -964,7 +964,7 @@ private fun MovableRow(title: String, artist: String, index: Int, count: Int, mo
             Text(title, style = Immersive.Body.copy(color = Immersive.Text), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (artist.isNotBlank()) Text(artist, style = Immersive.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        listOf(Triple(Icons.Rounded.ArrowUpward, "위로", index - 1), Triple(Icons.Rounded.ArrowDownward, "아래로", index + 1)).forEach { (icon, label, to) ->
+        listOf(Triple(Icons.Rounded.ArrowUpward, stringResource(R.string.hangul_move_up), index - 1), Triple(Icons.Rounded.ArrowDownward, stringResource(R.string.hangul_move_down), index + 1)).forEach { (icon, label, to) ->
             val enabled = to in 0 until count
             Icon(
                 icon, contentDescription = label,

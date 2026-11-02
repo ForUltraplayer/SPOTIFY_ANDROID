@@ -10,12 +10,12 @@ object AppLanguage {
     /** Follow the phone. */
     const val SYSTEM = ""
 
-    /** Languages the app has strings for, as BCP 47 tags, after "automatic". */
+    /**
+     * Languages the app has every string in, as BCP 47 tags, after "automatic": the Hangul build's
+     * androidResources.localeFilters (build.gradle.kts), so picking one never shows a half-translated app.
+     */
     val AVAILABLE: List<String> = listOf(SYSTEM) + listOf(
-        "af", "am", "ar", "az", "bg", "bn", "bs", "ca", "cs", "da", "de", "el", "en", "en-GB", "es", "es-AR", "es-MX",
-        "et", "eu", "fa", "fi", "fr", "fr-CA", "gl", "gu", "hi", "hr", "hu", "id", "is", "it", "he", "ja", "kn", "ko",
-        "lt", "lv", "mk", "ml", "mr", "ms", "nb", "ne", "nl", "or", "pa", "pl", "pt", "pt-BR", "pt-PT", "ro", "ru", "sk", "sl",
-        "sr", "sv", "sw", "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh", "zh-HK", "zh-TW", "zu",
+        "de", "el", "en", "es", "fr", "it", "ja", "ko", "pl", "pt", "ru", "zh",
     ).sortedBy { nativeName(it).lowercase() }
 
     fun current(context: Context): String =

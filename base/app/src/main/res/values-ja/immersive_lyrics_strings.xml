@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="immersive_lyrics_instrumental">インストゥルメンタル</string>
+    <string name="immersive_lyrics_none">この曲には歌詞がありません</string>
+    <string name="immersive_queue_title">再生キュー</string>
+    <string name="immersive_queue_now_playing">再生中</string>
+    <string name="immersive_queue_empty">再生キューに曲がありません</string>
+    <string name="immersive_queue_remove">再生キューから削除</string>
+    <string name="immersive_queue_reorder">再生キュー内で移動</string>
+    <string name="immersive_queue_shuffle">シャッフル</string>
+    <string name="immersive_queue_repeat">リピート</string>
+</resources>

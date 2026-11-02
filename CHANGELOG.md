@@ -8,6 +8,8 @@ Each release on GitHub shows its section below. The app shows it too when it off
 - Hangul readings, YouTube links in playlists with their mixed order, and per-song lyric sync are kept, in the Classic look and in the new Immersive look (its lyrics, song menu, playlist and phone list pages)
 - Check for updates is now Myspoti's own (last checked time, a notice when GitHub limits requests); Hangul builds still take both releases and pre-releases
 - LyricsPlus lyrics now carry translations, backing vocals and singers, still checked against the same recording
+- The app follows the phone's language in 12 languages (English, Korean, Japanese, German, Greek, Spanish, French, Italian, Polish, Portuguese, Russian, Chinese), every screen translated; other phone languages get the whole app in English. Settings, App language picks one of the 12
+- The app is now called Myspoti-ex on the home screen, in every language
 
 ## 2.0.1-hangul.10
 

@@ -80,7 +80,7 @@
     <string name="playlist_not_found">Плейлист не найден</string>
     <string name="browse_new_releases">Новинки</string>
     <string name="language_auto">Автоматически</string>
-    <string name="language_auto_detail">Язык вашего телефона, если он есть в Myspoti (английский, греческий, испанский, итальянский, китайский, немецкий, польский, португальский, русский, французский), иначе английский</string>
+    <string name="language_auto_detail">Язык вашего телефона, если он есть в Myspoti (английский, греческий, испанский, итальянский, китайский, корейский, немецкий, польский, португальский, русский, французский, японский), иначе английский</string>
     <string name="language_partial_note">Остальные языки: переведены только надписи самого Spotify, тексты Myspoti остаются на английском.</string>
     <string name="restart_player_title">Перезапустить плеер</string>
     <string name="restart_player_detail">Если музыка не отвечает: перезагружает плеер Spotify</string>

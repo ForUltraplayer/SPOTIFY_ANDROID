@@ -15,6 +15,18 @@ $env:ANDROID_SDK_ROOT = $AndroidSdk
 $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release.json') -Raw | ConvertFrom-Json
 $gradleSource=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'base\app\build.gradle.kts'))
 if (-not $gradleSource.Contains(('applicationId = "'+$release.applicationId+'"'))) { throw '앱 식별자가 release.json과 다릅니다.' }
+# Every shipped language (localeFilters in base\app\build.gradle.kts) must have every string: a gap fails the build.
+$locales = [regex]::Match($gradleSource, 'localeFilters \+= listOf\(([^)]*)\)').Groups[1].Value -split ',' |
+    ForEach-Object { $_.Trim().Trim('"') } | Where-Object { $_ -and $_ -ne 'en' }
+if (-not $locales) { throw 'build.gradle.kts에서 localeFilters 목록을 찾지 못했습니다.' }
+$env:PYTHONUTF8 = '1'
+foreach ($module in 'app', 'host-android') {
+    $res = Join-Path $PSScriptRoot "base\$module\src\main\res"
+    foreach ($locale in $locales) {
+        & python -I (Join-Path $PSScriptRoot 'scripts\check_translations.py') (Join-Path $res 'values') (Join-Path $res "values-$locale")
+        if ($LASTEXITCODE -ne 0) { throw "$module 모듈의 $locale 번역에 빠지거나 틀린 문구가 있습니다." }
+    }
+}
 # Every app unit test, the upstream ones (player, local files) with the Hangul ones.
 $arguments = @('--no-daemon','--no-configuration-cache',':app:testDebugUnitTest')
 if ($FullCompatibility) { $arguments += @(':api-spotify:test',':host-android:testDebugUnitTest') }

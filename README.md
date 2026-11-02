@@ -18,7 +18,7 @@ PC 버전: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
 2. **Log in with Spotify**로 로그인합니다.
 3. 곡을 재생하고 가사 화면을 열면 일본어 줄 아래에 한글 발음이 나옵니다.
 
-Android 10 이상, 무료 Spotify 계정도 됩니다. 원본 Myspoti와는 별개 앱(`app.myspoti.hangul`)으로 설치됩니다.
+Android 10 이상, 무료 Spotify 계정도 됩니다. 원본 Myspoti와는 별개 앱(`app.myspoti.hangul`)으로 설치되고, 홈 화면에는 **Myspoti-ex**로 표시됩니다. 앱 화면은 휴대폰 언어(12개 언어)를 따릅니다.
 
 ## 업데이트
 

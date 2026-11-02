@@ -4,6 +4,7 @@ package com.music.spotui.data.api
 
 import android.content.Context
 import android.util.Log
+import app.myspoti.engine.R
 import com.music.spotui.data.entity.Lyrics
 import com.music.spotui.di.Graph
 import org.json.JSONArray
@@ -22,6 +23,8 @@ object HangulReadings {
     private const val LIFETIME = 30L * 86400 * 1000
     /** Diagnostic lines (BetaLogs collects this tag): steps and outcomes, never titles, lyrics or addresses. */
     private const val TAG = "HangulReadings"
+    /** A recent miss of the same song and source; [userMessage] words it for the screen. */
+    private const val NO_MATCH = "no matching readings after a recent miss"
     private fun prefs() = Graph.app.getSharedPreferences("hangul_readings", Context.MODE_PRIVATE)
     fun enabled(): Boolean = prefs().getBoolean("enabled", true)
     fun setEnabled(value: Boolean) { prefs().edit().putBoolean("enabled", value).apply() }
@@ -58,6 +61,33 @@ object HangulReadings {
         return authored.copy(lines = lines, generated = generated)
     }
 
+    /** [lines] of a [Result] as shown: a line without a reading says so in the app's language. */
+    fun shownLines(lines: List<String>, context: Context): List<String> {
+        val missing = context.getString(R.string.hangul_reading_missing)
+        return lines.map { if (it == HangulReadingEngine.MISSING) missing else it }
+    }
+
+    /** Why the readings could not be looked up or their address set, in the app's language. */
+    fun userMessage(error: Throwable, context: Context): String {
+        if (error is HangulReadingEngine.HttpStatus) return context.getString(R.string.hangul_error_http, error.status)
+        return context.getString(when (error.message) {
+            HangulReadingEngine.ADDRESS_NEEDED -> R.string.hangul_error_address
+            HangulReadingEngine.CHECK_ADDRESS -> R.string.hangul_error_check_address
+            HangulReadingEngine.CANCELLED -> R.string.hangul_error_cancelled
+            HangulReadingEngine.CANCELLED_OR_TIMEOUT -> R.string.hangul_error_cancelled_or_timeout
+            HangulReadingEngine.TIMEOUT -> R.string.hangul_error_timeout
+            HangulReadingEngine.NO_REDIRECT -> R.string.hangul_error_no_redirect
+            HangulReadingEngine.NOT_HTML -> R.string.hangul_error_not_html
+            HangulReadingEngine.TOO_LARGE -> R.string.hangul_error_too_large
+            HangulReadingEngine.TOO_MANY_REDIRECTS -> R.string.hangul_error_redirects
+            HangulReadingEngine.INPUT_TOO_LONG -> R.string.hangul_error_input_too_long
+            HangulReadingEngine.NOT_FOUND -> R.string.hangul_error_not_found
+            NO_MATCH -> R.string.hangul_error_no_match
+            HangulReadingRetry.TIMEOUT -> R.string.hangul_error_retry_timeout
+            else -> R.string.hangul_error_generic
+        })
+    }
+
     /** The tokenizer and cache have one owner; cancelled waiters can leave immediately. */
     fun resolve(track: LyricsApi.Track, lyrics: Lyrics, force: Boolean = false, retryAttempt: Int = 0, remainingMs: Long = 32_000): Result {
         resolutionLock.lockInterruptibly()
@@ -88,10 +118,9 @@ object HangulReadings {
         try {
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
             if (!failures.allow(key, retryAttempt, force)) {
-                val message = "일치하는 기존 한글 발음 자료가 없습니다. 가사 메뉴에서 자료 주소를 지정해 주세요."
                 val exhausted = failures.exhausted(key)
                 Log.d(TAG, "attempt $retryAttempt skipped: recent miss" + if (exhausted) ", no retries left" else "")
-                throw if (exhausted) HangulReadingEngine.NonRetryable(message) else IOException(message)
+                throw if (exhausted) HangulReadingEngine.NonRetryable(NO_MATCH) else IOException(NO_MATCH)
             }
             searched = true
             val learned = learnedSource(aliasKey)

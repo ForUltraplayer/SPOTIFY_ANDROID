@@ -188,7 +188,7 @@ fun PlaylistOptionsSheet(
                 OptionRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.blend_leave)) { leavingBlend = true }
             } else if (mine) {
                 onAddSongs?.let { add -> OptionRow(Icons.Outlined.AddCircleOutline, stringResource(R.string.add_songs_title)) { onDismiss(); add() } }
-                onAddYouTube?.let { add -> OptionRow(Icons.Outlined.Link, "YouTube 링크 추가") { onDismiss(); add() } }
+                onAddYouTube?.let { add -> OptionRow(Icons.Outlined.Link, stringResource(R.string.hangul_youtube_add)) { onDismiss(); add() } }
                 OptionRow(Icons.Outlined.Edit, stringResource(R.string.playlist_edit_details)) { editing = true }
                 // Collaborative is not enough: only those who open its invitation link can add songs
                 // (a plain link only shows it). Inviting makes it collaborative, as in the official app.

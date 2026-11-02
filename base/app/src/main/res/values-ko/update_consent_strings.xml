@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_code_title">%1$s의 코드가 변경되었습니다(%2$d줄, +%3$d/−%4$d)</string>
+    <string name="update_code_body">이 확장은 강력한 권한(중요한 작업 또는 광범위한 네트워크 액세스)을 가지고 있어, 사용자가 승인하지 않으면 새 코드가 실행되지 않습니다.</string>
+    <string name="update_code_files">변경된 파일: %1$s</string>
+    <string name="update_code_update">업데이트</string>
+    <string name="update_code_later">나중에</string>
+    <string name="update_check_waiting">업데이트 발견: 24시간 후 자동으로 적용됩니다</string>
+    <string name="update_check_repo_changed">업데이트 거부: 저장소의 소유자가 바뀌었습니다</string>
+    <string name="update_repo_changed_title">저장소 소유자 변경됨</string>
+    <string name="update_repo_changed_body">이 저장소가 같은 이름으로 다시 등록되었거나 이전되어 업데이트가 차단되었습니다. 삭제하거나, 새 소유자를 신뢰하는 경우에만 다시 설치하세요.</string>
+    <string name="update_author_owner">제작 %1$s · 저장소 %2$s</string>
+    <string name="update_author_unverified">제작 %1$s · 인증되지 않음</string>
+</resources>

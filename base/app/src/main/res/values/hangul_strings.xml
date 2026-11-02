@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Hangul build's own screens: lyric readings, lyric sync, YouTube links and phone-list files. -->
+<resources>
+    <!-- Lyrics menus (Classic and Immersive) -->
+    <string name="hangul_copy_title">Copy song title</string>
+    <string name="hangul_clip_title_label">Song title</string>
+    <string name="hangul_menu_offset">Adjust lyrics sync</string>
+    <string name="hangul_menu_lookup">Look up existing Hangul readings</string>
+    <string name="hangul_menu_source">Hangul readings source</string>
+    <string name="hangul_menu_automatic">Use on-device readings for missing lines</string>
+    <string name="hangul_on">On</string>
+    <string name="hangul_off">Off</string>
+
+    <!-- Reading status under the lyrics -->
+    <string name="hangul_readings_loading">Looking for existing Hangul readings</string>
+    <plurals name="hangul_readings_automatic">
+        <item quantity="one">On-device readings: %1$d line. They may differ from how the song is sung.</item>
+        <item quantity="other">On-device readings: %1$d lines. They may differ from how the song is sung.</item>
+    </plurals>
+    <string name="hangul_readings_source">Hangul readings from %1$s</string>
+    <string name="hangul_status_loading">Finding Hangul readings…</string>
+    <string name="hangul_status_none">No Hangul readings · tap to see why</string>
+    <string name="hangul_reading_missing">(no reading found)</string>
+
+    <!-- Readings source dialog -->
+    <string name="hangul_source_title">Hangul readings</string>
+    <string name="hangul_source_text">Fetches existing Hangul readings. Leave the address blank to search automatically.</string>
+    <string name="hangul_source_label">Haneum, Namu Wiki or Tistory HTTPS address</string>
+    <string name="hangul_source_save">Save and look up again</string>
+    <string name="hangul_cancel">Cancel</string>
+
+    <!-- Lyrics sync dialog -->
+    <string name="hangul_offset_text">Applies to this song only. If the lyrics appear late, move them earlier; if they appear early, move them later.</string>
+    <string name="hangul_offset_minus_second">-1 s</string>
+    <string name="hangul_offset_minus_step">-0.25 s</string>
+    <string name="hangul_offset_plus_step">+0.25 s</string>
+    <string name="hangul_offset_plus_second">+1 s</string>
+    <string name="hangul_offset_hint">+ shows the lyrics earlier, - shows them later.</string>
+    <string name="hangul_close">Close</string>
+    <string name="hangul_offset_reset">Reset</string>
+    <string name="hangul_offset_none">No adjustment</string>
+    <string name="hangul_offset_earlier">Lyrics shown %1$s s earlier</string>
+    <string name="hangul_offset_later">Lyrics shown %1$s s later</string>
+
+    <!-- Reading lookup errors -->
+    <string name="hangul_error_no_song">No song is playing.</string>
+    <string name="hangul_error_address">Enter an HTTPS lyrics address from Haneum, Namu Wiki or Tistory.</string>
+    <string name="hangul_error_check_address">Check the page address.</string>
+    <string name="hangul_error_http">Page lookup HTTP %1$d</string>
+    <string name="hangul_error_cancelled">Lookup cancelled</string>
+    <string name="hangul_error_cancelled_or_timeout">Lookup cancelled or timed out</string>
+    <string name="hangul_error_timeout">Lookup timed out</string>
+    <string name="hangul_error_no_redirect">The page redirect has no address</string>
+    <string name="hangul_error_not_html">Not an HTML page.</string>
+    <string name="hangul_error_too_large">Page size limit exceeded</string>
+    <string name="hangul_error_redirects">Too many page redirects</string>
+    <string name="hangul_error_input_too_long">Song details or lyrics are too long</string>
+    <string name="hangul_error_not_found" formatted="false">Couldn\'t find Hangul readings that match at least 85% of the original lyrics. Set a source address in the current song\'s settings.</string>
+    <string name="hangul_error_no_match">No existing Hangul readings match. Set a source address from the lyrics menu.</string>
+    <string name="hangul_error_retry_timeout">The Hangul readings lookup timed out.</string>
+    <string name="hangul_error_generic">Couldn\'t load the Hangul readings.</string>
+
+    <!-- YouTube links -->
+    <string name="hangul_youtube_add">Add YouTube link</string>
+    <string name="hangul_youtube_text">Plays the video\'s sound in this phone\'s list. Lyrics are looked up by the title and artist below; if left blank, the video\'s title and channel are used.</string>
+    <string name="hangul_youtube_link_label">YouTube or YouTube Music address</string>
+    <string name="hangul_youtube_title_label">Song title for lyrics search (optional)</string>
+    <string name="hangul_youtube_artist_label">Artist for lyrics search (optional)</string>
+    <string name="hangul_youtube_failed">Couldn\'t get the video details. Check your network connection.</string>
+    <string name="hangul_youtube_checking">Checking…</string>
+    <string name="hangul_add">Add</string>
+    <string name="hangul_youtube_under_playlist">Shown under this playlist on this phone</string>
+    <string name="hangul_youtube_add_detail">Add to a list on this phone or under a Spotify playlist</string>
+    <string name="hangul_youtube_unavailable">This video is private, removed, or can\'t be played outside YouTube.</string>
+    <string name="hangul_youtube_bad_link">Check the YouTube video address.</string>
+
+    <!-- Phone-list files -->
+    <string name="hangul_list_import">Import list file</string>
+    <string name="hangul_list_import_detail">Add an exported phone list as a new list</string>
+    <string name="hangul_list_export">Export to file</string>
+    <string name="hangul_list_export_detail">On other phones, only the YouTube links play</string>
+    <string name="hangul_list_saved">Saved the list to a file.</string>
+    <string name="hangul_list_save_failed">Couldn\'t save the list file.</string>
+    <string name="hangul_list_file_name">List</string>
+    <string name="hangul_list_too_large">Only list files of 3 MB or less can be imported.</string>
+    <string name="hangul_list_foreign">This isn\'t a list file exported from this app.</string>
+    <string name="hangul_list_too_many">The list file has too many songs.</string>
+    <string name="hangul_list_imported_name">Imported list</string>
+    <string name="hangul_list_imported">Imported the list \'%1$s\'.</string>
+    <string name="hangul_list_read_failed">Couldn\'t read the list file.</string>
+
+    <!-- Hand-edited song order -->
+    <string name="hangul_order_edit">Edit order (this device)</string>
+    <string name="hangul_order_note">Moves made with the up and down buttons are saved on this device only. The song order on Spotify doesn\'t change.</string>
+    <string name="hangul_order_reset">Spotify order</string>
+    <string name="hangul_done">Done</string>
+    <string name="hangul_move_up">Move up</string>
+    <string name="hangul_move_down">Move down</string>
+</resources>

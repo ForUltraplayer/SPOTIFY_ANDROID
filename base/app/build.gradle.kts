@@ -32,7 +32,8 @@ android {
     val beta = findProperty("appVersionName") == null || version.contains("-beta") || version.contains("-hangul.")
     defaultConfig {
         applicationId = "app.myspoti.hangul"
-        manifestPlaceholders["appLabel"] = "Myspoti 한글"
+        // One name in every language (the package id app.myspoti.hangul stays, so updates install over it).
+        manifestPlaceholders["appLabel"] = "Myspoti-ex"
         // The adb command line (com.music.spotui.cli): betas and debug builds only.
         manifestPlaceholders["cliEnabled"] = beta.toString()
         minSdk = 29
@@ -54,6 +55,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // The Hangul build ships only the languages every string is translated into (scripts/check_translations.py
+    // gates them in build-hangul.ps1): a phone in any other language gets the whole app in English instead of
+    // a mix. The same list feeds the system's per-app language setting (res/resources.properties) and AppLanguage.
+    androidResources {
+        localeFilters += listOf("en", "ko", "ja", "de", "el", "es", "fr", "it", "pl", "pt", "ru", "zh")
+        generateLocaleConfig = true
     }
 
     // Release key from the CI secrets (env), else keystore/keystore.properties.

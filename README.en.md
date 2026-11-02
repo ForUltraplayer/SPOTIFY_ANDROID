@@ -18,7 +18,7 @@ PC version: [SPOTIFY_PC](https://github.com/ForUltraplayer/SPOTIFY_PC)
 2. Sign in with **Log in with Spotify**.
 3. Play a song and open the lyrics view. Hangul pronunciation shows under each Japanese line.
 
-Requires Android 10+. Free Spotify accounts work. Installs as a separate app (`app.myspoti.hangul`) from the original Myspoti.
+Requires Android 10+. Free Spotify accounts work. Installs as a separate app (`app.myspoti.hangul`) from the original Myspoti, shown as **Myspoti-ex** on the home screen. The app follows the phone's language (12 languages).
 
 ## Updates
 

@@ -1599,7 +1599,7 @@ private fun TrackSortButton(sort: TrackOrder, onEditOrder: (() -> Unit)? = null,
             }
             // The custom order changed by hand, YouTube links and phone files included; kept on this phone.
             if (onEditOrder != null) androidx.compose.material3.DropdownMenuItem(
-                text = { Text("순서 직접 편집 (이 기기)", color = AppText) },
+                text = { Text(stringResource(R.string.hangul_order_edit), color = AppText) },
                 onClick = { open = false; onEditOrder() },
             )
         }
@@ -1611,9 +1611,9 @@ private fun TrackSortButton(sort: TrackOrder, onEditOrder: (() -> Unit)? = null,
 @Composable
 private fun MixedOrderBar(onReset: () -> Unit, onDone: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text("위아래 버튼으로 옮기면 이 기기에만 저장됩니다. Spotify의 곡 순서는 바뀌지 않습니다.", color = AppMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        androidx.compose.material3.TextButton(onClick = onReset) { Text("Spotify 순서로", color = AppText) }
-        androidx.compose.material3.TextButton(onClick = onDone) { Text("완료", color = SpotifyGreen) }
+        Text(stringResource(R.string.hangul_order_note), color = AppMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        androidx.compose.material3.TextButton(onClick = onReset) { Text(stringResource(R.string.hangul_order_reset), color = AppText) }
+        androidx.compose.material3.TextButton(onClick = onDone) { Text(stringResource(R.string.hangul_done), color = SpotifyGreen) }
     }
 }
 
@@ -1626,10 +1626,10 @@ private fun MovableRow(title: String, artist: String, index: Int, count: Int, mo
             if (artist.isNotBlank()) Text(artist, color = AppMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         androidx.compose.material3.IconButton(enabled = index > 0, onClick = { move(index - 1) }) {
-            Icon(Icons.Default.ArrowUpward, contentDescription = "위로", tint = if (index > 0) AppText else AppMuted)
+            Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.hangul_move_up), tint = if (index > 0) AppText else AppMuted)
         }
         androidx.compose.material3.IconButton(enabled = index < count - 1, onClick = { move(index + 1) }) {
-            Icon(Icons.Default.ArrowDownward, contentDescription = "아래로", tint = if (index < count - 1) AppText else AppMuted)
+            Icon(Icons.Default.ArrowDownward, contentDescription = stringResource(R.string.hangul_move_down), tint = if (index < count - 1) AppText else AppMuted)
         }
     }
 }

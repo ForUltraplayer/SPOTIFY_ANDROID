@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_playback_mirror">このデバイスでSpotifyを無音で再生し続け、あなたのアカウントで再生回数をカウントします</string>
+    <string name="action_attest">Myspotiであることを証明</string>
+    <string name="mirror_indicator">%1$sがSpotifyをミラーリング中</string>
+</resources>

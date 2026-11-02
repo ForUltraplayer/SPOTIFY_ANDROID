@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_code_title">%1$sのコードが変更されました（%2$d行、+%3$d/−%4$d）</string>
+    <string name="update_code_body">この拡張機能は強力な権限（重要な操作または広範なネットワークアクセス）を持つため、承認なしに新しいコードが実行されることはありません。</string>
+    <string name="update_code_files">変更されたファイル: %1$s</string>
+    <string name="update_code_update">アップデート</string>
+    <string name="update_code_later">後で</string>
+    <string name="update_check_waiting">アップデートが見つかりました: 24時間後に自動で適用されます</string>
+    <string name="update_check_repo_changed">アップデートを拒否しました: リポジトリの所有者が変わりました</string>
+    <string name="update_repo_changed_title">リポジトリの所有者が変更されました</string>
+    <string name="update_repo_changed_body">このリポジトリは同じ名前で再登録または移管されたため、アップデートはブロックされています。アンインストールするか、新しい所有者を信頼できる場合にのみ再インストールしてください。</string>
+    <string name="update_author_owner">作者 %1$s · リポジトリ %2$s</string>
+    <string name="update_author_unverified">作者 %1$s · 未確認</string>
+</resources>
