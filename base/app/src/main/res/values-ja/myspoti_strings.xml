@@ -227,11 +227,11 @@
     <string name="setup_ext_audio_title">他のオーディオソース</string>
     <string name="setup_ext_audio_detail">拡張機能を使うと、曲を別のソースから、そのソースが提供する音質で再生できます。</string>
     <string name="setup_ext_download_title">ダウンロード</string>
-    <string name="setup_ext_download_mornye_detail">ダウンロードと他のオーディオソースは拡張機能が提供します。曲をダウンロードしてオフラインで聴くには、次のページでMornyeをインストールしてください。曲はMyspoti内で暗号化されたまま保存されます。</string>
+    <string name="setup_ext_download_mornye_detail">ダウンロードと他のオーディオソースは拡張機能が提供します。次のページで拡張機能を探してインストールできます。曲はMyspoti内で暗号化されたまま保存されます。</string>
     <string name="setup_ext_home">スキップしてホームへ</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
     <string name="downloads_need_source_title">ダウンロードには拡張機能が必要です</string>
-    <string name="downloads_need_source_detail">曲のダウンロードは拡張機能が行います。まだインストールされていません。拡張機能ストアを開き、Mornyeをインストールしてダウンロードしてください。</string>
+    <string name="downloads_need_source_detail">曲のダウンロードは拡張機能が行います。まだインストールされていません。拡張機能ストアを開き、ダウンロード用の拡張機能をインストールしてください。</string>
     <string name="setup_ext_download_detail">オフラインで聴くには、ダウンロードソースの拡張機能をインストールしてください。曲はMyspoti内で暗号化されたまま保存されます。</string>
     <string name="setup_ext_more_title">その他</string>
     <string name="setup_ext_more_detail">作者が追加したホームのセクション、ページ、ツール。</string>

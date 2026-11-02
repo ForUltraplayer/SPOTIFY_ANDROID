@@ -228,11 +228,11 @@
     <string name="setup_ext_audio_title">Other audio sources</string>
     <string name="setup_ext_audio_detail">An extension can play your songs from another source, in the quality it offers.</string>
     <string name="setup_ext_download_title">Downloads</string>
-    <string name="setup_ext_download_mornye_detail">Downloads and other audio sources come from extensions. Install Mornye on the next page to download songs and listen offline. Songs stay encrypted in Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">Downloads and other audio sources come from extensions. You can find and install extensions on the next page. Songs stay encrypted in Myspoti.</string>
     <string name="setup_ext_home">Skip to Home</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
     <string name="downloads_need_source_title">Downloads need an extension</string>
-    <string name="downloads_need_source_detail">Songs are downloaded by extensions. None is installed yet: open the Extensions store and install Mornye to download.</string>
+    <string name="downloads_need_source_detail">Songs are downloaded by extensions. None is installed yet: open the Extensions store and install a download extension.</string>
     <string name="setup_ext_download_detail">To listen offline, install a download-source extension. Songs stay encrypted in Myspoti.</string>
     <string name="setup_ext_more_title">And more</string>
     <string name="setup_ext_more_detail">Home sections, pages and tools added by their authors.</string>

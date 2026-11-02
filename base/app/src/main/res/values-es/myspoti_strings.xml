@@ -593,7 +593,7 @@
     <string name="cast_lost">Se perdió %1$s: de vuelta en este teléfono</string>
     <string name="cast_spotify_detail">Google Cast · reproduce Spotify en él</string>
     <string name="cast_spotify_failed">No se pudo iniciar Spotify en %1$s</string>
-    <string name="downloads_need_source_detail">Las canciones se descargan con extensiones. Aún no hay ninguna instalada: abre la tienda de extensiones e instala Mornye para descargar.</string>
+    <string name="downloads_need_source_detail">Las canciones se descargan con extensiones. Aún no hay ninguna instalada: abre la tienda de extensiones e instala una extensión de descargas.</string>
     <string name="downloads_need_source_title">Las descargas necesitan una extensión</string>
     <string name="episode_new">Nuevo</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
@@ -606,7 +606,7 @@
         <item quantity="other">%d canciones sonarán a continuación</item>
     </plurals>
     <string name="queue_list_none">Ninguna de estas canciones se puede añadir a la cola</string>
-    <string name="setup_ext_download_mornye_detail">Las descargas y otras fuentes de audio vienen de extensiones. Instala Mornye en la página siguiente para descargar canciones y escuchar sin conexión. Las canciones quedan cifradas en Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">Las descargas y otras fuentes de audio vienen de extensiones. En la página siguiente puedes buscar e instalar extensiones. Las canciones quedan cifradas en Myspoti.</string>
     <string name="setup_ext_home">Ir al inicio</string>
     <string name="show_filter_all">Orden predeterminado</string>
     <string name="show_filter_all_played">Todos los episodios están escuchados.</string>

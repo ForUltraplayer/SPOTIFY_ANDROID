@@ -593,7 +593,7 @@
     <string name="cast_lost">Χάθηκε η σύνδεση με %1$s: ξανά σε αυτό το τηλέφωνο</string>
     <string name="cast_spotify_detail">Google Cast · παίζει Spotify σε αυτή τη συσκευή</string>
     <string name="cast_spotify_failed">Δεν ήταν δυνατή η εκκίνηση του Spotify σε %1$s</string>
-    <string name="downloads_need_source_detail">Τα τραγούδια κατεβαίνουν από επεκτάσεις. Δεν έχει εγκατασταθεί καμία ακόμα: ανοίξτε το κατάστημα επεκτάσεων και εγκαταστήστε το Mornye για λήψεις.</string>
+    <string name="downloads_need_source_detail">Τα τραγούδια κατεβαίνουν από επεκτάσεις. Δεν έχει εγκατασταθεί καμία ακόμα: ανοίξτε το κατάστημα επεκτάσεων και εγκαταστήστε μια επέκταση λήψεων.</string>
     <string name="downloads_need_source_title">Οι λήψεις χρειάζονται επέκταση</string>
     <string name="episode_new">Νέο</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
@@ -606,7 +606,7 @@
         <item quantity="other">%d τραγούδια θα παίξουν μετά</item>
     </plurals>
     <string name="queue_list_none">Κανένα από αυτά τα τραγούδια δεν μπορεί να μπει στην ουρά</string>
-    <string name="setup_ext_download_mornye_detail">Οι λήψεις και άλλες πηγές ήχου προέρχονται από επεκτάσεις. Εγκαταστήστε το Mornye στην επόμενη σελίδα για να κατεβάζετε τραγούδια και να ακούτε εκτός σύνδεσης. Τα τραγούδια μένουν κρυπτογραφημένα στο Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">Οι λήψεις και άλλες πηγές ήχου προέρχονται από επεκτάσεις. Στην επόμενη σελίδα μπορείτε να βρείτε και να εγκαταστήσετε επεκτάσεις. Τα τραγούδια μένουν κρυπτογραφημένα στο Myspoti.</string>
     <string name="setup_ext_home">Μετάβαση στην Αρχική</string>
     <string name="show_filter_all">Προεπιλεγμένη σειρά</string>
     <string name="show_filter_all_played">Όλα τα επεισόδια έχουν ακουστεί.</string>

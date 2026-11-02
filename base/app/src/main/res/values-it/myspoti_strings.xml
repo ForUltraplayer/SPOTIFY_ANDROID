@@ -593,7 +593,7 @@
     <string name="cast_lost">%1$s perso: di nuovo su questo telefono</string>
     <string name="cast_spotify_detail">Google Cast · riproduce Spotify sul dispositivo</string>
     <string name="cast_spotify_failed">Impossibile avviare Spotify su %1$s</string>
-    <string name="downloads_need_source_detail">I brani vengono scaricati dalle estensioni. Non ne è ancora installata nessuna: apri lo store delle estensioni e installa Mornye per scaricare.</string>
+    <string name="downloads_need_source_detail">I brani vengono scaricati dalle estensioni. Non ne è ancora installata nessuna: apri lo store delle estensioni e installa un\'estensione per i download.</string>
     <string name="downloads_need_source_title">I download richiedono un\'estensione</string>
     <string name="episode_new">Nuovo</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
@@ -606,7 +606,7 @@
         <item quantity="other">%d brani verranno riprodotti dopo</item>
     </plurals>
     <string name="queue_list_none">Nessuno di questi brani può essere messo in coda</string>
-    <string name="setup_ext_download_mornye_detail">I download e le altre sorgenti audio vengono dalle estensioni. Installa Mornye nella pagina successiva per scaricare brani e ascoltarli offline. I brani restano cifrati in Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">I download e le altre sorgenti audio vengono dalle estensioni. Nella pagina successiva puoi trovare e installare le estensioni. I brani restano cifrati in Myspoti.</string>
     <string name="setup_ext_home">Vai alla Home</string>
     <string name="show_filter_all">Ordine predefinito</string>
     <string name="show_filter_all_played">Tutti gli episodi sono stati ascoltati.</string>

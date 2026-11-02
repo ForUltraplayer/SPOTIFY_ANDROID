@@ -598,7 +598,7 @@
     <string name="cast_lost">%1$s perdu : retour sur ce téléphone</string>
     <string name="cast_spotify_detail">Google Cast · lit Spotify dessus</string>
     <string name="cast_spotify_failed">Impossible de lancer Spotify sur %1$s</string>
-    <string name="downloads_need_source_detail">Les titres sont téléchargés par des extensions. Aucune n\'est installée : ouvrez le store des extensions et installez Mornye pour télécharger.</string>
+    <string name="downloads_need_source_detail">Les titres sont téléchargés par des extensions. Aucune n\'est installée : ouvrez le store des extensions et installez une extension de téléchargement.</string>
     <string name="downloads_need_source_title">Les téléchargements demandent une extension</string>
     <string name="episode_new">Nouveau</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
@@ -611,7 +611,7 @@
         <item quantity="other">%d titres seront lus ensuite</item>
     </plurals>
     <string name="queue_list_none">Aucun de ces titres ne peut être mis en file</string>
-    <string name="setup_ext_download_mornye_detail">Les téléchargements et les autres sources audio viennent des extensions. Installez Mornye à la page suivante pour télécharger des titres et écouter hors ligne. Les titres restent chiffrés dans Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">Les téléchargements et les autres sources audio viennent des extensions. Vous pouvez trouver et installer des extensions à la page suivante. Les titres restent chiffrés dans Myspoti.</string>
     <string name="setup_ext_home">Passer à l\'accueil</string>
     <string name="show_filter_all">Ordre par défaut</string>
     <string name="show_filter_all_played">Tous les épisodes sont écoutés.</string>

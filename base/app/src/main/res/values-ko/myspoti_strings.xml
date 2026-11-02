@@ -227,11 +227,11 @@
     <string name="setup_ext_audio_title">다른 오디오 소스</string>
     <string name="setup_ext_audio_detail">확장은 다른 소스에서 곡을 재생할 수 있으며, 음질은 그 소스가 제공하는 수준을 따릅니다.</string>
     <string name="setup_ext_download_title">다운로드</string>
-    <string name="setup_ext_download_mornye_detail">다운로드와 다른 오디오 소스는 확장에서 제공합니다. 다음 페이지에서 Mornye를 설치하면 곡을 다운로드해 오프라인으로 들을 수 있습니다. 곡은 Myspoti 안에 암호화되어 보관됩니다.</string>
+    <string name="setup_ext_download_mornye_detail">다운로드와 다른 오디오 소스는 확장에서 제공합니다. 다음 페이지에서 확장을 찾아 설치할 수 있습니다. 곡은 Myspoti 안에 암호화되어 보관됩니다.</string>
     <string name="setup_ext_home">홈으로 건너뛰기</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
     <string name="downloads_need_source_title">다운로드하려면 확장이 필요합니다</string>
-    <string name="downloads_need_source_detail">곡은 확장을 통해 다운로드됩니다. 아직 설치된 확장이 없습니다. 확장 스토어를 열고 Mornye를 설치하면 다운로드할 수 있습니다.</string>
+    <string name="downloads_need_source_detail">곡은 확장을 통해 다운로드됩니다. 아직 설치된 확장이 없습니다. 확장 스토어를 열고 다운로드 확장을 설치하면 다운로드할 수 있습니다.</string>
     <string name="setup_ext_download_detail">오프라인으로 들으려면 다운로드 소스 확장을 설치하세요. 곡은 Myspoti 안에 암호화되어 보관됩니다.</string>
     <string name="setup_ext_more_title">그 밖의 기능</string>
     <string name="setup_ext_more_detail">제작자가 추가한 홈 섹션, 페이지, 도구.</string>

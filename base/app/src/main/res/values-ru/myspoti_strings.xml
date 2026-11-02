@@ -604,7 +604,7 @@
     <string name="cast_lost">Связь с %1$s потеряна: снова на этом телефоне</string>
     <string name="cast_spotify_detail">Google Cast · воспроизводит Spotify на устройстве</string>
     <string name="cast_spotify_failed">Не удалось запустить Spotify на %1$s</string>
-    <string name="downloads_need_source_detail">Треки скачивают расширения. Пока ни одно не установлено: откройте магазин расширений и установите Mornye, чтобы скачивать.</string>
+    <string name="downloads_need_source_detail">Треки скачивают расширения. Пока ни одно не установлено: откройте магазин расширений и установите расширение для загрузок.</string>
     <string name="downloads_need_source_title">Для загрузок нужно расширение</string>
     <string name="episode_new">Новый</string>
     <string name="player_source_spotify">Spotify · %1$s</string>
@@ -621,7 +621,7 @@
         <item quantity="other">%d трека заиграют следующими</item>
     </plurals>
     <string name="queue_list_none">Ни один из этих треков нельзя добавить в очередь</string>
-    <string name="setup_ext_download_mornye_detail">Загрузки и другие источники звука дают расширения. Установите Mornye на следующей странице, чтобы скачивать треки и слушать офлайн. Треки остаются зашифрованными в Myspoti.</string>
+    <string name="setup_ext_download_mornye_detail">Загрузки и другие источники звука дают расширения. На следующей странице можно найти и установить расширения. Треки остаются зашифрованными в Myspoti.</string>
     <string name="setup_ext_home">На главную</string>
     <string name="show_filter_all">Порядок по умолчанию</string>
     <string name="show_filter_all_played">Все выпуски прослушаны.</string>
