@@ -63,5 +63,35 @@ class MaintenanceTest(unittest.TestCase):
                 with self.assertRaises(ValueError): maintenance.verify(argparse.Namespace(java_home='jdk', android_sdk='sdk'))
                 run.assert_not_called()
 
+    def test_change_report_lists_notes_conflicts_commits_and_asks_for_permission(self):
+        def get(path):
+            if '/compare/' in path:
+                return {'ahead_by': 2, 'commits': [{'commit': {'message': 'old'}}, {'commit': {'message': 'new\n\nbody'}}],
+                        'files': [{'filename': 'base/app/x.kt'}]}
+            return {'body': 'Thanks @someone ```'}
+        row = {'channel': 'beta', 'tag': 'v2.0.2-beta.8', 'url': 'https://github.com/kota-zo/myspoti/releases/tag/v2.0.2-beta.8'}
+        prefix, title, text = maintenance.report(row, get, lambda tag: ('rev', 'head', 'tree', ['README.md', 'Settings.kt']))
+        self.assertEqual(('원본 업데이트: Myspoti 베타 ', '원본 업데이트: Myspoti 베타 v2.0.2-beta.8'), (prefix, title))
+        self.assertIn('2개 파일', text)
+        self.assertIn('```text\nREADME.md\nSettings.kt\n```', text)
+        self.assertIn('```text\nnew\nold\n```', text)
+        # Upstream text with backticks stays inside a longer fence, so its @name cannot notify anyone.
+        self.assertIn('````text\nThanks @someone ```\n````', text)
+        self.assertIn('허가하면', text)
+
+    def test_publish_creates_moves_or_skips(self):
+        def publish(issues, title='원본 업데이트: Myspoti 정식 v2.3.0'):
+            calls = []
+            def run(*args):
+                calls.append(args[:2])
+                return json.dumps(issues) if args[:2] == ('issue', 'list') else ''
+            return maintenance.publish('원본 업데이트: Myspoti 정식 ', title, 'body', run), calls
+        self.assertEqual(('created', [('issue', 'list'), ('issue', 'create')]), publish([]))
+        self.assertEqual(('updated', [('issue', 'list'), ('issue', 'edit'), ('issue', 'comment')]),
+                         publish([{'number': 4, 'title': '원본 업데이트: Myspoti 정식 v2.2.0', 'state': 'OPEN'}]))
+        self.assertEqual('known', publish([{'number': 5, 'title': '원본 업데이트: Myspoti 정식 v2.3.0', 'state': 'CLOSED'}])[0])
+        # The beta channel's open issue is not taken over by a stable release.
+        self.assertEqual('created', publish([{'number': 6, 'title': '원본 업데이트: Myspoti 베타 v2.0.2-beta.8', 'state': 'OPEN'}])[0])
+
 
 if __name__ == '__main__': unittest.main()

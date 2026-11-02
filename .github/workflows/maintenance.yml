@@ -16,6 +16,7 @@ on:
     paths: ['base/**', 'release.json', 'build-hangul.ps1', 'scripts/**', '.github/workflows/maintenance.yml']
 permissions:
   contents: read
+  issues: write
 jobs:
   inspect:
     runs-on: windows-latest
@@ -39,6 +40,11 @@ jobs:
       - run: python -m unittest discover -s scripts -p test_maintenance.py
       - name: Detect original releases
         run: python scripts/maintain_upstream.py check
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Report original changes as issues
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python scripts/maintain_upstream.py report
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Test selected source

@@ -1,5 +1,5 @@
 # @file maintain_upstream.py
-# @brief Detect Myspoti updates and prepare, verify and promote isolated merge candidates.
+# @brief Detect and report Myspoti updates, and prepare, verify and promote isolated merge candidates.
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import urllib.request
 import zipfile
 
@@ -78,21 +79,26 @@ def detect(get=api):
     return {'checked_at': datetime.now(timezone.utc).isoformat(), 'base': data['upstreamCommit'], 'releases': rows}
 
 
-def prepare(tag):
-    clean()
-    if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-beta\.\d+)?', tag): raise ValueError('Use an exact upstream release tag')
+def merge(tag):
+    """Merge an upstream tag into HEAD without touching the checkout: (upstream commit, HEAD, tree, conflicted paths)."""
     data = release()
     git('fetch', '--no-tags', 'https://github.com/'+data['upstream']+'.git', 'refs/tags/'+tag)
     revision = git('rev-parse', 'FETCH_HEAD^{commit}').stdout.decode().strip()
     head = git('rev-parse', 'HEAD').stdout.decode().strip()
-    merge = git('merge-tree', '--write-tree', '--name-only', head, revision, check=False)
-    if merge.returncode not in (0, 1): raise ValueError(merge.stderr.decode(errors='replace'))
-    lines = merge.stdout.decode().splitlines()
-    tree = lines[0]
+    result = git('merge-tree', '--write-tree', '--name-only', head, revision, check=False)
+    if result.returncode not in (0, 1): raise ValueError(result.stderr.decode(errors='replace'))
+    lines = result.stdout.decode().splitlines()
     conflicts = []
     for line in lines[1:]:
         if not line: break
         conflicts.append(line)
+    return revision, head, lines[0], conflicts
+
+
+def prepare(tag):
+    clean()
+    if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-beta\.\d+)?', tag): raise ValueError('Use an exact upstream release tag')
+    revision, head, tree, conflicts = merge(tag)
     area = ROOT / 'work' / ('upstream-'+tag+'-'+datetime.now().strftime('%Y%m%d%H%M%S'))
     area.mkdir(parents=True)
     archive = area / 'source.zip'
@@ -171,14 +177,75 @@ def promote():
     print('Verified candidate applied to the source checkout. Device validation and release signing remain required.')
 
 
+def gh(*args):
+    return subprocess.run(['gh', *args], cwd=ROOT, check=True, capture_output=True, text=True, encoding='utf-8').stdout
+
+
+def fence(text, limit):
+    """Upstream text goes in a code fence, so an @name notifies nobody and #123 links nothing here."""
+    text = (text or '').strip() or '(없음)'
+    if len(text) > limit: text = text[:limit]+'\n…(이하 생략)'
+    tick = '`' * max(3, max(map(len, re.findall(r'`+', text)), default=0)+1)
+    return tick+'text\n'+text+'\n'+tick
+
+
+def report(row, get=api, merged=merge):
+    """(title prefix, title, body) of the change issue for one upstream channel that moved past our base."""
+    data = release()
+    repo, channel = data['upstream'], {'stable': '정식', 'beta': '베타'}[row['channel']]
+    compare = get(repo+'/compare/'+data['upstreamCommit']+'...'+row['tag'])
+    commits, files = compare.get('commits', []), compare.get('files', [])
+    conflicts = merged(row['tag'])[3]
+    subjects = [c['commit']['message'].split('\n', 1)[0] for c in reversed(commits)][:60]
+    text = ('**Myspoti '+channel+'** '+data.get('upstreamTag', data['upstreamCommit'][:7])+' → '+row['tag']+'\n\n'
+            '| 항목 | 내용 |\n| --- | --- |\n| 원본 | '+row['url']+' |\n'
+            '| 비교 | https://github.com/'+repo+'/compare/'+data['upstreamCommit']+'...'+row['tag']+' |\n'
+            '| 규모 | 커밋 '+str(compare['ahead_by'])+'개, 바뀐 파일 '+str(len(files))+('개 이상' if len(files) >= 300 else '개')+' |\n'
+            '| 충돌 예상 | 우리 소스와 병합하면 '+str(len(conflicts))+'개 파일 |\n'
+            '| 반영 | 자동으로 반영하지 않는다. 허가하면 이 버전에 우리 패치를 다시 붙이고 충돌을 해결한 뒤 검사와 휴대폰 확인을 거쳐 배포한다. |\n'
+            '\n### 원본 릴리스 노트\n\n'+fence(get(repo+'/releases/tags/'+row['tag']).get('body'), 6000)+'\n'
+            '\n### 충돌 예상 파일\n\n'+fence('\n'.join(conflicts), 4000)+'\n'
+            '\n### 커밋 (최신순, '+str(compare['ahead_by'])+'개 중 '+str(len(subjects))+'개)\n\n'+fence('\n'.join(subjects), 8000)+'\n'
+            '\n### 바뀐 파일 (최대 100개)\n\n'+fence('\n'.join(f['filename'] for f in files[:100]), 6000)+'\n')
+    return '원본 업데이트: Myspoti '+channel+' ', '원본 업데이트: Myspoti '+channel+' '+row['tag'], text
+
+
+def publish(prefix, title, text, run=gh):
+    """Create the issue, or move this channel's open issue to the new release with a comment so it notifies."""
+    repo = os.environ.get('GITHUB_REPOSITORY', release()['updateRepository'])
+    issues = json.loads(run('issue', 'list', '--repo', repo, '--label', 'upstream', '--state', 'all', '--limit', '300', '--json', 'number,title,state'))
+    # A release already reported, open or closed, is not reported again.
+    if any(issue['title'] == title for issue in issues): return 'known'
+    with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False, encoding='utf-8') as file: file.write(text)
+    try:
+        current = next((issue for issue in issues if issue['state'] == 'OPEN' and issue['title'].startswith(prefix)), None)
+        if current:
+            run('issue', 'edit', str(current['number']), '--repo', repo, '--title', title, '--body-file', file.name)
+            run('issue', 'comment', str(current['number']), '--repo', repo, '--body', title.removeprefix('원본 업데이트: ')+'(으)로 갱신했다.')
+            return 'updated'
+        run('issue', 'create', '--repo', repo, '--title', title, '--label', 'upstream', '--body-file', file.name)
+        return 'created'
+    finally: os.unlink(file.name)
+
+
+def notify():
+    rows = [row for row in detect()['releases'] if row['comparison'] == 'ahead' and row['commits']]
+    if rows: gh('label', 'create', 'upstream', '--repo', os.environ.get('GITHUB_REPOSITORY', release()['updateRepository']),
+                '--color', '0E8A16', '--description', '원본 변경 알림', '--force')
+    for row in rows:
+        prefix, title, text = report(row)
+        print(title+': '+publish(prefix, title, text))
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=('check', 'prepare', 'verify', 'promote'))
+    parser.add_argument('action', choices=('check', 'report', 'prepare', 'verify', 'promote'))
     parser.add_argument('--tag')
     parser.add_argument('--java-home', default=os.environ.get('JAVA_HOME'))
     parser.add_argument('--android-sdk', default=os.environ.get('ANDROID_HOME'))
     args = parser.parse_args()
-    if args.action == 'prepare': prepare(args.tag or '')
+    if args.action == 'report': notify()
+    elif args.action == 'prepare': prepare(args.tag or '')
     elif args.action == 'verify': verify(args)
     elif args.action == 'promote': promote()
     else:
