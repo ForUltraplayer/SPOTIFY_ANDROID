@@ -46,12 +46,19 @@ class ApiTest {
     }
     private val client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
     private lateinit var data: File
+    /** Where the fake sign-in window keeps the requests it got, and the command that starts it. */
+    private lateinit var windows: File
+    private var authCommand: List<String>? = null
     private lateinit var runner: Runner
     private lateinit var api: Api
     private var port = 0
 
     @Before fun setUp() {
         data = tmp.newFolder("extensions")
+        windows = tmp.newFolder("windows")
+        val classpath = listOf(FakeAuthWindow::class.java, Unit::class.java)
+            .joinToString(File.pathSeparator) { File(it.protectionDomain.codeSource.location.toURI()).path }
+        authCommand = listOf(ProcessHandle.current().info().command().get(), "-cp", classpath, FakeAuthWindow::class.java.name, windows.path)
         open()
     }
 
@@ -61,7 +68,7 @@ class ApiTest {
     }
 
     private fun open() {
-        runner = Runner(data, "2.3.0", fetcher, send = { _, _ -> throw IllegalStateException("no network in tests") }, autoUpdate = false)
+        runner = Runner(data, "2.3.0", fetcher, send = { _, _ -> throw IllegalStateException("no network in tests") }, autoUpdate = false, authCommand = authCommand)
         runner.init()
         api = Api(runner, token, "0.7.11")
         port = api.start(0)
@@ -219,6 +226,32 @@ class ApiTest {
         assertEquals(flac, asked(withAac).last().str("extension"))
     }
 
+    @Test fun aDashManifestIsTakenOnlyWhenTheRequestAcceptsOne() {
+        val dash = install("dash")
+        val flac = install("flac")
+        order(dash, flac, "spotify")
+
+        // Without `manifest: true` (what the PC asked before it played DASH) the manifest is passed over.
+        val plain = audio("track0000000000000000f")
+        assertEquals(flac, plain.str("extension"))
+        val skipped = asked(plain).first()
+        assertEquals(dash, skipped.str("extension"))
+        assertEquals("skipped", skipped.str("outcome"))
+        assertTrue(skipped.str("detail"), skipped.str("detail").contains("a DASH manifest"))
+
+        val taken = audio("track0000000000000000g", ""","accept":{"codecs":["flac","opus","mp3","vorbis"],"manifest":true}""")
+        assertEquals(dash, taken.str("extension"))
+        assertEquals("found", asked(taken).first().str("outcome"))
+        assertEquals(dash, taken["attempt"]!!.jsonObject.str("chosen"))
+        val stream = taken["stream"]!!.jsonObject
+        assertEquals("", stream.str("url"))
+        assertEquals("flac", stream.str("codec"))
+        assertEquals("FLAC · 16-bit · 44.1 kHz", stream.str("quality"))
+        // The manifest goes to the helper as the extension gave it (base64): the helper reads its segments.
+        val mpd = String(java.util.Base64.getDecoder().decode(stream.str("manifest")))
+        assertTrue(mpd, mpd.startsWith("<?xml") && mpd.contains("<SegmentTimeline>"))
+    }
+
     @Test fun spotifysPlaceInTheOrderStopsTheAsking() {
         val none = install("nohave")
         val flac = install("flac")
@@ -232,6 +265,11 @@ class ApiTest {
         val missed = audio("track0000000000000000c")
         assertEquals("missed-lately", missed.str("reason"))
         assertEquals("Spotify: no extension had it under a minute ago, not asked again", missed["attempt"]!!.jsonObject.str("fallback"))
+        // "Search again" in the playback details forgets that miss and asks every source anew, without the refused note.
+        val refreshed = ok("POST", "/v1/audio/again", """{"track":${track("track0000000000000000c")},"refresh":true}""")
+        assertEquals("not-found", refreshed.str("reason"))
+        assertEquals(listOf(none), asked(refreshed).map { it.str("extension") })
+        assertFalse(refreshed["attempt"]!!.jsonObject.str("fallback").contains("refused"))
 
         order("spotify", none, flac)
         val first = audio("track0000000000000000d")
@@ -314,6 +352,121 @@ class ApiTest {
         assertEquals(400, call("GET", "/v1/attempts/latest").first)
         assertTrue((latest["asked"] as JsonArray).isNotEmpty())
         assertEquals(JsonPrimitive("track0000000000000000j"), latest["track"])
+    }
+
+    // ── Sign-in pages ──
+
+    /** What the test extension kept under [key] in its storage, once it is there (waits up to 20 s). */
+    private fun stored(id: String, key: String, until: (JsonObject) -> Boolean = { key in it }): JsonObject {
+        val file = File(data, "$id/storage.json")
+        val end = System.currentTimeMillis() + 20_000
+        while (System.currentTimeMillis() < end) {
+            val values = runCatching { Json.parseToJsonElement(file.readText()).jsonObject }.getOrNull()
+            val parsed = values?.let { v -> JsonObject(v.mapValues { Json.parseToJsonElement(it.value.jsonPrimitive.content) }) }
+            if (parsed != null && until(parsed)) return parsed
+            Thread.sleep(50)
+        }
+        throw AssertionError("$key never came in $id's storage: ${runCatching { file.readText() }.getOrNull()}")
+    }
+
+    private fun results(id: String, count: Int) = stored(id, "results") { (it["results"] as? JsonArray)?.size == count }["results"]!!.jsonArray.map { it.jsonObject }
+
+    private fun press(id: String, key: String) = ok("POST", "/v1/extensions/$id/settings", """{"press":"$key"}""")
+
+    @Test fun aSignInPageGivesBackOnlyTheAddressThatReachedTheCallback() {
+        val id = install("auth")
+        press(id, "reach")
+        val done = results(id, 1).single()
+        assertEquals(stored(id, "opened").str("opened"), done.str("id"))
+        assertEquals("testauth://done?code=s3cret-code&state=x", done.str("url"))
+        assertFalse("error" in done)
+
+        // The window got the page, its callback, and the extension's own cookie folder; hidden, as asked.
+        val request = Json.parseToJsonElement(File(windows, "reach.json").readText()).jsonObject
+        assertEquals("https://login.example.test/reach", request.str("url"))
+        assertEquals("testauth://done", request.str("callback"))
+        assertEquals("true", request["hidden"]!!.jsonPrimitive.content)
+        assertEquals(File(data, "$id/webview").absolutePath, request.str("profile"))
+        assertTrue(File(request.str("profile")).isDirectory)
+        assertEquals("Sign-in test", request.str("name"))
+        assertEquals(listOf("8000", "180000"), listOf("hiddenMs", "timeoutMs").map { request[it]!!.jsonPrimitive.content })
+
+        // The log says where the page was and how it ended, never what the address carried.
+        val log = runner.logLines(id)
+        assertTrue(log.toString(), log.any { it.endsWith("sign-in ${done.str("id")} opened on login.example.test (hidden)") })
+        assertTrue(log.toString(), log.any { it.endsWith("sign-in ${done.str("id")}: reached the callback") })
+        assertTrue(log.none { "s3cret" in it })
+        assertFalse("s3cret" in File(data, "$id/log.txt").readText())
+
+        press(id, "visible")
+        assertTrue(results(id, 2).last().str("url").startsWith("testauth://done?"))
+        assertEquals("false", Json.parseToJsonElement(File(windows, "visible.json").readText()).jsonObject["hidden"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun aWindowThatCannotSignInEndsWithAnError() {
+        val id = install("auth")
+        press(id, "error")
+        assertEquals("webview2-missing", results(id, 1).last().str("error"))
+        // An address that is not the callback is never handed over.
+        press(id, "wrong")
+        assertEquals("helper-failed", results(id, 2).last().let { assertFalse("url" in it); it.str("error") })
+        press(id, "crash")
+        assertEquals("helper-failed", results(id, 3).last().str("error"))
+        assertTrue(runner.logLines(id).any { it.endsWith(": webview2-missing") })
+        assertTrue(runner.logLines(id).none { "s3cret" in it })
+    }
+
+    @Test fun oneSignInPageAtATimeItGoesWithItsExtensionAndItEndsInTime() {
+        val id = install("auth")
+        press(id, "hang")
+        val first = stored(id, "opened").str("opened")
+        val pidFile = File(windows, "hang.pid")
+        while (!pidFile.isFile || pidFile.length() == 0L) Thread.sleep(50)
+        val pid = pidFile.readText().toLong()
+        press(id, "reach")
+        assertTrue(stored(id, "refused").str("refused").contains("a sign-in page is already open"))
+
+        // Turned off: the window is closed and nothing comes back.
+        ok("POST", "/v1/extensions/$id/enabled", """{"enabled":false}""")
+        val end = System.currentTimeMillis() + 10_000
+        while (ProcessHandle.of(pid).map { it.isAlive }.orElse(false) && System.currentTimeMillis() < end) Thread.sleep(50)
+        assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+        ok("POST", "/v1/extensions/$id/enabled", """{"enabled":true}""")
+        Thread.sleep(300)
+        assertTrue((Json.parseToJsonElement(File(data, "$id/storage.json").readText()).jsonObject["results"]) == null)
+
+        // A window that never answers is ended once its time is up.
+        runner.authHelperMs = 1_500
+        press(id, "hang")
+        val timedOut = results(id, 1).single()
+        assertEquals("timeout", timedOut.str("error"))
+        assertNotEquals(first, timedOut.str("id"))
+    }
+
+    /**
+     * The real window (the PC's webview-auth.ps1 with its WebView2 parts beside it, as installed), only when
+     * HANGUL_EXT_AUTH_REAL names it: a hidden page that starts on its callback ends at once, offline, without being shown.
+     */
+    @Test fun theRealWindowAnswersThroughTheRunner() {
+        val script = System.getenv("HANGUL_EXT_AUTH_REAL")?.let(::File)?.takeIf { it.isFile }
+        org.junit.Assume.assumeTrue("HANGUL_EXT_AUTH_REAL is not set", script != null)
+        authCommand = listOf(File(System.getenv("SystemRoot"), "System32\\WindowsPowerShell\\v1.0\\powershell.exe").path,
+            "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-File", script!!.path)
+        reopen()
+        val id = install("auth")
+        press(id, "self")
+        val done = results(id, 1).single()
+        assertEquals("https://login.example.test/self?code=s3cret-code", done.str("url"))
+        assertTrue(File(data, "$id/webview/EBWebView").isDirectory)
+        assertTrue(runner.logLines(id).none { "s3cret" in it })
+    }
+
+    @Test fun withoutTheSignInWindowAuthOpenSaysSo() {
+        authCommand = null
+        reopen()
+        val id = install("auth")
+        press(id, "reach")
+        assertTrue(stored(id, "refused").str("refused").contains("the sign-in window is not installed on this PC"))
     }
 
     // ── The store ──

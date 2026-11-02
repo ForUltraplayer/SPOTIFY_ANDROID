@@ -75,17 +75,20 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">导入列表文件</string>
-    <string name="hangul_list_import_detail">将导出的手机列表添加为新列表</string>
+    <string name="hangul_list_import_detail">将导出的手机列表或电脑版混合列表添加为新列表</string>
     <string name="hangul_list_export">导出为文件</string>
     <string name="hangul_list_export_detail">在其他手机上只能播放 YouTube 链接</string>
     <string name="hangul_list_saved">已将列表保存为文件。</string>
     <string name="hangul_list_save_failed">无法保存列表文件。</string>
     <string name="hangul_list_file_name">列表</string>
     <string name="hangul_list_too_large">只能导入不超过 3 MB 的列表文件。</string>
-    <string name="hangul_list_foreign">这不是从此应用导出的列表文件。</string>
+    <string name="hangul_list_foreign">这不是从此应用或电脑版导出的列表文件。</string>
     <string name="hangul_list_too_many">列表文件中的歌曲过多。</string>
     <string name="hangul_list_imported_name">导入的列表</string>
     <string name="hangul_list_imported">已导入列表“%1$s”。</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="other">已导入列表“%1$s”。手机列表只能包含 YouTube 链接和手机文件，因此省略了 Spotify 歌曲等 %2$d 首。</item>
+    </plurals>
     <string name="hangul_list_read_failed">无法读取列表文件。</string>
 
     <!-- Hand-edited song order -->

@@ -75,17 +75,20 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">リストファイルをインポート</string>
-    <string name="hangul_list_import_detail">エクスポートしたスマホのリストを新しいリストとして追加</string>
+    <string name="hangul_list_import_detail">エクスポートしたスマホのリストやPCの混合リストを新しいリストとして追加</string>
     <string name="hangul_list_export">ファイルにエクスポート</string>
     <string name="hangul_list_export_detail">他のスマホではYouTubeリンクのみ再生されます</string>
     <string name="hangul_list_saved">リストをファイルに保存しました。</string>
     <string name="hangul_list_save_failed">リストファイルを保存できませんでした。</string>
     <string name="hangul_list_file_name">リスト</string>
     <string name="hangul_list_too_large">3 MB以下のリストファイルのみインポートできます。</string>
-    <string name="hangul_list_foreign">このアプリからエクスポートしたリストファイルではありません。</string>
+    <string name="hangul_list_foreign">このアプリやPC版からエクスポートしたリストファイルではありません。</string>
     <string name="hangul_list_too_many">リストファイルの曲が多すぎます。</string>
     <string name="hangul_list_imported_name">インポートしたリスト</string>
     <string name="hangul_list_imported">リスト「%1$s」をインポートしました。</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="other">リスト「%1$s」をインポートしました。スマホのリストにはYouTubeリンクとスマホのファイルだけを入れられるため、Spotifyの曲など%2$d曲を除外しました。</item>
+    </plurals>
     <string name="hangul_list_read_failed">リストファイルを読み込めませんでした。</string>
 
     <!-- Hand-edited song order -->

@@ -76,17 +76,21 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Importer un fichier de liste</string>
-    <string name="hangul_list_import_detail">Ajouter une liste de téléphone exportée comme nouvelle liste</string>
+    <string name="hangul_list_import_detail">Ajouter une liste de téléphone exportée ou une liste mixte du PC comme nouvelle liste</string>
     <string name="hangul_list_export">Exporter dans un fichier</string>
     <string name="hangul_list_export_detail">Sur les autres téléphones, seuls les liens YouTube sont lus</string>
     <string name="hangul_list_saved">Liste enregistrée dans un fichier.</string>
     <string name="hangul_list_save_failed">Impossible d\'enregistrer le fichier de liste.</string>
     <string name="hangul_list_file_name">Liste</string>
     <string name="hangul_list_too_large">Seuls les fichiers de liste de 3 Mo maximum peuvent être importés.</string>
-    <string name="hangul_list_foreign">Ce n\'est pas un fichier de liste exporté depuis cette app.</string>
+    <string name="hangul_list_foreign">Ce n\'est pas un fichier de liste exporté depuis cette app ou la version PC.</string>
     <string name="hangul_list_too_many">Le fichier de liste contient trop de chansons.</string>
     <string name="hangul_list_imported_name">Liste importée</string>
     <string name="hangul_list_imported">Liste « %1$s » importée.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Liste « %1$s » importée. %2$d titre a été laissé de côté : les listes du téléphone contiennent des liens YouTube et des fichiers du téléphone, pas de titres Spotify.</item>
+        <item quantity="other">Liste « %1$s » importée. %2$d titres ont été laissés de côté : les listes du téléphone contiennent des liens YouTube et des fichiers du téléphone, pas de titres Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Impossible de lire le fichier de liste.</string>
 
     <!-- Hand-edited song order -->

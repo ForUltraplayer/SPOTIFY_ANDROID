@@ -76,17 +76,21 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Importa file della lista</string>
-    <string name="hangul_list_import_detail">Aggiungi una lista del telefono esportata come nuova lista</string>
+    <string name="hangul_list_import_detail">Aggiungi una lista del telefono esportata o una lista mista del PC come nuova lista</string>
     <string name="hangul_list_export">Esporta in un file</string>
     <string name="hangul_list_export_detail">Sugli altri telefoni vengono riprodotti solo i link YouTube</string>
     <string name="hangul_list_saved">Lista salvata in un file.</string>
     <string name="hangul_list_save_failed">Impossibile salvare il file della lista.</string>
     <string name="hangul_list_file_name">Lista</string>
     <string name="hangul_list_too_large">Si possono importare solo file della lista fino a 3 MB.</string>
-    <string name="hangul_list_foreign">Questo non è un file della lista esportato da questa app.</string>
+    <string name="hangul_list_foreign">Questo non è un file della lista esportato da questa app o dalla versione PC.</string>
     <string name="hangul_list_too_many">Il file della lista contiene troppi brani.</string>
     <string name="hangul_list_imported_name">Lista importata</string>
     <string name="hangul_list_imported">Lista «%1$s» importata.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Lista «%1$s» importata. %2$d brano è stato escluso: le liste del telefono contengono link di YouTube e file del telefono, non brani di Spotify.</item>
+        <item quantity="other">Lista «%1$s» importata. %2$d brani sono stati esclusi: le liste del telefono contengono link di YouTube e file del telefono, non brani di Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Impossibile leggere il file della lista.</string>
 
     <!-- Hand-edited song order -->

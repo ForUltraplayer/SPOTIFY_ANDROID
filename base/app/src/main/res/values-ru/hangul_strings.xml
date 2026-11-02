@@ -78,17 +78,23 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Импортировать файл списка</string>
-    <string name="hangul_list_import_detail">Добавить экспортированный список телефона как новый список</string>
+    <string name="hangul_list_import_detail">Добавить экспортированный список телефона или смешанный список с ПК как новый список</string>
     <string name="hangul_list_export">Экспортировать в файл</string>
     <string name="hangul_list_export_detail">На других телефонах играют только ссылки YouTube</string>
     <string name="hangul_list_saved">Список сохранён в файл.</string>
     <string name="hangul_list_save_failed">Не удалось сохранить файл списка.</string>
     <string name="hangul_list_file_name">Список</string>
     <string name="hangul_list_too_large">Импортировать можно только файлы списков размером до 3 МБ.</string>
-    <string name="hangul_list_foreign">Это не файл списка, экспортированный из этого приложения.</string>
+    <string name="hangul_list_foreign">Это не файл списка, экспортированный из этого приложения или версии для ПК.</string>
     <string name="hangul_list_too_many">В файле списка слишком много треков.</string>
     <string name="hangul_list_imported_name">Импортированный список</string>
     <string name="hangul_list_imported">Список «%1$s» импортирован.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Список «%1$s» импортирован. Пропущена %2$d песня: списки телефона содержат ссылки YouTube и файлы телефона, но не песни Spotify.</item>
+        <item quantity="few">Список «%1$s» импортирован. Пропущены %2$d песни: списки телефона содержат ссылки YouTube и файлы телефона, но не песни Spotify.</item>
+        <item quantity="many">Список «%1$s» импортирован. Пропущено %2$d песен: списки телефона содержат ссылки YouTube и файлы телефона, но не песни Spotify.</item>
+        <item quantity="other">Список «%1$s» импортирован. Пропущено %2$d песни: списки телефона содержат ссылки YouTube и файлы телефона, но не песни Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Не удалось прочитать файл списка.</string>
 
     <!-- Hand-edited song order -->

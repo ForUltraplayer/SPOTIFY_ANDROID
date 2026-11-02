@@ -2,6 +2,10 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.3.0-hangul.3
+
+- Import list file also reads a mixed list exported by the PC version: its YouTube links come in a new phone list in the PC's mixed order, with the PC's lyric search name as title and artist when one is set. Phone lists cannot hold Spotify songs, so they are left out and the notice says how many. The PC version reads this app's list files too (YouTube links only; phone files play on their phone only). Both files keep their own format, so earlier files still open
+
 ## 2.3.0-hangul.2
 
 - "Why this source?" shows the engine's own notes (picked for this session, no extension had it, set aside, inactive and the others) in the app's language

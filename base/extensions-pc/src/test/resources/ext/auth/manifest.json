@@ -1,0 +1,22 @@
+{
+  "id": "test.pc.auth",
+  "name": "Sign-in test",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "author": "test",
+  "description": "Opens a sign-in page when one of its buttons is pressed and keeps what came back.",
+  "actions": [
+    { "name": "webview.auth", "why": "Test sign-in pages" },
+    { "name": "storage", "why": "Keeps the answers for the test" },
+    { "name": "settings.page", "why": "One button per kind of page" }
+  ],
+  "settings": [
+    { "key": "reach", "type": "button", "label": "Reaches the callback" },
+    { "key": "visible", "type": "button", "label": "Reaches the callback, shown at once" },
+    { "key": "error", "type": "button", "label": "Ends with an error" },
+    { "key": "wrong", "type": "button", "label": "Answers another address" },
+    { "key": "crash", "type": "button", "label": "Ends without answering" },
+    { "key": "hang", "type": "button", "label": "Never answers" },
+    { "key": "self", "type": "button", "label": "Starts on its callback (the real window ends at once, offline)" }
+  ]
+}

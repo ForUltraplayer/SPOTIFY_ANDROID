@@ -144,7 +144,8 @@ fun rememberLocalPlaylistExport(): (id: String) -> Unit {
 }
 
 /**
- * Reads a list file made by the export into a new phone list; existing lists stay as they are.
+ * Reads a list file made by the export, or by the PC version's export, into a new phone list;
+ * existing lists stay as they are. The toast says how many songs a phone list could not hold.
  * [onDone] gets the new list, or null when nothing was picked or the file was refused.
  */
 @Composable
@@ -164,15 +165,19 @@ fun rememberLocalPlaylistImport(onDone: (LocalPlaylist?) -> Unit): () -> Unit {
                 }
             }
             val imported = text.mapCatching(LocalPlaylists::import)
-            Toast.makeText(context, imported.fold({ context.getString(R.string.hangul_list_imported, it.name) }, { error ->
+            val leftOut = imported.getOrNull()?.leftOut ?: 0
+            Toast.makeText(context, imported.fold({
+                if (it.leftOut > 0) context.resources.getQuantityString(R.plurals.hangul_list_imported_left_out, it.leftOut, it.playlist.name, it.leftOut)
+                else context.getString(R.string.hangul_list_imported, it.playlist.name)
+            }, { error ->
                 context.getString(when ((error as? IllegalArgumentException)?.message) {
                     LocalPlaylists.REFUSED_TOO_LARGE -> R.string.hangul_list_too_large
                     LocalPlaylists.REFUSED_FOREIGN -> R.string.hangul_list_foreign
                     LocalPlaylists.REFUSED_TOO_MANY -> R.string.hangul_list_too_many
                     else -> R.string.hangul_list_read_failed
                 })
-            }), Toast.LENGTH_SHORT).show()
-            onDone(imported.getOrNull())
+            }), if (leftOut > 0) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+            onDone(imported.getOrNull()?.playlist)
         }
     }
     return { launcher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }

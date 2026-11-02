@@ -76,17 +76,21 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Listendatei importieren</string>
-    <string name="hangul_list_import_detail">Eine exportierte Telefonliste als neue Liste hinzufügen</string>
+    <string name="hangul_list_import_detail">Eine exportierte Telefonliste oder gemischte PC-Liste als neue Liste hinzufügen</string>
     <string name="hangul_list_export">In Datei exportieren</string>
     <string name="hangul_list_export_detail">Auf anderen Telefonen werden nur die YouTube-Links abgespielt</string>
     <string name="hangul_list_saved">Liste in einer Datei gespeichert.</string>
     <string name="hangul_list_save_failed">Die Listendatei konnte nicht gespeichert werden.</string>
     <string name="hangul_list_file_name">Liste</string>
     <string name="hangul_list_too_large">Nur Listendateien bis 3 MB können importiert werden.</string>
-    <string name="hangul_list_foreign">Das ist keine aus dieser App exportierte Listendatei.</string>
+    <string name="hangul_list_foreign">Das ist keine aus dieser App oder der PC-Version exportierte Listendatei.</string>
     <string name="hangul_list_too_many">Die Listendatei enthält zu viele Songs.</string>
     <string name="hangul_list_imported_name">Importierte Liste</string>
     <string name="hangul_list_imported">Liste „%1$s“ importiert.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Liste „%1$s“ importiert. %2$d Titel wurde ausgelassen: Telefonlisten enthalten YouTube-Links und Telefondateien, keine Spotify-Titel.</item>
+        <item quantity="other">Liste „%1$s“ importiert. %2$d Titel wurden ausgelassen: Telefonlisten enthalten YouTube-Links und Telefondateien, keine Spotify-Titel.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Die Listendatei konnte nicht gelesen werden.</string>
 
     <!-- Hand-edited song order -->

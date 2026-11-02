@@ -173,7 +173,7 @@ class Api(private val runner: Runner, private val token: String, private val app
             }
             "/v1/audio" -> { post(); audio(runner.resolve(track(body), accept(body), ahead = bool(body, "ahead") == true)) }
             "/v1/audio/pick" -> { post(); pick(body) }
-            "/v1/audio/again" -> { post(); audio(runner.resolve(track(body), accept(body), again = true)) }
+            "/v1/audio/again" -> { post(); audio(runner.resolve(track(body), accept(body), again = true, refresh = bool(body, "refresh") == true)) }
             "/v1/attempts/note" -> { post(); note(body) }
             "/v1/attempts/latest" -> {
                 get()

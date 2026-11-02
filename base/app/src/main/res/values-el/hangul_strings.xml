@@ -76,17 +76,21 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Εισαγωγή αρχείου λίστας</string>
-    <string name="hangul_list_import_detail">Προσθήκη μιας εξαγμένης λίστας τηλεφώνου ως νέας λίστας</string>
+    <string name="hangul_list_import_detail">Προσθήκη μιας εξαγμένης λίστας τηλεφώνου ή μικτής λίστας PC ως νέας λίστας</string>
     <string name="hangul_list_export">Εξαγωγή σε αρχείο</string>
     <string name="hangul_list_export_detail">Σε άλλα τηλέφωνα παίζουν μόνο οι σύνδεσμοι YouTube</string>
     <string name="hangul_list_saved">Η λίστα αποθηκεύτηκε σε αρχείο.</string>
     <string name="hangul_list_save_failed">Δεν ήταν δυνατή η αποθήκευση του αρχείου λίστας.</string>
     <string name="hangul_list_file_name">Λίστα</string>
     <string name="hangul_list_too_large">Μπορούν να εισαχθούν μόνο αρχεία λίστας έως 3 MB.</string>
-    <string name="hangul_list_foreign">Αυτό δεν είναι αρχείο λίστας που εξήχθη από αυτή την εφαρμογή.</string>
+    <string name="hangul_list_foreign">Αυτό δεν είναι αρχείο λίστας που εξήχθη από αυτή την εφαρμογή ή την έκδοση PC.</string>
     <string name="hangul_list_too_many">Το αρχείο λίστας έχει πάρα πολλά τραγούδια.</string>
     <string name="hangul_list_imported_name">Εισαγμένη λίστα</string>
     <string name="hangul_list_imported">Η λίστα «%1$s» εισήχθη.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Η λίστα «%1$s» εισήχθη. Παραλείφθηκε %2$d τραγούδι: οι λίστες τηλεφώνου περιέχουν συνδέσμους YouTube και αρχεία τηλεφώνου, όχι τραγούδια Spotify.</item>
+        <item quantity="other">Η λίστα «%1$s» εισήχθη. Παραλείφθηκαν %2$d τραγούδια: οι λίστες τηλεφώνου περιέχουν συνδέσμους YouTube και αρχεία τηλεφώνου, όχι τραγούδια Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Δεν ήταν δυνατή η ανάγνωση του αρχείου λίστας.</string>
 
     <!-- Hand-edited song order -->

@@ -75,17 +75,20 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">목록 파일 가져오기</string>
-    <string name="hangul_list_import_detail">내보낸 휴대폰 목록을 새 목록으로 추가</string>
+    <string name="hangul_list_import_detail">내보낸 휴대폰 목록이나 PC 혼합 목록을 새 목록으로 추가</string>
     <string name="hangul_list_export">파일로 내보내기</string>
     <string name="hangul_list_export_detail">다른 휴대폰에서는 YouTube 링크만 재생됩니다</string>
     <string name="hangul_list_saved">목록을 파일로 저장했습니다.</string>
     <string name="hangul_list_save_failed">목록 파일을 저장하지 못했습니다.</string>
     <string name="hangul_list_file_name">목록</string>
     <string name="hangul_list_too_large">3 MB 이하의 목록 파일만 가져올 수 있습니다.</string>
-    <string name="hangul_list_foreign">이 앱에서 내보낸 목록 파일이 아닙니다.</string>
+    <string name="hangul_list_foreign">이 앱이나 PC 버전에서 내보낸 목록 파일이 아닙니다.</string>
     <string name="hangul_list_too_many">목록 파일의 곡이 너무 많습니다.</string>
     <string name="hangul_list_imported_name">가져온 목록</string>
     <string name="hangul_list_imported">\'%1$s\' 목록을 가져왔습니다.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="other">\'%1$s\' 목록을 가져왔습니다. 휴대폰 목록에는 YouTube 링크와 휴대폰 파일만 담을 수 있어 Spotify 곡 등 %2$d곡을 제외했습니다.</item>
+    </plurals>
     <string name="hangul_list_read_failed">목록 파일을 읽지 못했습니다.</string>
 
     <!-- Hand-edited song order -->

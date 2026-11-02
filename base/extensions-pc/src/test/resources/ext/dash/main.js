@@ -1,0 +1,4 @@
+// Answers a DASH manifest of two 4-second FLAC segments (a static MPD, SegmentTimeline with $Number$, absolute addresses).
+myspoti.provide('audio-source', function (track) {
+  return { manifest: 'PD94bWwgdmVyc2lvbj0iMS4wIj8+PE1QRCB4bWxucz0idXJuOm1wZWc6ZGFzaDpzY2hlbWE6bXBkOjIwMTEiIHR5cGU9InN0YXRpYyIgbWVkaWFQcmVzZW50YXRpb25EdXJhdGlvbj0iUFQ4UyI+PFBlcmlvZD48QWRhcHRhdGlvblNldCBtaW1lVHlwZT0iYXVkaW8vbXA0Ij48UmVwcmVzZW50YXRpb24gaWQ9IjEiIGNvZGVjcz0iZmxhYyIgYmFuZHdpZHRoPSIxMDAwMDAwIj48U2VnbWVudFRlbXBsYXRlIHRpbWVzY2FsZT0iMTAwMCIgaW5pdGlhbGl6YXRpb249Imh0dHBzOi8vbWVkaWEuZXhhbXBsZS5jb20vZGFzaC8wLm1wNCIgbWVkaWE9Imh0dHBzOi8vbWVkaWEuZXhhbXBsZS5jb20vZGFzaC8kTnVtYmVyJC5tcDQiIHN0YXJ0TnVtYmVyPSIxIj48U2VnbWVudFRpbWVsaW5lPjxTIGQ9IjQwMDAiIHI9IjEiLz48L1NlZ21lbnRUaW1lbGluZT48L1NlZ21lbnRUZW1wbGF0ZT48L1JlcHJlc2VudGF0aW9uPjwvQWRhcHRhdGlvblNldD48L1BlcmlvZD48L01QRD4=', codec: 'flac', bitDepth: 16, sampleRate: 44100, durationMs: 8000 };
+});

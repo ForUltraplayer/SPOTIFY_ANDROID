@@ -7,7 +7,7 @@ import java.util.Properties
 import kotlin.system.exitProcess
 
 private const val USAGE = "usage: java -jar extensions-pc.jar --port 0 --token <token> --data <folder> --app-version <version>\n" +
-    "(the folder may be given in HANGUL_EXT_DATA instead of --data)"
+    "(the folder may be given in HANGUL_EXT_DATA instead of --data; HANGUL_EXT_AUTH names the sign-in window script)"
 
 /**
  * The runner's log: one line per event on stdout, after the `READY` line (the helper reads that
@@ -56,7 +56,14 @@ fun main(args: Array<String>) {
     data.mkdirs()
     if (!data.isDirectory) { System.err.println("not a folder: $data"); exitProcess(2) }
 
-    val runner = Runner(data, engineVersion())
+    // The sign-in window (the installation's webview-auth.ps1), named in HANGUL_EXT_AUTH for the same reason as the data
+    // folder; without it `auth.open` says the PC has no sign-in window. Java starts it with CreateProcessW, so its path
+    // arrives whole; the request itself goes on its stdin.
+    val auth = System.getenv("HANGUL_EXT_AUTH")?.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isFile }?.let { script ->
+        val powershell = File(System.getenv("SystemRoot") ?: "C:\\Windows", "System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        listOf(powershell.path, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-File", script.absolutePath)
+    }
+    val runner = Runner(data, engineVersion(), authCommand = auth)
     runner.init()
     val api = Api(runner, token, opts["app-version"].orEmpty())
     val bound = try {

@@ -76,17 +76,21 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Importar archivo de lista</string>
-    <string name="hangul_list_import_detail">Añadir una lista del teléfono exportada como lista nueva</string>
+    <string name="hangul_list_import_detail">Añadir una lista del teléfono exportada o una lista mixta del PC como lista nueva</string>
     <string name="hangul_list_export">Exportar a un archivo</string>
     <string name="hangul_list_export_detail">En otros teléfonos solo se reproducen los enlaces de YouTube</string>
     <string name="hangul_list_saved">Lista guardada en un archivo.</string>
     <string name="hangul_list_save_failed">No se pudo guardar el archivo de lista.</string>
     <string name="hangul_list_file_name">Lista</string>
     <string name="hangul_list_too_large">Solo se pueden importar archivos de lista de 3 MB o menos.</string>
-    <string name="hangul_list_foreign">Este no es un archivo de lista exportado desde esta app.</string>
+    <string name="hangul_list_foreign">Este no es un archivo de lista exportado desde esta app o la versión para PC.</string>
     <string name="hangul_list_too_many">El archivo de lista tiene demasiadas canciones.</string>
     <string name="hangul_list_imported_name">Lista importada</string>
     <string name="hangul_list_imported">Se ha importado la lista «%1$s».</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Se ha importado la lista «%1$s». Se ha omitido %2$d canción: las listas del teléfono contienen enlaces de YouTube y archivos del teléfono, no canciones de Spotify.</item>
+        <item quantity="other">Se ha importado la lista «%1$s». Se han omitido %2$d canciones: las listas del teléfono contienen enlaces de YouTube y archivos del teléfono, no canciones de Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">No se pudo leer el archivo de lista.</string>
 
     <!-- Hand-edited song order -->

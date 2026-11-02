@@ -4,6 +4,8 @@ package app.myspoti.extensions.pc
 
 import app.myspoti.extensions.Action
 import app.myspoti.extensions.Area
+import app.myspoti.extensions.AuthRequest
+import app.myspoti.extensions.AuthResult
 import app.myspoti.extensions.AudioQuery
 import app.myspoti.extensions.AudioStream
 import app.myspoti.extensions.BasicHttp
@@ -51,10 +53,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The extensions installed on this PC, under [dir] (`registry.json`, and per extension `<id>/`:
@@ -69,7 +79,8 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * [fetcher]: where packages and the blocked list are downloaded from; [send]: the extensions' own
  * `myspoti.http` requests (already checked by the sandbox); [autoUpdate]: the blocked list and the
- * update check run in the background.
+ * update check run in the background; [authCommand]: the command that starts the sign-in window
+ * (the PC's `webview-auth.ps1`, see [openAuth]), null where there is none.
  */
 class Runner(
     val dir: File,
@@ -78,6 +89,7 @@ class Runner(
     fetcher: Fetcher = Fetcher.Https,
     private val send: (HttpRequest, String) -> HttpResponse = { r, ua -> BasicHttp.send(r, ua) },
     private val autoUpdate: Boolean = true,
+    private val authCommand: List<String>? = null,
 ) : AutoCloseable {
     companion object {
         const val AUDIO_MS = HookBudgets.AUDIO
@@ -90,6 +102,7 @@ class Runner(
         /** How old a probe may be: asked again after it, and before a source is asked. */
         private const val STATUS_EVERY_MS = 5 * 60_000L
         private const val SLOW_LOAD_MS = 10_000L
+        private const val AUTH_MS = HookBudgets.AUTH
         /** An answer is reused for a replay or the ask when the song starts a while, then asked again (addresses expire). */
         private const val KEEP_MS = 10 * 60_000L
         private val SOURCE_HOOKS = setOf(Hook.AUDIO_SOURCE, Hook.DOWNLOAD_SOURCE)
@@ -129,6 +142,12 @@ class Runner(
     private val settingJobs = ConcurrentHashMap<String, Job>()
     private val isrcs = ConcurrentHashMap<String, String>()
 
+    /**
+     * The longest a sign-in window may live before it is ended as "timeout": the page's own [AuthRequest.TIMEOUT_MS]
+     * (counted by the window), plus the 10 minutes it may first spend installing the WebView2 runtime, plus a margin.
+     */
+    @Volatile internal var authHelperMs = AuthRequest.TIMEOUT_MS + 10 * 60_000L + 60_000L
+
     @Volatile private var provided: Pair<List<String>, List<String>> = emptyList<String>() to emptyList()
 
     /** The audio source picked first for this run ([SessionSource]), or null: the saved order. Never saved. */
@@ -165,6 +184,7 @@ class Runner(
     val ready: Boolean get() = started.isCompleted
 
     override fun close() {
+        authWindows.keys.toList().forEach(::cancelAuth)
         runtimes.keys.toList().forEach { runtimes.remove(it)?.close() }
         scope.cancel()
     }
@@ -400,14 +420,21 @@ class Runner(
      * waited for; else the sources are asked ([audio]). [again]: its address was refused, the kept
      * answer is dropped and the sources are asked anew.
      */
-    suspend fun resolve(track: TrackInfo, accept: Accept, ahead: Boolean = false, again: Boolean = false): AudioResult {
+    /**
+     * [again]: its address was refused, every source is asked anew. [refresh]: the person asked for a new search
+     * ("Search again" in the playback details): the same, and a miss under a minute old is forgotten too.
+     */
+    suspend fun resolve(track: TrackInfo, accept: Accept, ahead: Boolean = false, again: Boolean = false, refresh: Boolean = false): AudioResult {
         val key = track.id
-        if (again) {
+        if (refresh) {
+            known.remove(key)
+            misses.forget(key)
+        } else if (again) {
             known.remove(key)
             noteAttempt(key) { it.copy(fallback = "asked the extensions again: its address was refused (expired or gone)") }
         }
         known[key]?.takeIf { it.fresh && accept.refusal(it.stream) == null }?.let { return AudioResult(it.stream, it.attempt, expiresAt = it.expiresAt) }
-        if (!again) asking[key]?.let { pending -> withTimeoutOrNull(AUDIO_MS) { pending.await() }?.takeIf { it.stream != null && accept.refusal(it.stream) == null }?.let { return it } }
+        if (!again && !refresh) asking[key]?.let { pending -> withTimeoutOrNull(AUDIO_MS) { pending.await() }?.takeIf { it.stream != null && accept.refusal(it.stream) == null }?.let { return it } }
         val mine = CompletableDeferred<AudioResult?>()
         asking[key] = mine
         try {
@@ -707,7 +734,7 @@ class Runner(
 
     internal fun stop(id: String) {
         runningSha.remove(id)
-        runtimes.remove(id)?.close()
+        runtimes.remove(id)?.close(); cancelAuth(id)
         health.forget(id)
         cooldown.forget(id); signIns.remove(id)
         misses.clear()
@@ -749,13 +776,98 @@ class Runner(
     private fun settingsOf(id: String) = settings.getOrPut(id) { FileStore(File(dir, "$id/settings.json")) }
     private fun storeOf(id: String) = stores.getOrPut(id) { FileStore(File(dir, "$id/storage.json")) }
 
+    // ── Sign-in windows ──
+
+    /** A sign-in page open for an extension: the window process showing it. */
+    private class AuthWindow(val id: String, val request: AuthRequest, val process: Process)
+    private val authWindows = ConcurrentHashMap<String, AuthWindow>()
+    private val authCount = AtomicInteger()
+
+    /**
+     * Opens [request] for [extensionId] in a window of its own, as the Android app's ExtensionAuth does: one page per
+     * extension at a time (a second is refused while one is open), cookies in the extension's folder (`<id>/webview`,
+     * never the app's or another extension's, gone with the extension), and back only the address that reached the
+     * callback, as the `auth` event. The window ([authCommand]) gets the request as one JSON line on stdin, keeps stdin
+     * open as the sign of the runner being alive, and answers one JSON line on stdout (`{url}` or `{error}`). Its id at once.
+     */
+    private fun openAuth(extensionId: String, request: AuthRequest): String {
+        val command = authCommand ?: throw UnsupportedOperationException("the sign-in window is not installed on this PC")
+        val profile = File(dir, "$extensionId/webview")
+        val w = synchronized(authWindows) {
+            check(!authWindows.containsKey(extensionId)) { "a sign-in page is already open" }
+            profile.mkdirs()
+            val process = try {
+                ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            } catch (e: IOException) {
+                throw IllegalStateException("the sign-in window could not start: ${e.message}")
+            }
+            AuthWindow("auth-${authCount.incrementAndGet()}", request, process).also { authWindows[extensionId] = it }
+        }
+        val line = buildJsonObject {
+            put("url", JsonPrimitive(request.url))
+            put("callback", JsonPrimitive(request.callback))
+            put("hidden", JsonPrimitive(request.hidden))
+            put("profile", JsonPrimitive(profile.absolutePath))
+            put("name", JsonPrimitive(registry.find(extensionId)?.name ?: extensionId))
+            put("hiddenMs", JsonPrimitive(AuthRequest.HIDDEN_MS))
+            put("timeoutMs", JsonPrimitive(AuthRequest.TIMEOUT_MS))
+        }.toString()
+        // A window that ended at once is told by its missing answer below.
+        runCatching { w.process.outputStream.apply { write((line + "\n").toByteArray(Charsets.UTF_8)); flush() } }
+        log(extensionId, "sign-in ${w.id} opened on ${java.net.URI(request.url).host}" + if (request.hidden) " (hidden)" else "")
+        scope.launch { awaitAuth(extensionId, w) }
+        return w.id
+    }
+
+    /** Waits for [w]'s answer and delivers it, unless the page was cancelled meanwhile. */
+    private suspend fun awaitAuth(extensionId: String, w: AuthWindow) {
+        val late = AtomicBoolean()
+        val watchdog = scope.launch { delay(authHelperMs); late.set(true); end(w.process) }
+        val line = runInterruptible { runCatching { w.process.inputStream.bufferedReader(Charsets.UTF_8).readLine() }.getOrNull() }
+        watchdog.cancel()
+        val answer = line?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
+        val url = answer?.get("url")?.jsonPrimitive?.contentOrNull
+        val error = answer?.get("error")?.jsonPrimitive?.contentOrNull
+        val result = when {
+            // The window's check is the engine's: an address that does not reach the callback is never handed over.
+            url != null && w.request.reached(url) -> AuthResult(w.id, url = url)
+            error != null -> AuthResult(w.id, error = error.take(200))
+            late.get() -> AuthResult(w.id, error = "timeout")
+            else -> AuthResult(w.id, error = "helper-failed")
+        }
+        runCatching { w.process.outputStream.close() }
+        if (!runInterruptible { w.process.waitFor(5, TimeUnit.SECONDS) }) end(w.process)
+        if (authWindows.remove(extensionId, w)) authDone(extensionId, result)
+    }
+
+    /** The extension stopped: its page goes, without an answer. */
+    private fun cancelAuth(extensionId: String) {
+        authWindows.remove(extensionId)?.let { end(it.process) }
+    }
+
+    /** Ends a window process and what it started (the web view's browser processes). */
+    private fun end(process: Process) {
+        runCatching { process.descendants().forEach { it.destroyForcibly() } }
+        process.destroyForcibly()
+    }
+
+    /** Delivers a sign-in page's outcome to [id], as the Android app's `Extensions.authDone`; the address itself is never logged. */
+    private fun authDone(id: String, result: AuthResult) {
+        val rt = runtimes[id] ?: return
+        log(id, "sign-in ${result.id}: ${if (result.url != null) "reached the callback" else result.error}")
+        if (result.url != null) signIns.remove(id)
+        val json = Json.encodeToString(AuthResult.serializer(), result)
+        scope.launch { runCatching { runInterruptible { rt.emit(ExtensionRuntime.EVENT_AUTH, json, AUTH_MS) } }.onSuccess { recheckAfterEvent(id, rt) }.onFailure { failed(id, it.toString()) } }
+    }
+
     // ── What the sandbox reaches of the PC ──
 
     /**
      * The PC's [Host]. Every call arrives checked by the sandbox (actions granted, hosts listed,
-     * request limits). The runner has no screen, no Spotify account and no player of its own: what
-     * needs one answers as a host without it does (a refusal, an error or nothing), so an extension
-     * meets on the PC exactly the limits it would meet on a phone without that feature.
+     * request limits). The runner has no screen of its own (only the sign-in window it starts), no
+     * Spotify account and no player: what needs one answers as a host without it does (a refusal, an
+     * error or nothing), so an extension meets on the PC exactly the limits it would meet on a phone
+     * without that feature.
      */
     private val host = object : Host {
         override fun http(extensionId: String, request: HttpRequest): HttpResponse = send(request, userAgent(extensionId))
@@ -777,9 +889,8 @@ class Runner(
 
         override fun rawGrants(extensionId: String) = registry.find(extensionId)?.rawGrants.orEmpty()
 
-        /** Sign-in pages need a web view of their own; the runner has none, so `auth.open` fails with this reason. */
-        override fun openAuth(extensionId: String, request: app.myspoti.extensions.AuthRequest): String =
-            throw UnsupportedOperationException("sign-in pages are not available on the PC")
+        /** A sign-in page in a window of its own (WebView2), when the PC has one ([authCommand]). */
+        override fun openAuth(extensionId: String, request: AuthRequest): String = this@Runner.openAuth(extensionId, request)
 
         override fun whenOnline(extensionId: String) = askOnline(extensionId)
     }

@@ -186,16 +186,63 @@ object LocalPlaylists {
             .put("items", JSONArray().apply { p.items.forEach { put(itemJson(it)) } }).toString(2)
     }
 
-    /** A new list from a file made by [export]; never replaces an existing one. */
-    fun import(text: String): LocalPlaylist {
+    /** What [import] made, and how many songs of the file a phone list cannot hold (a PC list's Spotify songs). */
+    data class Imported(val playlist: LocalPlaylist, val leftOut: Int)
+
+    /**
+     * A new list from a file made by [export], or by the PC version's mixed list export; never
+     * replaces an existing one.
+     */
+    fun import(text: String): Imported {
         require(text.length <= MAX_FILE_BYTES) { REFUSED_TOO_LARGE }
-        val o = runCatching { JSONObject(text) }.getOrNull()
-        require(o != null && o.optString("format") == FILE_FORMAT && o.optInt("version") == VERSION) { REFUSED_FOREIGN }
-        val found = items(o.optJSONArray("items"))
+        val o = runCatching { JSONObject(text.removePrefix("\uFEFF")) }.getOrNull()
+        require(o != null) { REFUSED_FOREIGN }
+        val pc = if (o.optString("format") == PC_FORMAT && o.optInt("schema") == 1) o.optJSONObject("playlist") else null
+        require(pc != null || o.optString("format") == FILE_FORMAT && o.optInt("version") == VERSION) { REFUSED_FOREIGN }
+        val (found, leftOut) = if (pc != null) fromPc(pc) else items(o.optJSONArray("items")) to 0
         require(found.size <= MAX_FILE_ITEMS) { REFUSED_TOO_MANY }
-        val p = LocalPlaylist(UUID.randomUUID().toString(), o.optString("name").trim().ifEmpty { Graph.app.getString(R.string.hangul_list_imported_name) }.take(200),
+        val name = if (pc != null) (pc.opt("name") as? String).orEmpty() else o.optString("name")
+        val p = LocalPlaylist(UUID.randomUUID().toString(), name.trim().ifEmpty { Graph.app.getString(R.string.hangul_list_imported_name) }.take(200),
             found.map { it.copy(key = UUID.randomUUID().toString()) }, System.currentTimeMillis())
         update { playlists[p.id] = p }
-        return p
+        return Imported(p, leftOut)
+    }
+
+    // ── Files of the PC version (its mixed list export, SpotifyHangulMixedPlaylist schema 1) ──
+
+    private const val PC_FORMAT = "SpotifyHangulMixedPlaylist"
+    private val PC_VIDEO = Regex("[A-Za-z0-9_-]{11}")
+
+    /** A string field of a PC file, or empty (the file is not trusted: no numbers or nulls made into text). */
+    private fun pcText(o: JSONObject, name: String, limit: Int) = (o.opt(name) as? String).orEmpty().trim().take(limit)
+
+    /**
+     * A PC list's YouTube links as phone items, in its mixed order. Its Spotify songs cannot be in a
+     * phone list (the local player cannot play them), so they are left out and counted, with any link
+     * that is not a valid video and a video there twice. The PC's lyric search name, when set, becomes
+     * the title and artist: the phone shows and looks the lyrics up by one title and artist.
+     */
+    private fun fromPc(p: JSONObject): Pair<List<LocalItem>, Int> {
+        val spotify = p.optJSONArray("nativeTracks")?.length() ?: 0
+        val tracks = p.optJSONArray("tracks") ?: JSONArray()
+        require(spotify <= MAX_FILE_ITEMS && tracks.length() <= MAX_FILE_ITEMS) { REFUSED_TOO_MANY }
+        val links = LinkedHashMap<String, LocalItem>()
+        for (i in 0 until tracks.length()) {
+            val t = tracks.optJSONObject(i) ?: continue
+            val id = (t.opt("videoId") as? String)?.takeIf { t.opt("kind") == "youtube" && PC_VIDEO.matches(it) } ?: continue
+            if (id in links) continue
+            val lyricTitle = pcText(t, "lyricTitle", 300)
+            val seconds = (t.opt("duration") as? Number)?.toDouble()?.takeIf { it.isFinite() && it in 0.0..31_536_000.0 } ?: 0.0
+            links[id] = LocalItem(key = id, uri = "${com.music.spotui.video.YouTubeLinks.SCHEME}://video/$id",
+                title = lyricTitle.ifEmpty { pcText(t, "title", 300).ifEmpty { id } },
+                artist = if (lyricTitle.isNotEmpty()) pcText(t, "lyricArtist", 200) else pcText(t, "artist", 200),
+                album = "YouTube", durationMs = (seconds * 1000).toLong(), artUri = "https://i.ytimg.com/vi/$id/hqdefault.jpg")
+        }
+        val order = p.optJSONArray("order") ?: JSONArray()
+        val ordered = (0 until minOf(order.length(), MixedOrder.MAX_KEYS))
+            .mapNotNull { (order.opt(it) as? String)?.takeIf { key -> key.startsWith("yt:") }?.let { key -> links[key.removePrefix("yt:")] } }
+        // Links the order does not name (a hand-made file) follow it in the file's order.
+        val found = (ordered + links.values).distinctBy { it.key }
+        return found to spotify + tracks.length() - found.size
     }
 }

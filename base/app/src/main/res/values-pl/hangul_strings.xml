@@ -78,17 +78,23 @@
 
     <!-- Phone-list files -->
     <string name="hangul_list_import">Importuj plik listy</string>
-    <string name="hangul_list_import_detail">Dodaj wyeksportowaną listę z telefonu jako nową listę</string>
+    <string name="hangul_list_import_detail">Dodaj wyeksportowaną listę z telefonu lub mieszaną listę z PC jako nową listę</string>
     <string name="hangul_list_export">Eksportuj do pliku</string>
     <string name="hangul_list_export_detail">Na innych telefonach odtwarzane są tylko linki YouTube</string>
     <string name="hangul_list_saved">Zapisano listę w pliku.</string>
     <string name="hangul_list_save_failed">Nie udało się zapisać pliku listy.</string>
     <string name="hangul_list_file_name">Lista</string>
     <string name="hangul_list_too_large">Można importować tylko pliki list o rozmiarze do 3 MB.</string>
-    <string name="hangul_list_foreign">To nie jest plik listy wyeksportowany z tej aplikacji.</string>
+    <string name="hangul_list_foreign">To nie jest plik listy wyeksportowany z tej aplikacji ani z wersji na PC.</string>
     <string name="hangul_list_too_many">Plik listy zawiera zbyt wiele utworów.</string>
     <string name="hangul_list_imported_name">Zaimportowana lista</string>
     <string name="hangul_list_imported">Zaimportowano listę „%1$s”.</string>
+    <plurals name="hangul_list_imported_left_out">
+        <item quantity="one">Zaimportowano listę „%1$s”. Pominięto %2$d utwór: listy w telefonie zawierają linki YouTube i pliki z telefonu, a nie utwory ze Spotify.</item>
+        <item quantity="few">Zaimportowano listę „%1$s”. Pominięto %2$d utwory: listy w telefonie zawierają linki YouTube i pliki z telefonu, a nie utwory ze Spotify.</item>
+        <item quantity="many">Zaimportowano listę „%1$s”. Pominięto %2$d utworów: listy w telefonie zawierają linki YouTube i pliki z telefonu, a nie utwory ze Spotify.</item>
+        <item quantity="other">Zaimportowano listę „%1$s”. Pominięto %2$d utworu: listy w telefonie zawierają linki YouTube i pliki z telefonu, a nie utwory ze Spotify.</item>
+    </plurals>
     <string name="hangul_list_read_failed">Nie udało się odczytać pliku listy.</string>
 
     <!-- Hand-edited song order -->
