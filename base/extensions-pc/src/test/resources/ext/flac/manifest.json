@@ -1,0 +1,19 @@
+{
+  "id": "test.pc.flac",
+  "name": "FLAC source",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "author": "test",
+  "description": "An audio source answering FLAC addresses it makes up, without any request.",
+  "actions": [
+    { "name": "audio.source", "why": "Test source that answers FLAC" },
+    { "name": "storage", "why": "Counts how many times it was asked" },
+    { "name": "settings.page", "why": "Its quality and options" }
+  ],
+  "settings": [
+    { "key": "quality", "type": "choice", "label": "Quality", "options": ["hi-res", "cd"], "default": "hi-res", "section": "playback", "role": "quality" },
+    { "key": "loud", "type": "toggle", "label": "Louder" },
+    { "key": "token", "type": "secret", "label": "Token" },
+    { "key": "pair", "type": "button", "label": "Pair again" }
+  ]
+}

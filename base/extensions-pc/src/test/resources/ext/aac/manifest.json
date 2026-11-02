@@ -1,0 +1,9 @@
+{
+  "id": "test.pc.aac",
+  "name": "AAC source",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "author": "test",
+  "description": "An audio source answering AAC, which the PC does not play.",
+  "actions": [{ "name": "audio.source", "why": "Test source that answers AAC" }]
+}
