@@ -2,6 +2,11 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.3.0-hangul.2
+
+- "Why this source?" shows the engine's own notes (picked for this session, no extension had it, set aside, inactive and the others) in the app's language
+- The extension setup and download hints name no particular extension
+
 ## 2.3.0-hangul.1
 
 - Based on Myspoti 2.3.0: Repeat once and Repeat for good, Myspoti shuffle, equalizer and playback speed for extension and device songs, source order for audio and download extensions, the Immersive look, safer extensions and more (sections 2.0.2-beta.5 to 2.3.0 below)
