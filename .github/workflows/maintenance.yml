@@ -60,7 +60,7 @@ jobs:
       - name: Test candidate without changing main
         if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
         run: python scripts/maintain_upstream.py verify
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-upstream-inspection
