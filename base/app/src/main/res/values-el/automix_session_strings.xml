@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">DJ session</string>
+    <string name="settings_automix_session_detail">Οι μεταβάσεις μπορούν να ξεκινούν σε ένα μουσικό τμήμα πριν από το τέλος. Απενεργοποίησέ το για να κρατάς περισσότερο από κάθε τραγούδι.</string>
+    <string name="settings_automix_segue">Μεταβάσεις με σχέδιο</string>
+    <string name="settings_automix_segue_detail">Ένας νέος τρόπος επιλογής και αναπαραγωγής μεταβάσεων, με αυστηρότερα όρια: ένα ζευγάρι μπορεί να μείνει χωρίς μίξη. Απενεργοποίησέ το για να επιστρέψεις στον προηγούμενο.</string>
+</resources>

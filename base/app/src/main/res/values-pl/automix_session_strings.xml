@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">Sesja DJ</string>
+    <string name="settings_automix_session_detail">Pozwala przejściom zaczynać się na sekcji muzycznej przed końcem. Wyłącz, aby zachować więcej z każdego utworu.</string>
+    <string name="settings_automix_segue">Przejścia według planu</string>
+    <string name="settings_automix_segue_detail">Nowy sposób wybierania i odtwarzania przejść, z ostrzejszymi limitami: para może pozostać bez miksu. Wyłącz, aby wrócić do poprzedniego.</string>
+</resources>

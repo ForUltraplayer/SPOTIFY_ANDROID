@@ -63,6 +63,22 @@ def candidate_hash(state):
     return digest.hexdigest()
 
 
+# Build output and machine-local files in the candidate are not source.
+BUILD_DIRS = {'build', '.gradle', '.kotlin', '.idea'}
+
+
+def added_files(root, known):
+    """Source files created in the candidate after prepare (a new translation file): they join the inspected set."""
+    known = set(known)
+    found = []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in BUILD_DIRS]
+        for name in names:
+            rel = Path(folder, name).relative_to(root).as_posix()
+            if rel not in known and name != 'local.properties': found.append(rel)
+    return sorted(found)
+
+
 def detect(get=api):
     data = release()
     repo = data['upstream']
@@ -135,6 +151,11 @@ def verify(args):
     state = json.loads(STATE.read_text())
     root = Path(state['directory'])
     identity(root)
+    added = added_files(root, state['files'])
+    if added:
+        state['files'] += added
+        state.setdefault('modes', {}).update({name: '100644' for name in added})
+        STATE.write_text(json.dumps(state, indent=2)+'\n', encoding='utf-8')
     for name in state['files']:
         path = root / name
         if not path.exists(): continue

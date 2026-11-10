@@ -46,6 +46,15 @@ class MaintenanceTest(unittest.TestCase):
             before = maintenance.candidate_hash(state); path.write_text('after')
             self.assertNotEqual(before, maintenance.candidate_hash(state))
 
+    def test_files_created_after_prepare_join_the_candidate(self):
+        with tempfile.TemporaryDirectory() as area:
+            root = Path(area)
+            (root/'res/values-ko').mkdir(parents=True); (root/'res/values-ko/old.xml').write_text('old')
+            (root/'res/values-ko/new.xml').write_text('new')
+            (root/'app/build').mkdir(parents=True); (root/'app/build/out.apk').write_text('apk')
+            (root/'local.properties').write_text('sdk.dir=x')
+            self.assertEqual(['res/values-ko/new.xml'], maintenance.added_files(root, ['res/values-ko/old.xml']))
+
     def test_stable_behind_base_is_distinguished_from_new_beta(self):
         def get(path):
             if path.endswith('/releases/latest'): return {'tag_name': 'v1.0.0', 'html_url': 'stable'}

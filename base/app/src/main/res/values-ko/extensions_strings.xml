@@ -79,7 +79,6 @@
     <string name="extensions_move_up">위로 이동</string>
     <string name="extensions_move_down">아래로 이동</string>
     <string name="extension_off">꺼짐</string>
-    <string name="extension_by">만든 사람: %1$s</string>
     <string name="extension_changelog">변경 사항</string>
     <string name="extension_update_from">업데이트 가능: %1$s → %2$s</string>
     <string name="extension_not_listed">이 확장은 등록된 저장소에 없습니다(또는 저장소를 아직 불러오는 중입니다).</string>
@@ -97,6 +96,7 @@
     <string name="action_playback_queue">재생목록 편집</string>
     <string name="action_playback_events">재생하는 곡 정보 받기</string>
     <string name="action_lyrics_provide">가사 제공</string>
+    <string name="action_lyrics_romanize">가사 로마자 변환</string>
     <string name="action_trackinfo_provide">곡 정보 추가</string>
     <string name="action_audio_source">다른 곳의 오디오로 재생</string>
     <string name="action_download_source">다운로드 제공</string>
@@ -247,4 +247,5 @@
     <string name="ext_setting_cell">%1$s · 모바일 데이터</string>
     <!-- "Why this source?": the chosen extension's own quality setting; %1$s is "Quality: FLAC", %2$s the extension. -->
     <string name="why_source_ext_quality">자체 설정: %1$s(%2$s)</string>
+    <string name="extensions_guide">확장 설치 방법</string>
 </resources>

@@ -55,4 +55,11 @@
     <string name="nerd_mirror_off">オフ</string>
     <string name="nerd_spotify_note">Spotifyのストリームはページ内で暗号化されているため、正確なコーデックとビットレートは取得できません。ページが通知した情報のみ表示されます。</string>
     <string name="nerd_spotify_remote">音声は別のデバイスで再生されています。このスマホはそのデバイスを操作しているだけです。</string>
+    <string name="nerd_automix">AutoMix</string>
+    <string name="nerd_automix_blend">ビートを合わせたブレンド</string>
+    <string name="nerd_automix_cut">ビートでカット</string>
+    <string name="nerd_automix_fade">フェード</string>
+    <string name="nerd_automix_mixing">ミックス中: %1$s</string>
+    <string name="nerd_automix_planned">%2$sから%1$s、%3$d s</string>
+    <string name="nerd_automix_waiting">オン、予定されたミックスはまだありません</string>
 </resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">DJ 세션</string>
+    <string name="settings_automix_session_detail">곡이 끝나기 전 음악적 구간에서 전환을 시작합니다. 끄면 각 곡을 더 길게 들을 수 있습니다.</string>
+    <string name="settings_automix_segue">계획 기반 전환</string>
+    <string name="settings_automix_segue_detail">전환을 고르고 재생하는 새로운 방식으로, 제한이 더 엄격해서 믹스하지 않고 넘어가는 곡도 있을 수 있습니다. 끄면 이전 방식으로 돌아갑니다.</string>
+</resources>

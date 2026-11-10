@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">Sessione DJ</string>
+    <string name="settings_automix_session_detail">Lascia che le transizioni inizino su una sezione musicale prima della fine. Disattiva per mantenere di più di ogni brano.</string>
+    <string name="settings_automix_segue">Transizioni pianificate</string>
+    <string name="settings_automix_segue_detail">Un nuovo modo di scegliere e riprodurre le transizioni, con limiti più rigidi: una coppia può restare senza mix. Disattiva per tornare a quello precedente.</string>
+</resources>

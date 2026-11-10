@@ -14,7 +14,6 @@
     <string name="stats_this_week">이번 주: %1$d분</string>
     <string name="stats_listening_stats">청취 통계</string>
     <string name="friends_title">친구 활동</string>
-    <string name="friends_detail">팔로우하는 사람들이 듣고 있는 음악</string>
     <string name="friends_now">지금</string>
     <string name="friends_empty">아직 친구 활동이 없습니다. 팔로우하는 친구 중 Spotify에서 청취 활동을 공유하는 친구가 여기에 표시됩니다.</string>
     <string name="friends_failed">Spotify에서 친구 활동을 보내지 않았습니다.</string>

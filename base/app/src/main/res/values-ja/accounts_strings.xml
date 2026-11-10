@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Several Spotify accounts kept on the phone: Settings > Accounts and the sheet behind the avatar. -->
+<resources>
+    <string name="accounts_title">アカウント</string>
+    <string name="accounts_switch_row">アカウントを切り替え</string>
+    <string name="accounts_switch_row_detail">このスマートフォンにあるSpotifyアカウント</string>
+    <string name="accounts_add">アカウントを追加</string>
+    <string name="accounts_add_detail">Spotifyのログイン画面を開きます。ここにあるアカウントはログインしたままです</string>
+    <string name="accounts_add_single_detail">このアカウントからログアウトし、Spotifyのログイン画面を開きます</string>
+    <string name="accounts_not_signed_in">ログインしていません</string>
+    <string name="accounts_in_use">使用中</string>
+    <string name="accounts_plan_premium">Premium</string>
+    <string name="accounts_plan_free">Free</string>
+    <string name="accounts_switch_title">%1$sに切り替えますか？</string>
+    <string name="accounts_switch_text">再生が停止します。ダウンロードと再生履歴はそれぞれのアカウントのものに切り替わり、拡張機能は引き続き実行されます。</string>
+    <string name="accounts_switch_confirm">切り替える</string>
+    <string name="accounts_remove">削除</string>
+    <string name="accounts_remove_title">%1$sを削除しますか？</string>
+    <string name="accounts_remove_text">このアカウントのログイン情報とウェブデータが、再生履歴とともにこのスマートフォンから削除されます。ダウンロードは別に保管され、もう一度追加すると戻ります。</string>
+    <string name="accounts_footer">各アカウントはこのスマートフォンでログインしたままになります。切り替えると再生が停止し、ダウンロードと再生履歴はそれぞれのアカウントのものに切り替わります。拡張機能は引き続き実行されます。</string>
+    <string name="accounts_single_footer">このスマートフォンのWebViewは一度に1つのアカウントしか保持できません。アカウントを切り替えたり追加したりすると、現在のアカウントからログアウトし、Spotifyのログイン画面が開きます。Android System WebViewをアップデートすると、複数のアカウントでログインしたままにできます。</string>
+    <string name="accounts_back_to">%1$sに戻る</string>
+</resources>

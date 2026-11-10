@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Texts of the Immersive look's library pages: Recents, Downloaded, Local Files, folders, New releases (Japanese). -->
 <resources>
-    <string name="immersive_pages_songs">楽曲</string>
-    <string name="immersive_pages_artists">アーティスト</string>
-    <string name="immersive_pages_albums">アルバム</string>
-    <string name="immersive_pages_unknown_artist">不明なアーティスト</string>
-    <string name="immersive_pages_unknown_album">不明なアルバム</string>
     <string name="immersive_pages_name_hint">名前</string>
-    <string name="immersive_pages_play_group">%1$sを再生</string>
 </resources>

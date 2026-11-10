@@ -79,7 +79,6 @@
     <string name="extensions_move_up">上に移動</string>
     <string name="extensions_move_down">下に移動</string>
     <string name="extension_off">オフ</string>
-    <string name="extension_by">作成者：%1$s</string>
     <string name="extension_changelog">変更内容</string>
     <string name="extension_update_from">アップデートあり：%1$s → %2$s</string>
     <string name="extension_not_listed">この拡張機能は追加済みのリポジトリにありません（またはリポジトリを読み込み中です）。</string>
@@ -97,6 +96,7 @@
     <string name="action_playback_queue">再生キューの編集</string>
     <string name="action_playback_events">再生中の曲の把握</string>
     <string name="action_lyrics_provide">歌詞の提供</string>
+    <string name="action_lyrics_romanize">歌詞のローマ字化</string>
     <string name="action_trackinfo_provide">曲の詳細を追加</string>
     <string name="action_audio_source">別の場所のオーディオで再生</string>
     <string name="action_download_source">ダウンロードの提供</string>
@@ -247,4 +247,5 @@
     <string name="ext_setting_cell">%1$s · モバイルデータ</string>
     <!-- "Why this source?": the chosen extension's own quality setting; %1$s is "Quality: FLAC", %2$s the extension. -->
     <string name="why_source_ext_quality">独自の設定：%1$s（%2$s）</string>
+    <string name="extensions_guide">拡張機能のインストール方法</string>
 </resources>

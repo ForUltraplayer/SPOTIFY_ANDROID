@@ -1,11 +1,11 @@
 {
-  "version": "2.3.0-hangul.3",
-  "versionCode": 1095,
+  "version": "2.4.0-hangul.1",
+  "versionCode": 1096,
   "applicationId": "app.myspoti.hangul",
   "upstream": "kota-zo/myspoti",
-  "upstreamCommit": "a1be6804472abab93ba7a72c96e622a6b9ce3280",
+  "upstreamCommit": "95a24e7e4de82ec89d4ec11d5b05b146c44d78e7",
   "deviceValidation": "pending",
   "channel": "stable",
   "updateRepository": "ForUltraplayer/SPOTIFY_ANDROID",
-  "upstreamTag": "v2.3.0"
+  "upstreamTag": "v2.4.0"
 }

@@ -2,6 +2,13 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.4.0-hangul.1
+
+- Based on Myspoti 2.4.0: AutoMix with planned transitions, romanized lyrics (extensions can provide them), notifications for new releases and a What's New page, the next song kept ready, several Spotify accounts, Friends, Jam, Live Radio, own playlists reordered by hand, and its fixes
+- Hangul readings, YouTube links in playlists with their mixed order, per-song lyric sync and the LyricsPlus lookup are kept; romanizations that arrive later no longer drop a Hangul reading still loading
+- A playlist with YouTube links or phone files keeps its own order editor; Spotify's hand reordering is offered on the other playlists
+- Still one APK for both ARM phones (Myspoti-Hangul-<version>.apk)
+
 ## 2.3.0-hangul.3
 
 - Import list file also reads a mixed list exported by the PC version: its YouTube links come in a new phone list in the PC's mixed order, with the PC's lyric search name as title and artist when one is set. Phone lists cannot hold Spotify songs, so they are left out and the notice says how many. The PC version reads this app's list files too (YouTube links only; phone files play on their phone only). Both files keep their own format, so earlier files still open
@@ -41,6 +48,19 @@ Each release on GitHub shows its section below. The app shows it too when it off
 - Retry failed Hangul pronunciation lookups (up to 3 times, 2 s apart; cancelled on song change)
 - Fix the failure cache blocking retries
 - In-app update check now points to this repo's releases
+
+## 2.4.0
+
+- 🎧 **AutoMix**: two decks and a whole-song analysis mix the next song in on the beat, in both players, with a new engine that plans each transition: where the next song comes in, for how long and how the sound changes hands (you can turn it off in Settings). Next can do a real mix too (Settings: Cut, Quick mix or Real mix). Faster analysis, a faster start after leaving the app, a gentler tempo lock, and the speed coming back to normal slowly.
+- 📺 **Android TV**: Myspoti is in the TV launcher, with a short version for the remote (Library, Liked Songs, Search and the player).
+- 🔔 **New releases** of the artists you follow in a notification (Settings, on by default), and a **What's New** page behind a bell on Home.
+- 🈁 **Romanized lyrics** read apart from a translation, and extensions can now provide them.
+- ⏭️ **The next song kept ready**: songs from audio-source extensions go through the media cache (256 MB by default) and the next one is read whole ahead off mobile data, so it plays through a dropped network.
+- 👥 **Several Spotify accounts**, a **Friends** tab, **Jam** joined by link or QR, **Live Radio**, voice search, SponsorBlock for podcasts, spatial audio, and your own playlists reordered by hand.
+- 💿 **Share an album** from its menu; a guide to extensions linked from the Extensions page.
+- ⚡ **Faster**: the client token kept across launches, lists read four pages at a time, a source's status checked behind the song instead of before it, the audio sources started first at launch, and covers that wait for slow networks.
+- 🛠️ **Fixes**: seeking in the Immersive player after a song change no longer skips to the next song; shuffle on a long extension list no longer freezes the app; a song stuck at 0:10 on a stale token reloads instead of retrying for minutes; resuming with Tidal or another source after a relaunch; Podcasts and Documentaries no longer empty; Home refreshed; the birth month at sign-up; a soundbar's volume left alone (#159); the dark search field (#157); the tab bar's glass while changing tabs (#172); music paused during a phone call; playlists picker no longer loading for a minute (#145); Android Auto and Bluetooth controls (#142, #151); and the bugs reported on Discord and Reddit.
+- 🌍 Translations of everything new.
 
 ## 2.3.0
 

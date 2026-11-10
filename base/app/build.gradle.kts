@@ -13,8 +13,21 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// -PautomixLab: a test app with its own data, installed alongside every regular/dev build.
+val automixLab = findProperty("automixLab") != null
+
+
+/** The ABIs a release has an APK for, and how they are named in it (UpdateChecker reads the same names). */
+val RELEASE_ABIS = listOf("arm64-v8a", "armeabi-v7a")
+val ABI_NAMES = mapOf("arm64-v8a" to "ARMv8", "armeabi-v7a" to "ARMv7")
 
 android {
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { it.systemProperty("roborazzi.test.record", "true") }
+        }
+    }
     namespace = "app.myspoti.engine"
     compileSdk = 37
 
@@ -26,7 +39,7 @@ android {
     // so a plain Gradle build never goes back to a version code lower than the installed app's.
     val releaseJson = rootProject.file("../release.json").takeIf { it.isFile }?.readText().orEmpty()
     fun releaseField(name: String) = Regex("\"$name\"\\s*:\\s*\"?([^\",}\\s]+)").find(releaseJson)?.groupValues?.get(1)
-    val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.3.0"
+    val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.4.0"
     // "-beta" or "-hangul." as in UpdateChecker.isBeta, one predicate for the app id, the label and the log stripping.
     // Hangul builds stay on the beta side as before, so their Log.d diagnostics remain in the release APK.
     val beta = findProperty("appVersionName") == null || version.contains("-beta") || version.contains("-hangul.")
@@ -92,8 +105,8 @@ android {
     buildTypes {
         debug {
             // Installs next to the release apps (own data, own sign-in).
-            applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "Myspoti dev"
+            if (!automixLab) applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = if (automixLab) "Myspoti Mix Lab" else "Myspoti dev"
             manifestPlaceholders["cliEnabled"] = "true"
         }
         release {
@@ -102,7 +115,7 @@ android {
             signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
             // -PoverDev: the optimised build under the dev app's id, to measure the speed of a
             // beta on the test phone without replacing the signed beta installed there.
-            if (findProperty("overDev") != null) {
+            if (findProperty("overDev") != null && !automixLab) {
                 applicationIdSuffix = ".dev"
                 manifestPlaceholders["appLabel"] = "Myspoti dev"
             }
@@ -116,8 +129,11 @@ android {
             if (!beta) proguardFiles("proguard-strip-logs.pro")
         }
     }
+    // The Hangul release is one APK for both ABIs (Myspoti-Hangul-<version>.apk, see the ndk filter above),
+    // so the upstream ABI splits are off. x86 is left out: no phone Myspoti targets runs it.
     packaging {
         resources.merges += listOf("META-INF/CONTRIBUTORS.md", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        jniLibs { excludes += listOf("lib/x86/**", "lib/x86_64/**") }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -129,10 +145,17 @@ dependencies {
     implementation(project(":host-android"))
     implementation("org.jsoup:jsoup:1.21.2")
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
+    // AutoMix: song analysis and transition planning (pure Kotlin), Beat This on ONNX Runtime.
+    implementation(project(":automix"))
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.2")
     // Third-party extensions: the sandbox (Rhino), manifests, packages and catalogues.
     implementation(project(":extensions"))
+    // The queue's drag and drop (Apache-2.0): the row carried stays in the list, auto-scroll at the edges.
+    implementation("sh.calvin.reorderable:reorderable:3.1.0")
     // Jam: scan the invite QR code (Google code scanner, no camera permission).
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // Myspoti TV: the support links as QR codes (Apache-2.0), the encoder alone.
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     // The real org.json in unit tests (android.jar only has stubs).
     testImplementation("org.json:json:20240303")
@@ -188,8 +211,49 @@ dependencies {
     implementation("androidx.media3:media3-datasource:1.8.0")
     implementation("androidx.media3:media3-database:1.8.0")
 
+    // Screenshots of the TV screens on the computer (TvScreenshotTest): Robolectric draws them, Roborazzi saves them.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.40.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.40.1")
+    testImplementation(platform(libs.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
 
 
 
+
+}
+/**
+ * `./gradlew :app:collectApks` after assembleRelease: the APKs under clear names in
+ * build/release-apks/: Myspoti-2.4.0-ARMv8.apk (64-bit phones, almost all of them),
+ * Myspoti-2.4.0-ARMv7.apk (32-bit), Myspoti-2.4.0-universal.apk (both) and Myspoti-2.4.0-TV.apk
+ * (Android TV: the universal APK, since many TVs run 32-bit apps on a 64-bit chip). Betas are
+ * Myspoti-Beta-..., the optimised dev builds Myspoti-dev-...
+ */
+tasks.register("collectApks") {
+    mustRunAfter("assembleRelease")
+    val version = (findProperty("appVersionName") as String?) ?: "2.4.0"
+    val beta = findProperty("appVersionName") == null || version.contains("-beta")
+    val app = when { findProperty("overDev") != null -> "Myspoti-dev"; beta -> "Myspoti-Beta"; else -> "Myspoti" }
+    // Copies: the configuration cache cannot keep a reference to the script's own values.
+    val abis = RELEASE_ABIS.toList()
+    val abiNames = ABI_NAMES.toMap()
+    val from = layout.buildDirectory.dir("outputs/apk/release")
+    val into = layout.buildDirectory.dir("release-apks")
+    doLast {
+        val src = from.get().asFile
+        val dst = into.get().asFile.apply { deleteRecursively(); mkdirs() }
+        fun copy(name: String, to: String) {
+            val f = src.resolve(name)
+            if (!f.exists()) throw GradleException("$name missing: run assembleRelease without -Pabis first")
+            f.copyTo(dst.resolve(to), overwrite = true)
+        }
+        abis.forEach { abi ->
+            copy("app-$abi-release.apk", "$app-$version-${abiNames.getValue(abi)}.apk")
+        }
+        copy("app-universal-release.apk", "$app-$version-universal.apk")
+        copy("app-universal-release.apk", "$app-$version-TV.apk")
+        dst.listFiles()?.sorted()?.forEach { println("${it.name}  ${it.length() / 1024 / 1024} MB") }
+    }
 }

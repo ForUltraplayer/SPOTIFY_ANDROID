@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">DJ-сессия</string>
+    <string name="settings_automix_session_detail">Переходы могут начинаться на музыкальном разделе до конца трека. Выключите, чтобы сохранить больше от каждого трека.</string>
+    <string name="settings_automix_segue">Переходы по плану</string>
+    <string name="settings_automix_segue_detail">Новый способ выбирать и воспроизводить переходы, с более строгими ограничениями: пара может остаться без микса. Выключите, чтобы вернуться к прежнему.</string>
+</resources>

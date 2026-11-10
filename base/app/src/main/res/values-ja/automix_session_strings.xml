@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">DJセッション</string>
+    <string name="settings_automix_session_detail">曲の終わりより前の、曲の区切り（セクション）からトランジションを始められるようにします。オフにすると各曲をより長く聴けます。</string>
+    <string name="settings_automix_segue">プランに基づくトランジション</string>
+    <string name="settings_automix_segue_detail">トランジションを選んで再生する新しい方式で、制限がより厳しくなります。ミックスされない曲の組み合わせもあります。オフにすると以前の方式に戻ります。</string>
+</resources>

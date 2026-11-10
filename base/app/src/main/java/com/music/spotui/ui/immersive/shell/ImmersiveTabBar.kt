@@ -179,6 +179,7 @@ internal fun rememberTabNavigation(navController: NavController): TabNavigation 
     return TabNavigation(selectedTab, onTabClick, fullScreen)
 }
 
+// Friend activity is not a tab any more: it opens from Home's header, as in Spotify.
 private val TabRoutes = listOf(Routes.Home.route, Routes.Search.route, Routes.Library.route)
 
 /** The tabs the bar shows. */
@@ -228,7 +229,10 @@ internal fun TabBarContent(
                             color = tint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = TAB_ICON_LABEL_GAP),
+                            // Three tabs in the pill: a long label (Bibliothèque, with large text) shrinks a little before it is cut,
+                            // and keeps clear of the tab's rounded ends, which clip its first and last letters.
+                            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 11.sp, stepSize = 0.5.sp),
+                            modifier = Modifier.padding(top = TAB_ICON_LABEL_GAP).padding(horizontal = 6.dp),
                         )
                     },
                     onClick = { currentOnTabClick(item) },

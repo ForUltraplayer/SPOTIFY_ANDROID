@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live Radio (radio/ package): internet radio via the free radio-browser.info directory. -->
+<resources>
+    <string name="live_radio_title">Live Radio</string>
+    <string name="live_radio_subtitle">無料のradio-browser.infoディレクトリにあるインターネットラジオ局</string>
+    <string name="live_radio_search_hint">ラジオ局を検索</string>
+    <string name="live_radio_popular">人気のラジオ局</string>
+    <string name="live_radio_search_results">検索結果</string>
+    <string name="live_radio_favorites">お気に入り</string>
+    <string name="live_radio_favorite">お気に入りに追加</string>
+    <string name="live_radio_unfavorite">お気に入りから削除</string>
+    <string name="live_radio_no_results">ラジオ局が見つかりません</string>
+    <string name="live_radio_error">ラジオディレクトリに接続できませんでした。接続を確認して、もう一度お試しください。</string>
+    <string name="live_radio_settings_title">Live Radio</string>
+    <string name="live_radio_settings_detail">マイライブラリのローカルファイルの下にLive Radioフォルダを追加します。検索はradio-browser.infoディレクトリに送信され、各局のロゴとストリームはその局自身のサーバーから取得されます。</string>
+</resources>

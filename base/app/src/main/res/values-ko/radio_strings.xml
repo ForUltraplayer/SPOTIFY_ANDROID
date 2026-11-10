@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live Radio (radio/ package): internet radio via the free radio-browser.info directory. -->
+<resources>
+    <string name="live_radio_title">라이브 라디오</string>
+    <string name="live_radio_subtitle">무료 radio-browser.info 디렉터리의 인터넷 라디오 방송국</string>
+    <string name="live_radio_search_hint">방송국 검색</string>
+    <string name="live_radio_popular">인기 방송국</string>
+    <string name="live_radio_search_results">검색 결과</string>
+    <string name="live_radio_favorites">즐겨찾기</string>
+    <string name="live_radio_favorite">즐겨찾기에 추가</string>
+    <string name="live_radio_unfavorite">즐겨찾기에서 삭제</string>
+    <string name="live_radio_no_results">방송국을 찾을 수 없습니다</string>
+    <string name="live_radio_error">라디오 디렉터리에 연결할 수 없습니다. 연결 상태를 확인하고 다시 시도해 주세요.</string>
+    <string name="live_radio_settings_title">라이브 라디오</string>
+    <string name="live_radio_settings_detail">내 라이브러리의 로컬 파일 아래에 라이브 라디오 폴더를 추가합니다. 검색은 radio-browser.info 디렉터리로 전송되며, 각 방송국의 로고와 스트림은 해당 방송국의 서버에서 가져옵니다.</string>
+</resources>

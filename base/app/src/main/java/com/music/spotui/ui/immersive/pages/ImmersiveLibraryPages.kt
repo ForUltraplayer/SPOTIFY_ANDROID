@@ -1,5 +1,6 @@
 package com.music.spotui.ui.immersive.pages
 
+import com.music.spotui.ui.immersive.sheets.ImmersiveAlertDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,7 +13,6 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -93,9 +93,8 @@ fun ImmersiveFolderScreen(navController: NavController, uri: String, initialName
         ImmersiveSheetRow(Icons.Rounded.DeleteOutline, stringResource(R.string.folder_delete), destructive = true, onClick = { menu = false; deletingFolder = true })
     }
     itemMenu?.let { LibraryItemSheet(it, onDismiss = { itemMenu = null }, onChanged = { generation++ }) }
-    if (deletingFolder) AlertDialog(
+    if (deletingFolder) ImmersiveAlertDialog(
         onDismissRequest = { deletingFolder = false },
-        containerColor = Immersive.Raised,
         text = { Text(stringResource(R.string.folder_delete_confirm, name), style = Immersive.Body) },
         confirmButton = {
             TextButton(onClick = {

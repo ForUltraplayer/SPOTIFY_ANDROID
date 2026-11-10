@@ -5,6 +5,7 @@
  */
 package com.music.spotui.ui.immersive.screens
 
+import com.music.spotui.ui.immersive.sheets.ImmersiveGlassSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -114,11 +114,7 @@ internal fun ImmersiveProfileSheet(onOpen: (route: String) -> Unit, onDismiss: (
     val avatar = ProfileCache.imageUrl
     val myId = ProfileCache.id
     // Opened in full: half-open, the sheet and its list both moved under the finger.
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Immersive.Raised,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    ) {
+    ImmersiveGlassSheet(onDismiss, rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -167,10 +163,6 @@ internal fun ImmersiveProfileSheet(onOpen: (route: String) -> Unit, onDismiss: (
             SheetRow(stringResource(R.string.recents_title), stringResource(R.string.recents_detail)) {
                 onOpen(Routes.Recent.route)
             }
-            // What the followed people are listening to (the official Friend Activity feed).
-            SheetRow(stringResource(R.string.friends_title), stringResource(R.string.friends_detail)) {
-                onOpen(Routes.Friends.route)
-            }
             // Third-party extensions: installed, enabled, repositories.
             val extRegistry by com.music.spotui.extensions.Extensions.registry.collectAsState()
             val installed = extRegistry.extensions
@@ -209,6 +201,12 @@ internal fun ImmersiveProfileSheet(onOpen: (route: String) -> Unit, onDismiss: (
                 SheetRow(stringResource(R.string.supporter_perks_title), stringResource(R.string.supporter_perks_detail)) {
                     perks = true
                 }
+            }
+            // The other Spotify accounts kept on the phone: switch, add, remove.
+            var accounts by remember { mutableStateOf(false) }
+            if (accounts) com.music.spotui.ui.components.AccountsSheet(onDismiss = { accounts = false }, onLeave = { accounts = false; onDismiss() })
+            SheetRow(stringResource(R.string.accounts_switch_row), com.music.spotui.ui.components.switchAccountDetail()) {
+                accounts = true
             }
             SheetRow(stringResource(R.string.connect_device_menu_logout), null) {
                 onDismiss()

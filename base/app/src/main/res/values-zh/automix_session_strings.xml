@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_automix_session">DJ 模式</string>
+    <string name="settings_automix_session_detail">让过渡在结尾前的乐段处开始。关闭后每首歌会保留更多。</string>
+    <string name="settings_automix_segue">按计划过渡</string>
+    <string name="settings_automix_segue_detail">一种新的选择和播放过渡的方式，限制更严格：某些相邻歌曲可能不混音。关闭可回到之前的方式。</string>
+</resources>

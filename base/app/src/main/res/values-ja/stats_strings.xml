@@ -14,7 +14,6 @@
     <string name="stats_this_week">今週: %1$d分</string>
     <string name="stats_listening_stats">再生の統計</string>
     <string name="friends_title">友達のアクティビティ</string>
-    <string name="friends_detail">フォローしている人が聴いている音楽</string>
     <string name="friends_now">今</string>
     <string name="friends_empty">まだ友達のアクティビティはありません。フォローしている友達のうち、Spotifyで再生アクティビティを共有している人がここに表示されます。</string>
     <string name="friends_failed">Spotifyから友達のアクティビティが届きませんでした。</string>
