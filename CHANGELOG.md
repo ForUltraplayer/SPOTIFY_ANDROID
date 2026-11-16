@@ -2,6 +2,11 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.4.1-hangul.1
+
+- A page answer that came right after the app started or the player page reloaded is no longer lost: the first play or list request no longer waits out its 20 s timeout now and then
+- Still based on Myspoti 2.4.0; upstream 2.4.1 only offers to install Orpheon and is left out
+
 ## 2.4.0-hangul.1
 
 - Based on Myspoti 2.4.0: AutoMix with planned transitions, romanized lyrics (extensions can provide them), notifications for new releases and a What's New page, the next song kept ready, several Spotify accounts, Friends, Jam, Live Radio, own playlists reordered by hand, and its fixes

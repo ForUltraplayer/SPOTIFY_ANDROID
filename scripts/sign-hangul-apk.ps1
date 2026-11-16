@@ -13,11 +13,14 @@ $passwordFile = Join-Path $SigningDirectory 'keystore-password.txt'
 $expected = 'b56cf5007389de3d98c4064cf448c37c9c393118bdff9d52d037cf33452034c6'
 
 # Claude Desktop virtualizes %LOCALAPPDATA%\Android into its package folder; accept either location.
-$android = @((Join-Path $env:LOCALAPPDATA 'Android'),
-             (Join-Path $env:LOCALAPPDATA 'Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\Android')) |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_ 'Sdk\build-tools\36.0.0\apksigner.bat') } | Select-Object -First 1
+$roots = @((Join-Path $env:LOCALAPPDATA 'Android'),
+           (Join-Path $env:LOCALAPPDATA 'Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\Android'))
+$android = $roots | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'Sdk\build-tools\36.0.0\apksigner.bat') } | Select-Object -First 1
 if (-not $android) { throw 'Android build-tools 36.0.0 were not found.' }
-$env:JAVA_HOME = Join-Path $android 'jdk-21'
+# Outside Claude Desktop the SDK and jdk-21 can sit in different ones of these folders.
+$jdk = $roots | ForEach-Object { Join-Path $_ 'jdk-21' } | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'bin\java.exe') } | Select-Object -First 1
+if (-not $jdk) { throw 'jdk-21 was not found next to the Android SDK.' }
+$env:JAVA_HOME = $jdk
 $tools = Join-Path $android 'Sdk\build-tools\36.0.0'
 
 $badging = & (Join-Path $tools 'aapt2.exe') dump badging $Apk | Select-Object -First 1

@@ -1,6 +1,6 @@
 {
-  "version": "2.4.0-hangul.1",
-  "versionCode": 1096,
+  "version": "2.4.1-hangul.1",
+  "versionCode": 1097,
   "applicationId": "app.myspoti.hangul",
   "upstream": "kota-zo/myspoti",
   "upstreamCommit": "95a24e7e4de82ec89d4ec11d5b05b146c44d78e7",
