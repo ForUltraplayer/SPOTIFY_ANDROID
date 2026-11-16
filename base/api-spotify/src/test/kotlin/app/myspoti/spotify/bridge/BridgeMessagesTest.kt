@@ -45,6 +45,14 @@ class BridgeMessagesTest {
         bridge
     }
 
+    @Test fun `the bridge listens from its construction on`() {
+        // A message posted right after (a call's answer, "ready") was lost when the collector had
+        // not subscribed yet, and that call waited out its whole timeout (a flaky test, a slow start).
+        val host = FakeHost { "" }
+        Bridge(host, scope)
+        assertEquals(1, host.messages.subscriptionCount.value)
+    }
+
     @Test fun `calls still answer after malformed messages`() = runBlocking {
         val bridge = bridgeAfterGarbage { id -> """{"type":"result","id":$id,"ok":true,"value":42}""" }
         assertEquals(JsonPrimitive(42), bridge.call("bridge.version", timeoutMs = 2_000))

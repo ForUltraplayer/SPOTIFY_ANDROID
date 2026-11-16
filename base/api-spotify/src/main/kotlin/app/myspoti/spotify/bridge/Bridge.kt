@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +43,10 @@ class Bridge(private val host: BridgeHost, scope: CoroutineScope) {
     val events: SharedFlow<Pair<String, JsonElement>> = _events
 
     init {
-        scope.launch {
+        // Listening before the constructor returns (undispatched): a page message posted right
+        // after (a call's answer, "ready") reached no collector yet and was lost, the call then
+        // waiting out its whole timeout.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             // A message the bridge did not write (another script, a future page) must never
             // end this collector: it runs on the main thread, where a throw kills the app.
             host.messages.collect { raw ->
