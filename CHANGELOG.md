@@ -2,6 +2,11 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.4.1-hangul.2
+
+- Getting ready for the next base: the update check knows this app by its id instead of "-hangul" in the version, and also takes an APK named myspoti-ex-<version>.apk, so the 3.0.0 versions to come install as updates from here
+- Nothing else changes
+
 ## 2.4.1-hangul.1
 
 - A page answer that came right after the app started or the player page reloaded is no longer lost: the first play or list request no longer waits out its 20 s timeout now and then

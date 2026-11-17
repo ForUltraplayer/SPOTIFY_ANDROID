@@ -104,6 +104,25 @@ class UpdateCheckerTest {
         assertNull(offered(listOf(release("2.0.1-hangul.12", prerelease = false, draft = true)), "2.0.1-hangul.9"))
     }
 
+    @Test fun hangulBuildsWithoutTheSuffixStillTakeEitherKindAndTheirOwnApk() {
+        // From 3.0.0 the Hangul versions drop "-hangul": the app id says it is the Hangul build.
+        fun rel(version: String, apk: String, prerelease: Boolean = false) = org.json.JSONObject()
+            .put("tag_name", "v$version").put("html_url", "https://x/$version").put("prerelease", prerelease).put("draft", false)
+            .put("assets", org.json.JSONArray().put(org.json.JSONObject().put("name", "myspoti-ex-$version.apk").put("browser_download_url", "https://x/ex"))
+                .put(org.json.JSONObject().put("name", apk).put("browser_download_url", "https://x/other")))
+        val list = listOf(rel("3.0.1", "Myspoti-3.0.1-ARMv8.apk", prerelease = true), rel("3.0.0", "Myspoti-3.0.0-ARMv8.apk"))
+        val found = UpdateChecker.newest(list, "3.0.0", hangul = true)!!
+        assertEquals("3.0.1", found.version)
+        assertEquals("https://x/ex", found.apkUrl)
+        // A 2.x Hangul build is offered 3.0.0 and its myspoti-ex APK.
+        assertEquals("https://x/ex", UpdateChecker.newest(listOf(rel("3.0.0", "x.apk")), "2.4.1-hangul.2", hangul = true)!!.apkUrl)
+        // The older name still counts, and an upstream-named APK alone gives no link.
+        val old = org.json.JSONObject("""{"tag_name":"v3.0.2","assets":[{"name":"Myspoti-Hangul-3.0.2.apk","browser_download_url":"https://x/h"}]}""")
+        assertEquals("https://x/h", UpdateChecker.apkAsset(old, hangul = true))
+        val upstream = org.json.JSONObject("""{"tag_name":"v3.0.2","assets":[{"name":"Myspoti-3.0.2-ARMv8.apk","browser_download_url":"https://x/u"}]}""")
+        assertEquals("", UpdateChecker.apkAsset(upstream, abis = listOf("arm64-v8a"), hangul = true))
+    }
+
     @Test fun upstreamChannelsStayApart() {
         // An upstream beta still takes pre-releases only; a release build is given the latest release alone.
         assertNull(offered(listOf(release("2.0.2", prerelease = false)), "2.0.2-beta.3"))

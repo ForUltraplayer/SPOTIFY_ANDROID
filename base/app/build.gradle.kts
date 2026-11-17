@@ -40,9 +40,11 @@ android {
     val releaseJson = rootProject.file("../release.json").takeIf { it.isFile }?.readText().orEmpty()
     fun releaseField(name: String) = Regex("\"$name\"\\s*:\\s*\"?([^\",}\\s]+)").find(releaseJson)?.groupValues?.get(1)
     val version = (findProperty("appVersionName") as String?) ?: releaseField("version") ?: "2.4.0"
-    // "-beta" or "-hangul." as in UpdateChecker.isBeta, one predicate for the app id, the label and the log stripping.
-    // Hangul builds stay on the beta side as before, so their Log.d diagnostics remain in the release APK.
-    val beta = findProperty("appVersionName") == null || version.contains("-beta") || version.contains("-hangul.")
+    // "-beta", or the Hangul app, as in UpdateChecker.isBeta: one predicate for the label, the adb CLI and the log stripping.
+    // Hangul builds stay on the beta side as before, so their Log.d diagnostics remain in the release APK; from 3.0.0
+    // their version has no "-hangul", so release.json's app id says it.
+    val beta = findProperty("appVersionName") == null || version.contains("-beta") || version.contains("-hangul.") ||
+        releaseField("applicationId") == "app.myspoti.hangul"
     defaultConfig {
         applicationId = "app.myspoti.hangul"
         // One name in every language (the package id app.myspoti.hangul stays, so updates install over it).

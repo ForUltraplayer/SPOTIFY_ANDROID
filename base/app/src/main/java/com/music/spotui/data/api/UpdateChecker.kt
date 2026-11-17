@@ -99,18 +99,18 @@ object UpdateChecker {
             if (!r.isSuccessful) return@use Fetch.Err(r.code == 429 || (r.code == 403 && r.header("x-ratelimit-remaining") == "0"))
             val text = r.body.string()
             val list = if (isBeta) org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.getJSONObject(it) } } else listOf(JSONObject(text))
-            Fetch.Ok(newest(list, BuildConfig.VERSION_NAME))
+            Fetch.Ok(newest(list, BuildConfig.VERSION_NAME, hangul = isHangul))
         }
     } catch (e: Exception) { Fetch.Err(false) }
 
     /**
      * The newest of GitHub's [releases] that a build of [version] takes. Betas and releases are two
      * apps (different package names, one cannot update the other): each one is offered its own
-     * channel only. The Hangul builds are one app published both ways, so they take either.
+     * channel only. The Hangul builds ([hangul]) are one app published both ways, so they take either.
      */
-    internal fun newest(releases: List<JSONObject>, version: String): Release? =
-        releases.filter { !it.optBoolean("draft") && (hangulChannel(version) || !betaChannel(version) || it.optBoolean("prerelease")) }
-            .map { Release(it.getString("tag_name").removePrefix("v"), it.getString("html_url"), cleanNotes(it.optString("body")), apkAsset(it)) }
+    internal fun newest(releases: List<JSONObject>, version: String, hangul: Boolean = hangulChannel(version)): Release? =
+        releases.filter { !it.optBoolean("draft") && (hangul || !betaChannel(version) || it.optBoolean("prerelease")) }
+            .map { Release(it.getString("tag_name").removePrefix("v"), it.getString("html_url"), cleanNotes(it.optString("body")), apkAsset(it, hangul = hangul.takeIf { it })) }
             .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
 
     /** The newer release last seen, dismissed or not (no request): what Settings > About shows. */
@@ -137,13 +137,18 @@ object UpdateChecker {
      * or `myspoti-<version>.apk`. Only this channel's APK: a release carrying both must not hand a
      * phone the other channel's build (a different package, it could not update this one), and a
      * name that matches none (or no APK for this phone's ABIs) gives no link.
-     * A Hangul release carries one `Myspoti-Hangul-<version>.apk` for both ABIs and nothing else is taken.
+     * A Hangul release carries one APK for both ABIs, `Myspoti-Hangul-<version>.apk` or, from 3.0.0 on,
+     * `myspoti-ex-<version>.apk`, and nothing else is taken. [hangul]: a Hangul build is asking (its
+     * releases drop "-hangul" from 3.0.0 on); null: the release's own version says (older tests).
      */
-    internal fun apkAsset(release: JSONObject, beta: Boolean = isBeta, abis: List<String> = deviceAbis): String {
+    internal fun apkAsset(release: JSONObject, beta: Boolean = isBeta, abis: List<String> = deviceAbis, hangul: Boolean? = null): String {
         val assets = release.optJSONArray("assets") ?: return ""
         val version = release.optString("tag_name").removePrefix("v")
-        if (hangulChannel(version)) return (0 until assets.length()).map { assets.getJSONObject(it) }
-            .firstOrNull { it.optString("name") == "Myspoti-Hangul-$version.apk" }?.optString("browser_download_url").orEmpty()
+        if (hangul ?: hangulChannel(version)) {
+            val byName = (0 until assets.length()).map { assets.getJSONObject(it) }.associateBy { it.optString("name") }
+            return listOf("Myspoti-Hangul-$version.apk", "myspoti-ex-$version.apk")
+                .firstNotNullOfOrNull { byName[it] }?.optString("browser_download_url").orEmpty()
+        }
         val named = "${if (beta) "Myspoti-Beta" else "Myspoti"}-$version"
         val channel = "myspoti-${if (beta) "beta" else "stable"}-$version"
         val byName = (0 until assets.length()).map { assets.getJSONObject(it) }.associateBy { it.optString("name") }
@@ -179,7 +184,9 @@ object UpdateChecker {
     internal fun betaChannel(version: String) = version.contains("-beta") || version.contains("-hangul.")
     /** A Hangul build ("2.0.1-hangul.9"): it reads the release list as betas do, and takes its releases too. */
     internal fun hangulChannel(version: String) = version.contains("-hangul.")
-    val isBeta get() = betaChannel(BuildConfig.VERSION_NAME)
+    /** This app is the Hangul build (app.myspoti.hangul, .dev in debug), whatever its version name: 3.0.0 has no "-hangul". */
+    val isHangul get() = BuildConfig.APPLICATION_ID.startsWith("app.myspoti.hangul") || hangulChannel(BuildConfig.VERSION_NAME)
+    val isBeta get() = betaChannel(BuildConfig.VERSION_NAME) || isHangul
 
     /**
      * "1.10.0" > "1.9.2". A release is newer than its betas ("2.0.0" > "2.0.0-beta.3"), and

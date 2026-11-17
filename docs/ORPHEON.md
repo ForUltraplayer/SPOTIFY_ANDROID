@@ -37,12 +37,39 @@ v2.4.0 대비 원본 main은 커밋 2개, 파일 932개(추가 422, 수정 494, 
 
 기본 문구는 91개가 새로 생기고 92개가 없어진다. 영어 기본 리소스에서 `Orpheon`이 들어간 줄은 53줄이다(`myspoti_strings.xml` 29, `extensions_strings.xml` 14 등, 번역하지 않는 항목 포함). 한국어와 일본어는 새 문구를 이 저장소에서 번역해야 한다.
 
-## 병합 전에 정할 것
+## 정한 것
 
-1. 앱 이름: 홈 화면 이름은 지금처럼 Myspoti-ex로 둘지, 원본처럼 Orpheon 계열로 바꿀지. 앱 식별자는 `app.myspoti.hangul`을 유지해야 기존 설치본 위에 업데이트된다.
+2026-11-17에 소유자가 정했다.
+
+| 항목 | 결정 |
+|---|---|
+| 아이콘 | Myspoti 아이콘 유지. 원본이 바꾼 홈 화면 아이콘(`ic_launcher_foreground*.xml`, `ic_launcher_monochrome.xml`), 시작 아이콘(`splash_icon.xml`), TV 배너(`tv_banner.png`)는 병합할 때 지금 파일로 남긴다. 원본 아이콘은 임시(placeholder)라고 원본 커밋에 적혀 있다 |
+| 버전 번호 | Orpheon 병합판부터 `3.0.0`으로 시작해 `3.0.1`처럼 올린다. 뒤의 `-hangul.N`은 붙이지 않는다. 원본 기준은 `release.json`의 `upstreamTag`에 남긴다 |
+| 앱 식별자 | `app.myspoti.hangul` 유지(기존 설치본 위에 업데이트되려면 필수) |
+| APK 파일 이름 | 3.0.0부터 `myspoti-ex-<버전>.apk` 하나만 올린다 |
+
+## 아직 정할 것
+
+1. 홈 화면 이름: 지금처럼 Myspoti-ex로 둘지, 원본처럼 Orpheon 계열로 바꿀지.
 2. 화면 문구의 원본 이름: 설정·안내 문구에 들어간 `Orpheon`을 그대로 둘지, 한글판 이름으로 바꿀지.
-3. 버전 번호: Orpheon은 1.0.0부터 시작하지만 한글판 업데이트 확인은 버전 이름을 비교한다. `1.0.0-hangul.1`은 `2.4.1-hangul.1`보다 낮아 업데이트로 안내되지 않는다. 예를 들어 `3.0.0-hangul.1`처럼 2.x보다 높은 번호를 쓰고, 원본 기준은 `release.json`의 `upstreamTag`에 남기는 방식을 제안한다.
-4. 원본 저장소 이름: `release.json`의 `upstream`은 아직 `kota-zo/myspoti`다. GitHub가 새 이름으로 연결해 주어 지금은 동작하지만, 병합할 때 `kota-zo/Orpheon`으로 바꾼다.
+
+## `-hangul` 없는 버전으로 넘어가는 준비
+
+2.4.1-hangul.1까지의 앱은 버전 이름에 `-hangul.`이 있는지로 한글판인지를 판단했다. 그래서 `3.0.0`처럼 꼬리를 빼면 업데이트 확인이 원본 정식 채널처럼 동작하고, APK도 `myspoti-<버전>.apk` 같은 원본식 이름만 찾는다. 이 문제를 3.0.0보다 먼저 나가는 2.4.1-hangul.2에서 고쳤다.
+
+| 위치 | 2.4.1-hangul.2에서 바꾼 내용 |
+|---|---|
+| `UpdateChecker.isHangul` | 앱 식별자가 `app.myspoti.hangul`(디버그는 `.dev`)이면 버전 이름과 상관없이 한글판으로 본다 |
+| `UpdateChecker.newest` | 한글판은 정식과 시험판 릴리스를 모두 받는다(버전 이름이 아닌 `isHangul` 기준) |
+| `UpdateChecker.apkAsset` | 한글판은 `Myspoti-Hangul-<버전>.apk`와 `myspoti-ex-<버전>.apk` 중 있는 쪽을 받는다 |
+| `base/app/build.gradle.kts`의 `beta` | `release.json`의 앱 식별자가 `app.myspoti.hangul`이면 지금처럼 베타 쪽으로 빌드해 진단 로그와 adb 명령줄을 남긴다 |
+| `UpdateCheckerTest` | `3.0.0` 형식 버전과 `myspoti-ex` 파일 이름 사례를 추가했다 |
+
+이미 설치된 앱이 3.0.0을 받으려면 3.0.0이 나오기 전에 2.4.1-hangul.2 이상으로 업데이트돼 있어야 한다. 옛 앱은 가장 새 릴리스 하나만 보는데, 2.4.1-hangul.1 이하는 `myspoti-ex-<버전>.apk`를 찾지 못하기 때문이다(2.0.1-hangul.10, 2.3.0-hangul.3, 2.4.x의 코드로 확인, 기기 시험은 안 함). 3.0.0을 내기 전에 쓰는 휴대폰이 2.4.1-hangul.2 이상인지 확인한다. 그보다 오래된 앱이 남아 있으면 3.0.0 릴리스에 같은 APK를 `myspoti-3.0.0.apk`로도 올리면 그 앱도 받는다.
+
+`build-hangul.ps1`과 `sign-hangul-apk.ps1`은 출력 파일을 아직 `Myspoti-Hangul-<버전>.apk`로 만든다. 3.0.0 병합 때 `myspoti-ex-<버전>.apk`로 바꾼다.
+
+원본 저장소 이름도 병합할 때 바꾼다. `release.json`의 `upstream`은 아직 `kota-zo/myspoti`이고, GitHub가 새 이름으로 연결해 주어 지금은 동작한다.
 
 ## 이미 반영한 원본 수정
 
