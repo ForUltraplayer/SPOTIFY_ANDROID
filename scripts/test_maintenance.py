@@ -63,6 +63,15 @@ class MaintenanceTest(unittest.TestCase):
         result = maintenance.detect(get)
         self.assertEqual(['behind', 'ahead'], [r['comparison'] for r in result['releases']])
 
+    def test_upstream_with_a_new_history_is_reported_not_a_crash(self):
+        # Orpheon 1.0.0 started its history again: GitHub answers 404 "No common ancestor".
+        def get(path):
+            if path.endswith('/releases/latest'): return {'tag_name': 'v1.0.0', 'html_url': 'stable'}
+            if '/releases?' in path: return []
+            raise maintenance.urllib.error.HTTPError(path, 404, 'No common ancestor', {}, None)
+        [row] = maintenance.detect(get)['releases']
+        self.assertEqual(('unrelated', None, None), (row['comparison'], row['commits'], row['changed_files']))
+
     def test_conflict_markers_block_build(self):
         with tempfile.TemporaryDirectory() as area:
             root = Path(area); self.fixture(root)

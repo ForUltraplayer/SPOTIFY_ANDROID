@@ -79,6 +79,15 @@ def added_files(root, known):
     return sorted(found)
 
 
+def compare(get, repo, base, tag):
+    """GitHub's comparison of our base with an upstream tag; status 'unrelated' when they share no commit
+    (upstream started its history again: Orpheon 1.0.0 is one commit, its old tags deleted)."""
+    try: return get(repo+'/compare/'+base+'...'+tag)
+    except urllib.error.HTTPError as error:
+        if error.code == 404: return {'status': 'unrelated'}
+        raise
+
+
 def detect(get=api):
     data = release()
     repo = data['upstream']
@@ -88,10 +97,10 @@ def detect(get=api):
     beta = next((r for r in releases if r['prerelease'] and not r['draft']), None)
     for channel, item in [('stable', stable), ('beta', beta)]:
         if not item: continue
-        comparison = get(repo+'/compare/'+data['upstreamCommit']+'...'+item['tag_name'])
+        comparison = compare(get, repo, data['upstreamCommit'], item['tag_name'])
         rows.append({'channel': channel, 'tag': item['tag_name'], 'url': item['html_url'],
-                     'comparison': comparison['status'], 'commits': comparison['ahead_by'],
-                     'changed_files': len(comparison.get('files', []))})
+                     'comparison': comparison['status'], 'commits': comparison.get('ahead_by'),
+                     'changed_files': len(comparison.get('files', [])) if 'files' in comparison else None})
     return {'checked_at': datetime.now(timezone.utc).isoformat(), 'base': data['upstreamCommit'], 'releases': rows}
 
 
@@ -101,7 +110,11 @@ def merge(tag):
     git('fetch', '--no-tags', 'https://github.com/'+data['upstream']+'.git', 'refs/tags/'+tag)
     revision = git('rev-parse', 'FETCH_HEAD^{commit}').stdout.decode().strip()
     head = git('rev-parse', 'HEAD').stdout.decode().strip()
-    result = git('merge-tree', '--write-tree', '--name-only', head, revision, check=False)
+    # No shared commit (upstream rewrote its history): our recorded upstream commit, which we still have,
+    # stands in as the merge base, so the merge shows upstream's changes since it.
+    shared = git('merge-base', head, revision, check=False).returncode == 0
+    base = [] if shared else ['--merge-base='+data['upstreamCommit']]
+    result = git('merge-tree', '--write-tree', '--name-only', *base, head, revision, check=False)
     if result.returncode not in (0, 1): raise ValueError(result.stderr.decode(errors='replace'))
     lines = result.stdout.decode().splitlines()
     conflicts = []
@@ -214,20 +227,26 @@ def report(row, get=api, merged=merge):
     """(title prefix, title, body) of the change issue for one upstream channel that moved past our base."""
     data = release()
     repo, channel = data['upstream'], {'stable': '정식', 'beta': '베타'}[row['channel']]
-    compare = get(repo+'/compare/'+data['upstreamCommit']+'...'+row['tag'])
-    commits, files = compare.get('commits', []), compare.get('files', [])
+    comparison = compare(get, repo, data['upstreamCommit'], row['tag'])
+    commits, files = comparison.get('commits', []), comparison.get('files', [])
+    unrelated = comparison.get('status') == 'unrelated'
     conflicts = merged(row['tag'])[3]
     subjects = [c['commit']['message'].split('\n', 1)[0] for c in reversed(commits)][:60]
+    scale = ('| 비교 | 원본이 기록을 새로 시작해 우리 기준 커밋과 공통 커밋이 없다. 충돌 예상은 기준 커밋 '+data['upstreamCommit'][:8]+'을 병합 기준으로 계산했다. |\n'
+             if unrelated else
+             '| 비교 | https://github.com/'+repo+'/compare/'+data['upstreamCommit']+'...'+row['tag']+' |\n'
+             '| 규모 | 커밋 '+str(comparison['ahead_by'])+'개, 바뀐 파일 '+str(len(files))+('개 이상' if len(files) >= 300 else '개')+' |\n')
+    history = ('' if unrelated else
+               '\n### 커밋 (최신순, '+str(comparison['ahead_by'])+'개 중 '+str(len(subjects))+'개)\n\n'+fence('\n'.join(subjects), 8000)+'\n'
+               '\n### 바뀐 파일 (최대 100개)\n\n'+fence('\n'.join(f['filename'] for f in files[:100]), 6000)+'\n')
     text = ('**Myspoti '+channel+'** '+data.get('upstreamTag', data['upstreamCommit'][:7])+' → '+row['tag']+'\n\n'
             '| 항목 | 내용 |\n| --- | --- |\n| 원본 | '+row['url']+' |\n'
-            '| 비교 | https://github.com/'+repo+'/compare/'+data['upstreamCommit']+'...'+row['tag']+' |\n'
-            '| 규모 | 커밋 '+str(compare['ahead_by'])+'개, 바뀐 파일 '+str(len(files))+('개 이상' if len(files) >= 300 else '개')+' |\n'
+            + scale +
             '| 충돌 예상 | 우리 소스와 병합하면 '+str(len(conflicts))+'개 파일 |\n'
             '| 반영 | 자동으로 반영하지 않는다. 허가하면 이 버전에 우리 패치를 다시 붙이고 충돌을 해결한 뒤 검사와 휴대폰 확인을 거쳐 배포한다. |\n'
             '\n### 원본 릴리스 노트\n\n'+fence(get(repo+'/releases/tags/'+row['tag']).get('body'), 6000)+'\n'
             '\n### 충돌 예상 파일\n\n'+fence('\n'.join(conflicts), 4000)+'\n'
-            '\n### 커밋 (최신순, '+str(compare['ahead_by'])+'개 중 '+str(len(subjects))+'개)\n\n'+fence('\n'.join(subjects), 8000)+'\n'
-            '\n### 바뀐 파일 (최대 100개)\n\n'+fence('\n'.join(f['filename'] for f in files[:100]), 6000)+'\n')
+            + history)
     return '원본 업데이트: Myspoti '+channel+' ', '원본 업데이트: Myspoti '+channel+' '+row['tag'], text
 
 
@@ -250,7 +269,7 @@ def publish(prefix, title, text, run=gh):
 
 
 def notify():
-    rows = [row for row in detect()['releases'] if row['comparison'] == 'ahead' and row['commits']]
+    rows = [row for row in detect()['releases'] if (row['comparison'] == 'ahead' and row['commits']) or row['comparison'] == 'unrelated']
     if rows: gh('label', 'create', 'upstream', '--repo', os.environ.get('GITHUB_REPOSITORY', release()['updateRepository']),
                 '--color', '0E8A16', '--description', '원본 변경 알림', '--force')
     for row in rows:
