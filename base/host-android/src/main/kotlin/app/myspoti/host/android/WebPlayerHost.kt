@@ -30,7 +30,8 @@ import java.io.ByteArrayInputStream
  * [BridgeHost] on an Android WebView that loads the official Web Player.
  *
  * - The WebView is built on the application context, so playback outlives activities.
- * - Desktop user agent: on a phone UA the Web Player only offers to open the app.
+ * - Desktop user agent: on a phone UA the Web Player only offers to open the app. The sign-in
+ *   pages get the WebView's own instead ([PageIdentity]).
  * - Protected media (Widevine) is allowed; ad audio requests ([AdBlock]) are refused.
  * - [loginRequired] turns true on Spotify's login pages: the UI then shows [view] so the
  *   user signs in on Spotify's own page.
@@ -228,8 +229,59 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         purgeRemovedProfiles()
     }
 
+    // Declared before [view]: the first createView() reads and writes them.
+    private val metadataSupported = androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)
+    /** The identity the current [view] presents ([presentAs]). */
+    private var identity = PageIdentity.PLAYER
+    /** The view [identity] was applied to: a new view (a rebuild) has none of it yet. */
+    private var presentedOn: WebView? = null
+    /** The WebView's own client hints, read before ours replace them: the sign-in gets them back. */
+    private var ownMetadata: androidx.webkit.UserAgentMetadata? = null
+
     @SuppressLint("SetJavaScriptEnabled")
     var view: WebView = createView()
+
+    /**
+     * Has [on] present [wanted] for the requests that follow. A user agent change does not touch a
+     * request already sent, and changed during a load it makes the WebView load again on its own:
+     * callers change it with nothing loading, or just before a loadUrl that replaces that load.
+     */
+    private fun presentAs(wanted: PageIdentity, on: WebView = view) {
+        if (on === presentedOn && wanted == identity) return
+        val signIn = wanted == PageIdentity.SIGN_IN
+        // null is the WebView's own user agent, the one a plain WebView (accepted by the sign-in) sends.
+        on.settings.userAgentString = if (signIn) null else fingerprint.userAgent
+        if (metadataSupported) (if (signIn) ownMetadata else desktopMetadata())?.let {
+            androidx.webkit.WebSettingsCompat.setUserAgentMetadata(on.settings, it)
+        }
+        if (wanted != identity) Logbook.log(if (signIn) "identity: sign-in (webview default)" else "identity: player (desktop)")
+        identity = wanted
+        presentedOn = on
+    }
+
+    /** Loads [url] in the identity its page needs ([LoginLoad.identityFor]). Main thread. */
+    private fun navigate(url: String) {
+        presentAs(LoginLoad.identityFor(url, identity))
+        view.loadUrl(url)
+    }
+
+    /**
+     * Client hints that agree with the desktop user agent: by default the WebView announces
+     * "Android WebView" / mobile in Sec-CH-UA headers and navigator.userAgentData.
+     */
+    private fun desktopMetadata(): androidx.webkit.UserAgentMetadata = androidx.webkit.UserAgentMetadata.Builder()
+        .setBrandVersionList(fingerprint.brands.map {
+            androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand(it.name).setMajorVersion(it.major).setFullVersion(it.fullVersion).build()
+        })
+        .setFullVersion(fingerprint.fullVersion)
+        .setPlatform("Linux")
+        .setPlatformVersion(fingerprint.kernel)
+        .setArchitecture("x86")
+        .setBitness(64)
+        .setMobile(false)
+        .setModel("")
+        .setWow64(false)
+        .build()
 
     /**
      * Builds the page view. Called once at startup, and again after a renderer crash: a WebView
@@ -244,7 +296,6 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
-            userAgentString = fingerprint.userAgent
             cacheMode = WebSettings.LOAD_DEFAULT
             loadWithOverviewMode = true
             useWideViewPort = true
@@ -260,24 +311,11 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         } else {
             Logbook.log("x-requested-with: cannot be turned off on this WebView")
         }
-        // Client hints must agree with the desktop user agent: by default the WebView announces
-        // "Android WebView" / mobile in Sec-CH-UA headers and navigator.userAgentData.
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
-            val brands = fingerprint.brands.map {
-                androidx.webkit.UserAgentMetadata.BrandVersion.Builder().setBrand(it.name).setMajorVersion(it.major).setFullVersion(it.fullVersion).build()
-            }
-            androidx.webkit.WebSettingsCompat.setUserAgentMetadata(settings, androidx.webkit.UserAgentMetadata.Builder()
-                .setBrandVersionList(brands)
-                .setFullVersion(fingerprint.fullVersion)
-                .setPlatform("Linux")
-                .setPlatformVersion(fingerprint.kernel)
-                .setArchitecture("x86")
-                .setBitness(64)
-                .setMobile(false)
-                .setModel("")
-                .setWow64(false)
-                .build())
-        }
+        // The WebView's own client hints, before anything of ours is set: what the sign-in presents.
+        if (metadataSupported) ownMetadata = androidx.webkit.WebSettingsCompat.getUserAgentMetadata(settings)
+        // The identity of the page this view comes back to (a rebuild mid sign-in: the sign-in's);
+        // the loads that follow set the one their own page needs (see [navigate]).
+        presentAs(identity, on = this)
         // The page plays the audio: its renderer keeps its priority when the screen is off.
         setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         // Playback control requests leave from the app, without the WebView's X-Requested-With.
@@ -359,6 +397,14 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 Logbook.log("page start ${Logbook.noQuery(url).take(120)}")
+                // A navigation [shouldOverrideUrlLoading] did not see (back, forward) went out in the other
+                // page's identity: sent again in its own, before this page is taken for anything.
+                if (view === this@WebPlayerHost.view && LoginLoad.identityFor(url, identity) != identity) {
+                    Logbook.log("page started in the wrong identity: loaded again")
+                    view.stopLoading()
+                    main.post { if (view === this@WebPlayerHost.view) navigate(url) }
+                    return
+                }
                 mainFrameFailed = false
                 // A "finished" comes just before the player's document starts: its wait must not run out on a
                 // page still loading (a page thrown away at 10 s, and a cold start of 30 s, on the test phone).
@@ -451,8 +497,21 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
                 // The page's own loads (loadUrl, about:blank) do not come through here.
                 val secure = request.url.scheme == "https"
                 // A sign-in step that goes nowhere looks like a page that does nothing: say which host was refused.
-                if (!allowed || !secure) Logbook.log("navigation refused: ${host.ifEmpty { request.url.scheme.orEmpty() }}${if (allowed && !secure) " (${request.url.scheme}, not https)" else ""}")
-                return !(allowed && secure)
+                if (!allowed || !secure) {
+                    Logbook.log("navigation refused: ${host.ifEmpty { request.url.scheme.orEmpty() }}${if (allowed && !secure) " (${request.url.scheme}, not https)" else ""}")
+                    return true
+                }
+                // The page moves between the sign-in and the player (signed in: Spotify sends it on to
+                // open.spotify.com; a session gone: the player sends it to the sign-in). That request is
+                // not sent yet and would leave in the identity of the page it comes from: it is dropped
+                // and loaded again in its own. A redirect too: its answer was already received, only
+                // the next request is sent again. Main frame only: a captcha or a social frame is not.
+                val target = request.url.toString()
+                if (request.isForMainFrame && view === this@WebPlayerHost.view && LoginLoad.identityFor(target, identity) != identity) {
+                    main.post { if (view === this@WebPlayerHost.view) navigate(target) }
+                    return true
+                }
+                return false
             }
 
             /**
@@ -506,7 +565,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         if (then != null) { then(); return@post }
         // The new view's first navigation can be lost while the browser side still settles after
         // the kill (seen: no page start for 4 s): the watchdog looks again after 1.5 s, not 4 s.
-        if (wasLogin) { loadAsked = wasLoaded; beginLoginLoad(); view.loadUrl(LOGIN_URL) }
+        if (wasLogin) { loadAsked = wasLoaded; beginLoginLoad(); navigate(LOGIN_URL) }
         else if (wasLoaded) load(firstWatchMs = REBUILD_WATCH_MS) else view.loadUrl("about:blank")
     }
 
@@ -518,7 +577,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
     private fun load(firstWatchMs: Long) = main.post {
         pageStarts = 0
         loadAsked = true
-        view.loadUrl(playerRoot())
+        navigate(playerRoot())
         watchLoad(playerRoot(), attempt = 1, firstWatchMs)
     }
 
@@ -540,7 +599,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
             if (pageStarts > 0 || !loadAsked || attempt > LOAD_RETRIES) return@postDelayed
             Logbook.log("page never started: loading again (attempt $attempt)")
             if (attempt > 1) view.stopLoading()
-            view.loadUrl(url)
+            navigate(url)
             watchLoad(url, attempt + 1)
         }, if (attempt == 1) firstWatchMs else LOAD_WATCH_MS * attempt)
     }
@@ -573,7 +632,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         if (pageStarts > 0 && !drmAsked && _url.value.startsWith(PLAYER_URL) && newViewAllowed()) {
             Logbook.log("reload: the player never started on this page (no DRM request): new WebView instead")
             rebuild()
-        } else view.loadUrl(playerRoot())
+        } else navigate(playerRoot())
     }
 
     /**
@@ -624,7 +683,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         if (!_online.value) { Logbook.log("player page: offline, loaded again when the network is back"); return@Runnable }
         Logbook.log("player page: load again (attempt ${pageFailures + 1})")
         view.stopLoading()
-        view.loadUrl(playerRoot())
+        navigate(playerRoot())
     }
     private val loadTimeout = Runnable {
         if (!loadAsked || _loginRequired.value) return@Runnable
@@ -646,7 +705,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         main.removeCallbacks(retryPlayerPage)
         main.removeCallbacks(loadTimeout)
         beginLoginLoad()
-        view.loadUrl(LOGIN_URL)
+        navigate(LOGIN_URL)
     }
 
     /** Signs out of Spotify in this WebView, then shows the login page. */
@@ -655,7 +714,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         // The profile stays, with no account in it: the next sign-in on it is read as whoever it is.
         accounts.update { it.signedOut(profile) }
         beginLoginLoad()
-        cleanSlate { view.loadUrl(LOGIN_URL) }
+        cleanSlate { navigate(LOGIN_URL) }
     }
 
     /**
@@ -663,7 +722,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
      * a sign-in behind (the cookies and storage of a flow that never finished), and Spotify's page
      * answers "Oops! Something went wrong" to a flow it cannot match with its own state.
      */
-    fun retryLogin() = main.post { beginLoginLoad(); cleanSlate { view.loadUrl(LOGIN_URL) } }
+    fun retryLogin() = main.post { beginLoginLoad(); cleanSlate { navigate(LOGIN_URL) } }
 
     /**
      * Before a report sent from the sign-in: what the page shows right now (its path, title, the
@@ -741,7 +800,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         if (!multiProfile) return
         var name = ""
         accounts.update { list -> list.adding(System.currentTimeMillis()).also { name = it.second }.first }
-        moveTo(name) { loadAsked = true; beginLoginLoad(); view.loadUrl(LOGIN_URL) }
+        moveTo(name) { loadAsked = true; beginLoginLoad(); navigate(LOGIN_URL) }
     }
 
     /**
@@ -846,7 +905,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
                     Logbook.log("sign-in page: finished but blank, loading it again")
                     loginReloaded = true
                     loginProbes = 0
-                    view.loadUrl(LOGIN_URL)
+                    navigate(LOGIN_URL)
                 }
                 LoginLoad.Blank.FAIL -> loginFailed("blank after a second load")
             }
@@ -912,7 +971,7 @@ class WebPlayerHost(private val context: Context) : BridgeHost {
         if (visible) view.postInvalidateOnAnimation()
         // Now in a window: a first navigation that never started gets another go. Not over a
         // sign-in page being opened on a new view (another account's, or after a dead renderer).
-        if (loadAsked && _url.value.isEmpty() && pageStarts == 0 && _loginLoad.value == LoginLoad.NONE) view.loadUrl(playerRoot())
+        if (loadAsked && _url.value.isEmpty() && pageStarts == 0 && _loginLoad.value == LoginLoad.NONE) navigate(playerRoot())
     }
 
     /**

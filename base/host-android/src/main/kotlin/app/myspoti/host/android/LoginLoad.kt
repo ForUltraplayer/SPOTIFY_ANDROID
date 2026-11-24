@@ -68,9 +68,35 @@ enum class LoginLoad {
             return host == "accounts.google.com" || host == "facebook.com" || host.endsWith(".facebook.com") || host == "appleid.apple.com"
         }
 
+        /**
+         * The identity a main-frame load of [url] must be sent with: the sign-in pages get the
+         * WebView's own, the player its desktop one, and any other page (about:blank, a consent or
+         * sign-up step between the two) keeps the [current] one, so a flow is not split across two.
+         */
+        fun identityFor(url: String?, current: PageIdentity): PageIdentity = when {
+            isLoginUrl(url) -> PageIdentity.SIGN_IN
+            hostOf(url) == "open.spotify.com" -> PageIdentity.PLAYER
+            else -> current
+        }
+
         private fun hostOf(url: String?): String? =
             runCatching { java.net.URI((url ?: return null).substringBefore('#').substringBefore('?')).host?.lowercase() }.getOrNull()
     }
+}
+
+/**
+ * Which browser the page presents itself as. The Web Player needs a desktop Chrome ([Fingerprint]:
+ * on a phone user agent it only offers to open the app), but Spotify's sign-in refuses that desktop
+ * Chrome from an Android WebView (2026-11-25: `POST /login/code/send` answered 400, "Oops! Something
+ * went wrong"). A plain WebView with its own user agent was accepted, and the same plain WebView
+ * given only the desktop user agent was refused. Why is not known: the desktop claim may clash with
+ * the WebView's own client hints or with the `X-Requested-With` header it cannot drop (a guess).
+ */
+enum class PageIdentity {
+    /** The WebView's own user agent and client hints, untouched. */
+    SIGN_IN,
+    /** This install's desktop Chrome ([Fingerprint]). */
+    PLAYER,
 }
 
 /**

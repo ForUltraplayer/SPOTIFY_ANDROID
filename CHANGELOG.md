@@ -2,6 +2,11 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.4.1-hangul.3
+
+- Signing in works again: Spotify's sign-in page had started refusing the email step ("Oops! Something went wrong"). The sign-in pages now see the phone's own browser identity, and the player keeps the desktop one it needs
+- Google sign-in stays unavailable inside the app: Google refuses it in embedded browsers
+
 ## 2.4.1-hangul.2
 
 - Getting ready for the next base: the update check knows this app by its id instead of "-hangul" in the version, and also takes an APK named myspoti-ex-<version>.apk, so the 3.0.0 versions to come install as updates from here

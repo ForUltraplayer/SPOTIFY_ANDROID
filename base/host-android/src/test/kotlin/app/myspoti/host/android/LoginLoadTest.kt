@@ -46,6 +46,35 @@ class LoginLoadTest {
         assertFalse(LoginLoad.isSpotifyAccounts(null))
     }
 
+    @Test fun `the sign-in pages are loaded in the webview's own identity`() {
+        for (current in PageIdentity.values()) {
+            assertEquals(PageIdentity.SIGN_IN, LoginLoad.identityFor(WebPlayerHost.LOGIN_URL, current))
+            assertEquals(PageIdentity.SIGN_IN, LoginLoad.identityFor("https://challenge.spotify.com/c/abc", current))
+            assertEquals(PageIdentity.SIGN_IN, LoginLoad.identityFor("https://accounts.google.com/o/oauth2/v2/auth?client_id=1", current))
+            assertEquals(PageIdentity.SIGN_IN, LoginLoad.identityFor("https://appleid.apple.com/auth/authorize", current))
+            // A login path on the player's own host is still the sign-in.
+            assertEquals(PageIdentity.SIGN_IN, LoginLoad.identityFor("https://open.spotify.com/login", current))
+        }
+    }
+
+    @Test fun `the player is loaded in the desktop identity`() {
+        for (current in PageIdentity.values()) {
+            assertEquals(PageIdentity.PLAYER, LoginLoad.identityFor(WebPlayerHost.PLAYER_URL, current))
+            assertEquals(PageIdentity.PLAYER, LoginLoad.identityFor("https://open.spotify.com/intl-fr/", current))
+            // Where the sign-in hands back to: the query names the login, the page is the player.
+            assertEquals(PageIdentity.PLAYER, LoginLoad.identityFor("https://open.spotify.com/intl-fr/?continue=https://accounts.spotify.com/login", current))
+        }
+    }
+
+    @Test fun `any other page keeps the identity it is in`() {
+        for (current in PageIdentity.values()) {
+            assertEquals(current, LoginLoad.identityFor("about:blank", current))
+            assertEquals(current, LoginLoad.identityFor("https://www.spotify.com/signup", current))
+            assertEquals(current, LoginLoad.identityFor(null, current))
+            assertEquals(current, LoginLoad.identityFor("not a url at all", current))
+        }
+    }
+
     @Test fun `the page's answer says whether it painted`() {
         assertTrue(LoginLoad.painted("42"))
         assertTrue(LoginLoad.painted("\"7\""))
