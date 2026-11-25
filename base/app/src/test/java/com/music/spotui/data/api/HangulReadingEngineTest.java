@@ -28,6 +28,82 @@ public class HangulReadingEngineTest {
         assertEquals(HangulReadingEngine.normalize("だって"), HangulReadingEngine.normalize("だだだって"));
     }
 
+    @Test public void keepsLongVowelMarkInReadingsAndMeanings() {
+        // namu.wiki authors write ー inside Hangul readings (MAGIC by Ado); kana in a reading still rejects the row.
+        String source = "<div>冷たい高層ビルを<br>츠메타이 코ー소ー비루오<br>차가운 고층 빌딩을</div>"
+                + "<div>夜の風<br>요루노 카제<br>밤ー의 바람</div>"
+                + "<div>明日の朝<br>아시타노 あさ<br>내일 아침</div>";
+        List<HangulReadingEngine.Pair> pairs = engine.pairs(HangulReadingEngine.parse(source));
+        assertEquals(2, pairs.size());
+        assertEquals("츠메타이 코ー소ー비루오", pairs.get(0).reading); assertEquals("요루노 카제", pairs.get(1).reading);
+    }
+
+    @Test public void triesTitleWithoutTrailingBracketRightAfterIt() {
+        List<String> titles = HangulReadingEngine.titles("モニタリング (セカイver.)", "ワンダーランズ×ショウタイム");
+        assertEquals("モニタリング (セカイver.)", titles.get(0));
+        assertTrue(titles.toString(), titles.subList(0, Math.min(3, titles.size())).contains("モニタリング"));
+    }
+
+    @Test public void triesTitleArtistDocumentBeforeBareTitle() {
+        // namu.wiki/w/MAGIC is a disambiguation page whose links use up the page budget before MAGIC(Ado).
+        List<String> visited = new java.util.ArrayList<>();
+        try {
+            engine.resolve("MAGIC", "Ado", LINES, "", url -> { visited.add(url); throw new IOException("missing"); });
+            fail("No source should match");
+        } catch (IOException expected) { }
+        int artist = visited.indexOf("https://namu.wiki/w/" + HangulReadingEngine.encode("MAGIC(Ado)"));
+        assertTrue(visited.toString(), artist >= 0 && artist < visited.indexOf("https://namu.wiki/w/MAGIC"));
+    }
+
+    @Test public void titleMatchKeyJoinsRomanizedAndJapaneseNames() {
+        String[][] same = {{"Gira Gira", "ギラギラ"}, {"Seigi", "正義"}, {"Konnakoto Soudou", "こんなこと騒動"}, {"Kettobashita", "Ketobashita"}};
+        for (String[] pair : same) {
+            assertFalse(pair[0], engine.titleMatchKey(pair[0]).isEmpty());
+            assertEquals(pair[1], engine.titleMatchKey(pair[0]), engine.titleMatchKey(pair[1]));
+        }
+    }
+
+    // Spotify romanizes the Japanese title; only the artist's document links the song by its Japanese name.
+    private static final String ADO_PAGE = "<a href='/w/" + HangulReadingEngine.encode("ギラ") + "'>near</a>"
+            + "<a href='/w/" + HangulReadingEngine.encode("ギラギラ") + "?from=x#s-1'>song</a>";
+
+    @Test public void romanizedTitleFindsSongThroughArtistDocument() throws Exception {
+        String song = "https://namu.wiki/w/" + HangulReadingEngine.encode("ギラギラ");
+        HangulReadingEngine.Result result = engine.resolve("Gira Gira", "Ado", LINES, "", url -> {
+            if (url.equals("https://namu.wiki/w/Ado")) return ADO_PAGE;
+            if (url.equals(song)) return HTML;
+            throw new IOException("missing");
+        });
+        assertTrue(result.valid()); assertEquals(song, result.source);
+    }
+
+    @Test public void artistDocumentLinkBelowThresholdIsNotRead() {
+        String near = "https://namu.wiki/w/" + HangulReadingEngine.encode("ギラ"), song = "https://namu.wiki/w/" + HangulReadingEngine.encode("ギラギラ");
+        assertTrue(HangulReadingEngine.similarity(engine.titleMatchKey("Gira Gira"), engine.titleMatchKey("ギラ")) < .7);
+        List<String> visited = new java.util.ArrayList<>();
+        try {
+            engine.resolve("Gira Gira", "Ado", LINES, "", url -> {
+                visited.add(url);
+                if (url.equals("https://namu.wiki/w/Ado")) return ADO_PAGE;
+                if (url.equals(song)) return "<p>別の曲</p>";
+                throw new IOException("missing");
+            });
+            fail("No source should match");
+        } catch (IOException expected) { }
+        assertTrue(visited.toString(), visited.contains(song));
+        assertFalse(visited.toString(), visited.contains(near));
+    }
+
+    @Test public void japaneseTitleDoesNotReadArtistDocument() {
+        List<String> visited = new java.util.ArrayList<>();
+        try {
+            engine.resolve("ギラギラ", "Ado", LINES, "", url -> { visited.add(url); throw new IOException("missing"); });
+            fail("No source should match");
+        } catch (IOException expected) { }
+        assertFalse(visited.isEmpty());
+        assertFalse(visited.toString(), visited.contains("https://namu.wiki/w/Ado"));
+    }
+
     @Test public void parsesHaneumDirectParagraphTriples() {
         String source = "<div class='border-b'><p>아오이 소라</p><p>青い空</p><p>푸른 하늘</p></div>";
         List<HangulReadingEngine.Pair> pairs = engine.pairs(HangulReadingEngine.parse(source));
@@ -201,7 +277,9 @@ public class HangulReadingEngineTest {
             engine.resolve("Be The MUSIC! (feat. 「Rising」一同)", "Example", LINES, "", url -> { visited.add(url); throw new IOException("missing"); });
             fail("No source should match");
         } catch (IOException expected) { }
-        for (String url : visited) assertFalse(url, url.startsWith("https://namu.wiki/w/") && url.contains("%28"));
+        // The only bracketed document guess is the deliberate Title(Artist) name.
+        for (String url : visited) assertFalse(url, url.startsWith("https://namu.wiki/w/") && url.contains("%28")
+                && !url.equals("https://namu.wiki/w/" + HangulReadingEngine.encode("Be The MUSIC!(Example)")));
         assertTrue(visited.contains("https://namu.wiki/w/Be%20The%20MUSIC%21"));
     }
 
@@ -282,14 +360,18 @@ public class HangulReadingEngineTest {
     @Test public void resolvesOriginalDespiteCoverArtist() throws Exception {
         List<String> visited = new java.util.ArrayList<>();
         HangulReadingEngine.Result result = engine.resolve("Lemon (Cover by Other Artist)", "Other Artist", LINES, "", url -> {
+            // No document is named after the cover artist.
+            if (url.endsWith(HangulReadingEngine.encode("Lemon(Other Artist)"))) throw new IOException("missing");
             visited.add(url); return HTML;
         });
         assertTrue(result.valid()); assertTrue(visited.get(0).endsWith("/Lemon"));
     }
 
     @Test public void followsDisambiguationSongLink() throws Exception {
-        HangulReadingEngine.Result result = engine.resolve("unravel", "Ado", LINES, "", url ->
-                url.endsWith("/unravel") ? "<a href='/w/unravel(%EB%85%B8%EB%9E%98)'>song</a>" : HTML);
+        HangulReadingEngine.Result result = engine.resolve("unravel", "Ado", LINES, "", url -> {
+            if (url.endsWith(HangulReadingEngine.encode("unravel(Ado)"))) throw new IOException("missing");
+            return url.endsWith("/unravel") ? "<a href='/w/unravel(%EB%85%B8%EB%9E%98)'>song</a>" : HTML;
+        });
         assertTrue(result.valid()); assertTrue(result.source.contains("unravel("));
     }
 

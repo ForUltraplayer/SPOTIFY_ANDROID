@@ -2,6 +2,12 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.4.1-hangul.4
+
+- Hangul readings are found for more songs: readings written with the long-vowel mark (ー) are no longer dropped (MAGIC by Ado failed even with its address set), "Title(Artist)" pages are tried first so a common title such as MAGIC no longer ends on an unrelated page, and a title with a bracketed suffix such as "(セカイver.)" also tries the plain title
+- Songs Spotify names in romaji (Gira Gira, Seigi, Yoru No Pierrot) are matched against the song list on the artist's page
+- Saved readings with missing lines are looked up once more under the new rules; if that finds nothing, the saved readings stay
+
 ## 2.4.1-hangul.3
 
 - Signing in works again: Spotify's sign-in page had started refusing the email step ("Oops! Something went wrong"). The sign-in pages now see the phone's own browser identity, and the player keeps the desktop one it needs

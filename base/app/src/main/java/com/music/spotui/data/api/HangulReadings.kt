@@ -21,6 +21,8 @@ object HangulReadings {
     private val resolutionLock = ReentrantLock()
     private val failures = ReadingFailureCache()
     private const val LIFETIME = 30L * 86400 * 1000
+    /** Saved with each result; a partial result from older matching rules is looked up again. */
+    private const val RULES = 2
     /** Diagnostic lines (BetaLogs collects this tag): steps and outcomes, never titles, lyrics or addresses. */
     private const val TAG = "HangulReadings"
     /** A recent miss of the same song and source; [userMessage] words it for the screen. */
@@ -102,17 +104,21 @@ object HangulReadings {
         val aliasKey = digest(HangulReadingEngine.normalize(aliasTitle) + "|" + HangulReadingEngine.normalize(track.artist))
         val directory = File(Graph.app.filesDir, "hangul_readings_cache").apply { mkdirs() }
         val file = File(directory, "$key.json")
+        // A partial result from older rules, kept for the case where looking it up again fails.
+        var stale: Result? = null
         if (!force && file.isFile && System.currentTimeMillis() - file.lastModified() < LIFETIME) {
             val saved = runCatching {
                 val data = JSONObject(file.readText())
                 val rows = data.getJSONArray("lines")
                 require(rows.length() == texts.size)
-                Result(List(rows.length()) { rows.getString(it) }, data.getString("source"), data.getInt("matched"), data.getInt("total"))
+                Result(List(rows.length()) { rows.getString(it) }, data.getString("source"), data.getInt("matched"), data.getInt("total")) to data.optInt("rules")
             }.getOrNull()
-            if (saved != null) {
-                Log.d(TAG, "saved readings, match ${saved.matched}/${saved.total}")
-                return complete(texts, saved)
+            if (saved != null && (saved.first.matched == saved.first.total || saved.second >= RULES)) {
+                Log.d(TAG, "saved readings, match ${saved.first.matched}/${saved.first.total}")
+                return complete(texts, saved.first)
             }
+            stale = saved?.first
+            if (stale != null) Log.d(TAG, "saved readings from older rules, match ${stale.matched}/${stale.total}, looking up again")
         }
         var searched = false
         try {
@@ -131,7 +137,7 @@ object HangulReadings {
             if (Thread.currentThread().isInterrupted) throw InterruptedException()
             runCatching {
                 val data = JSONObject().put("lines", JSONArray(result.lines)).put("source", result.source)
-                    .put("matched", result.matched).put("total", result.total)
+                    .put("matched", result.matched).put("total", result.total).put("rules", RULES)
                 val temporary = File(directory, "$key.tmp")
                 temporary.writeText(data.toString())
                 if (!temporary.renameTo(file)) { file.writeText(data.toString()); temporary.delete() }
@@ -147,6 +153,16 @@ object HangulReadings {
             if (searched) {
                 failures.failed(key, definite = error is HangulReadingEngine.NonRetryable)
                 Log.d(TAG, "attempt $retryAttempt failed: ${HangulReadingEngine.outcome(error)}" + (error.cause?.let { ", last cause ${it.javaClass.simpleName}" } ?: ""))
+            }
+            // The old partial readings stay better than none. A definite miss under the current rules marks the
+            // file so it is not searched again on every open; its age is kept so the 30-day lifetime does not grow.
+            if (stale != null) {
+                if (searched && error is HangulReadingEngine.NonRetryable) runCatching {
+                    val modified = file.lastModified()
+                    file.writeText(JSONObject(file.readText()).put("rules", RULES).toString())
+                    file.setLastModified(modified)
+                }
+                return complete(texts, stale)
             }
             if (!automaticEnabled()) throw error
             val empty = Result(texts.map { if (HangulReadingEngine.japanese(it)) HangulReadingEngine.MISSING else it }, "", 0, texts.count(HangulReadingEngine::japanese))

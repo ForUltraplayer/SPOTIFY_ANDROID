@@ -48,6 +48,8 @@ final class HangulReadingEngine {
     public static final String INPUT_TOO_LONG = "곡 정보 또는 가사 길이 제한 초과";
     public static final String NOT_FOUND = "원문과 85% 이상 일치하는 한글 발음 자료를 찾지 못했습니다. 현재 곡 설정에서 자료 주소를 지정해 주세요.";
     private static final Pattern JAPANESE = Pattern.compile("[\\u3040-\\u30ff\\u3400-\\u9fff]");
+    // Authors write the long-vowel mark ー (U+30FC) inside Hangul readings and meanings; it alone is not Japanese text.
+    private static final Pattern JAPANESE_EXCEPT_LONG_MARK = Pattern.compile("[\\u3040-\\u30fb\\u30fd-\\u30ff\\u3400-\\u9fff]");
     private static final Pattern HANGUL = Pattern.compile("[가-힣]");
     private static final Pattern COVER = Pattern.compile("(?i)\\bcover(?:ed)?\\b|歌ってみた|カバー|커버(?:곡)?");
     private static final Set<String> BLOCKS = new HashSet<>(Arrays.asList(
@@ -231,8 +233,9 @@ final class HangulReadingEngine {
         for (int i = 0; i + 2 < page.lines.size(); i++) {
             String original = page.lines.get(i), reading = page.lines.get(i + 1), translation = page.lines.get(i + 2);
             if (!japanese(original) || HANGUL.matcher(original).find() || original.length() > 350
-                    || !HANGUL.matcher(reading).find() || japanese(reading) || reading.length() > 500
-                    || !HANGUL.matcher(translation).find() || japanese(translation) || normalize(original).length() < 2) continue;
+                    || !HANGUL.matcher(reading).find() || JAPANESE_EXCEPT_LONG_MARK.matcher(reading).find() || reading.length() > 500
+                    || !HANGUL.matcher(translation).find() || JAPANESE_EXCEPT_LONG_MARK.matcher(translation).find()
+                    || normalize(original).length() < 2) continue;
             if (readingSimilarity(original, reading) >= .45) pairs.add(new Pair(original, reading));
         }
         return pairs;
@@ -313,14 +316,16 @@ final class HangulReadingEngine {
         return out.toString();
     }
 
+    // Latin onset, vowel and final of each Hangul syllable; "_" marks a silent part.
+    private static final String[] ONSET = "g k n d t r m b p s s _ j j ch k t p h".split(" ");
+    private static final String[] VOWEL = "a ae ya yae eo e yeo ye o wa wae oe yo u wo we wi yu eu ui i".split(" ");
+    private static final String[] LAST = "_ k k k n n n t r k m p r r p r m p p t t n t t k t p h".split(" ");
+
     double readingSimilarity(String japanese, String korean) {
-        String[] onset = "g k n d t r m b p s s _ j j ch k t p h".split(" ");
-        String[] vowel = "a ae ya yae eo e yeo ye o wa wae oe yo u wo we wi yu eu ui i".split(" ");
-        String[] last = "_ k k k n n n t r k m p r r p r m p p t t n t t k t p h".split(" ");
         StringBuilder latin = new StringBuilder();
         for (char c : korean.toCharArray()) {
             int value = c - 0xac00;
-            if (value >= 0 && value < 11172) latin.append(onset[value / 588]).append(vowel[value % 588 / 28]).append(last[value % 28]);
+            if (value >= 0 && value < 11172) latin.append(ONSET[value / 588]).append(VOWEL[value % 588 / 28]).append(LAST[value % 28]);
             else if (c < 128 && Character.isLetter(c)) latin.append(Character.toLowerCase(c));
         }
         return similarity(soundKey(romanize(kana(japanese))), soundKey(latin.toString().replace("_", "")));
@@ -331,6 +336,31 @@ final class HangulReadingEngine {
                 {"syo","sio"},{"sho","sio"},{"eu","u"},{"eo","o"},{"ou","o"}};
         for (String[] pair : replacements) value = value.replace(pair[0], pair[1]);
         return value.replace('g','k').replace('d','t').replace('b','p').replaceAll("(.)\\1+", "$1");
+    }
+
+    private static final Pattern TITLE_SOUNDS = Pattern.compile("[가-힣]|[\\u3040-\\u30ff\\u3400-\\u9fff]+");
+
+    /** Latin sound key shared by a romanized Spotify title and a Japanese or Hangul document name. */
+    String titleMatchKey(String text) {
+        java.util.regex.Matcher run = TITLE_SOUNDS.matcher(Normalizer.normalize(text, Normalizer.Form.NFKC));
+        StringBuffer latin = new StringBuffer();
+        while (run.find()) {
+            String part = run.group(), sound;
+            int value = part.charAt(0) - 0xac00;
+            if (value >= 0 && value < 11172) sound = ONSET[value / 588] + VOWEL[value % 588 / 28] + LAST[value % 28];
+            else {
+                // Read the name as if a particle followed: alone, kuromoji reads 正義 as the given name マサヨシ, not セイギ.
+                String spoken = kana(part + "は");
+                sound = romanize(spoken.endsWith("は") ? spoken.substring(0, spoken.length() - 1) : kana(part));
+            }
+            run.appendReplacement(latin, java.util.regex.Matcher.quoteReplacement(sound));
+        }
+        run.appendTail(latin);
+        String key = latin.toString().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        String[][] replacements = {{"shi","si"},{"chi","ti"},{"tsu","tu"},{"fu","hu"},{"ji","zi"},{"eo","o"},{"eu","u"},
+                {"ou","o"},{"oo","o"},{"l","r"},{"v","b"},{"c","k"},{"x","ks"}};
+        for (String[] pair : replacements) key = key.replace(pair[0], pair[1]);
+        return key.replace('g','k').replace('d','t').replace('b','p').replaceAll("(.)\\1+", "$1");
     }
 
     // SequenceMatcher-style ordered matching blocks. Bound CPU and memory for untrusted pages.
@@ -458,8 +488,14 @@ final class HangulReadingEngine {
         }
         String koreanAlias=koreanTitleAlias(text.trim());
         if(!koreanAlias.isEmpty()) candidates.add(koreanAlias);
-        candidates.add(text.trim()); candidates.add(title.trim()); candidates.remove("");
-        return new ArrayList<>(candidates).subList(0, Math.min(5,candidates.size()));
+        candidates.add(text.trim()); candidates.add(title.trim());
+        // An unrecognised suffix such as "(セカイver.)" hides the namu.wiki document name; try the base title right after it.
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (String name : candidates) {
+            names.add(name); names.add(name.replaceFirst("\\s*(?:\\([^()]*\\)|\\[[^\\[\\]]*\\])\\s*$", ""));
+        }
+        names.remove("");
+        return new ArrayList<>(names).subList(0, Math.min(5,names.size()));
     }
 
     static String encode(String text) {
@@ -502,12 +538,17 @@ final class HangulReadingEngine {
         List<String> titles = titles(title, artist);
         ArrayDeque<String> pending = new ArrayDeque<>();
         boolean manual = sourceUrl != null && !sourceUrl.trim().isEmpty();
+        List<String> artistParts = new ArrayList<>();
+        for (String part : artist.split("[,/&、]")) if (!part.trim().isEmpty() && artistParts.size() < 2) artistParts.add(part.trim());
         if (manual) pending.add(checkedUrl(sourceUrl.trim()));
         else {
             if (learnedUrl != null && !learnedUrl.isEmpty()) pending.add(checkedUrl(learnedUrl));
-            for (String name : titles.subList(0, Math.min(3,titles.size()))) {
+            for (int index = 0; index < Math.min(3,titles.size()); index++) {
+            String name = titles.get(index);
             // A bracketed or feat. variant is never a document name; leave it to search.
             if (name.matches("(?is).*(?:[\\[\\]()（）]|\\bfeat\\b|\\bft\\.).*")) continue;
+            // Song documents are often named Title(Artist); a bare title may redirect to a disambiguation page that hides it.
+            if (index < 2) for (String part : artistParts) pending.add("https://namu.wiki/w/" + encode(name + "(" + part + ")"));
             pending.add("https://namu.wiki/w/" + encode(name));
             if ((title + artist).toLowerCase(Locale.ROOT).matches(".*(?:kenshi|yonezu|米津玄師|요네즈).*"))
                 pending.add("https://namu.wiki/w/" + encode(name + "(요네즈 켄시)"));
@@ -528,9 +569,38 @@ final class HangulReadingEngine {
         // The last failure that may pass on a retry; null when every answer was final.
         IOException passing = null;
         Result best = null;
+        // Spotify often romanizes a Japanese title; the artist's own document links the real song documents by their Japanese names.
+        String wanted = manual || artistParts.isEmpty() || japanese(title) || HANGUL.matcher(title).find() ? "" : titleMatchKey(title);
+        boolean artistPage = !wanted.isEmpty();
         try {
         while (System.nanoTime() < deadline && !Thread.currentThread().isInterrupted() && visited.size() < 20) {
             if (pending.isEmpty()) {
+                if (artistPage) {
+                    artistPage = false;
+                    String url = "https://namu.wiki/w/" + encode(artistParts.get(0));
+                    if (!visited.add(url)) continue;
+                    try {
+                        Map<String, Double> scores = new LinkedHashMap<>();
+                        for (String link : parse(fetcher.get(url)).links) {
+                            String path = link.split("\\?", 2)[0], base;
+                            if (!link.startsWith("/w/") || scores.containsKey(path)) continue;
+                            try { base = java.net.URLDecoder.decode(path.substring(3), "UTF-8").split("\\(", 2)[0].trim(); } catch (Exception e) { continue; }
+                            if (Thread.currentThread().isInterrupted()) throw new IOException(CANCELLED);
+                            if (System.nanoTime() >= deadline) throw new IOException(TIMEOUT);
+                            if (!base.isEmpty()) scores.put(path, similarity(wanted, titleMatchKey(base)));
+                        }
+                        // Lyric validation still decides; a close but wrong name costs one page.
+                        List<String> linked = new ArrayList<>(scores.keySet());
+                        linked.removeIf(path -> scores.get(path) < .7);
+                        linked.sort((a, b) -> Double.compare(scores.get(b), scores.get(a)));
+                        for (String path : linked.subList(0, Math.min(2, linked.size()))) pending.add("https://namu.wiki" + path);
+                        log.accept("#" + visited.size() + " " + route(url) + " (artist): " + pending.size() + " results");
+                    } catch (IOException error) {
+                        if (retryable(error)) passing = error;
+                        log.accept("#" + visited.size() + " " + route(url) + " (artist): " + outcome(error));
+                    }
+                    continue;
+                }
                 if (manual || search >= searches.size()) break;
                 String[] query = searches.get(search++);
                 boolean haneum = query[1].equals("haneum");
